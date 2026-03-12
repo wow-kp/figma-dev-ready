@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Inter, system-ui, sans-serif;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    font-size: 12px;
+    height: 620px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Hero ── */
+  #hero {
+    background: linear-gradient(135deg, #1e1e2e 0%, #181825 100%);
+    border-bottom: 1px solid #313244;
+    padding: 20px 20px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  #hero h1 { font-size: 14px; font-weight: 600; color: #cdd6f4; }
+  #hero p  { font-size: 11px; color: #6c7086; text-align: center; }
+
+  #run-btn {
+    margin-top: 4px;
+    padding: 10px 28px;
+    border-radius: 8px;
+    border: none;
+    background: #89b4fa;
+    color: #1e1e2e;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    letter-spacing: 0.01em;
+  }
+  #run-btn:hover  { opacity: 0.9; }
+  #run-btn:active { transform: scale(0.97); }
+  #run-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; transform: none; }
+
+  /* ── Score ── */
+  #score-bar {
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 20px;
+    background: #181825;
+    border-bottom: 1px solid #313244;
+    flex-shrink: 0;
+  }
+
+  #score-ring {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+  }
+  #score-ring svg { transform: rotate(-90deg); }
+  #score-ring .track { fill: none; stroke: #313244; stroke-width: 4; }
+  #score-ring .arc   { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+  #score-num {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  #score-text { flex: 1; }
+  #score-verdict { font-size: 13px; font-weight: 600; }
+  #score-sub     { font-size: 11px; color: #6c7086; margin-top: 3px; }
+
+  /* ── Checks list ── */
+  #results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .check-card {
+    border-radius: 8px;
+    border: 1px solid #313244;
+    background: #181825;
+    overflow: hidden;
+  }
+
+  .check-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.12s;
+  }
+  .check-header:hover { background: #1e1e2e; }
+
+  .check-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .icon-pass  { background: #a6e3a140; }
+  .icon-warn  { background: #f9e2af40; }
+  .icon-fail  { background: #f38ba840; }
+
+  .check-info { flex: 1; min-width: 0; }
+  .check-label { font-size: 12px; font-weight: 600; color: #cdd6f4; }
+  .check-desc  { font-size: 10px; color: #6c7086; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .check-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 99px;
+    flex-shrink: 0;
+  }
+  .badge-pass { background: #a6e3a120; color: #a6e3a1; }
+  .badge-warn { background: #f9e2af20; color: #f9e2af; }
+  .badge-fail { background: #f38ba820; color: #f38ba8; }
+
+  .check-chevron {
+    font-size: 10px;
+    color: #6c7086;
+    flex-shrink: 0;
+    transition: transform 0.2s;
+  }
+  .check-card.open .check-chevron { transform: rotate(180deg); }
+
+  .issue-list {
+    display: none;
+    border-top: 1px solid #313244;
+    padding: 6px 0;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .check-card.open .issue-list { display: block; }
+
+  .issue-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+    border-radius: 4px;
+  }
+  .issue-row:hover { background: #313244; }
+
+  .issue-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #f38ba8;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+  .issue-text { flex: 1; min-width: 0; }
+  .issue-label { font-size: 11px; color: #cdd6f4; font-weight: 500; }
+  .issue-path  { font-size: 10px; color: #6c7086; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #313244; border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<div id="hero">
+  <h1>Is it ready for dev? 🔍</h1>
+  <p>Audits naming, auto layout, color variables,<br>text styles, hidden layers &amp; empty containers.</p>
+  <button id="run-btn">Run audit on current page</button>
+</div>
+
+<!-- Score bar (shown after audit) -->
+<div id="score-bar">
+  <div id="score-ring">
+    <svg width="52" height="52" viewBox="0 0 52 52">
+      <circle class="track" cx="26" cy="26" r="22" />
+      <circle class="arc"   cx="26" cy="26" r="22" id="arc" />
+    </svg>
+    <div id="score-num"></div>
+  </div>
+  <div id="score-text">
+    <div id="score-verdict"></div>
+    <div id="score-sub"></div>
+  </div>
+</div>
+
+<!-- Results -->
+<div id="results"></div>
+
+<script>
+const ICONS = {
+  tag:     "🏷",
+  layout:  "⬜",
+  palette: "🎨",
+  type:    "✏️",
+  "eye-off": "🙈",
+  box:     "📦",
+};
+
+document.getElementById("run-btn").addEventListener("click", () => {
+  const btn = document.getElementById("run-btn");
+  btn.disabled = true;
+  btn.textContent = "Scanning…";
+  parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
+});
+
+window.onmessage = (event) => {
+  const msg = event.data.pluginMessage;
+  if (!msg || msg.type !== "audit-results") return;
+  renderResults(msg.results);
+};
+
+function renderResults({ checks, totalNodes, totalIssues, score }) {
+  // Re-enable button
+  const btn = document.getElementById("run-btn");
+  btn.disabled = false;
+  btn.textContent = "Re-run audit";
+
+  // Score ring
+  const circumference = 2 * Math.PI * 22;
+  const arc = document.getElementById("arc");
+  arc.style.strokeDasharray  = circumference;
+  arc.style.strokeDashoffset = circumference - (score / 100) * circumference;
+  arc.style.stroke = score >= 80 ? "#a6e3a1" : score >= 50 ? "#f9e2af" : "#f38ba8";
+
+  document.getElementById("score-num").textContent = score;
+  document.getElementById("score-num").style.color =
+    score >= 80 ? "#a6e3a1" : score >= 50 ? "#f9e2af" : "#f38ba8";
+
+  const verdict =
+    score >= 80 ? "✅ Looking good!" :
+    score >= 50 ? "⚠️ Needs some work" :
+                  "❌ Not ready yet";
+  document.getElementById("score-verdict").textContent = verdict;
+  document.getElementById("score-sub").textContent =
+    `${totalIssues} issue${totalIssues !== 1 ? "s" : ""} across ${totalNodes} nodes`;
+
+  document.getElementById("score-bar").style.display = "flex";
+
+  // Build check cards
+  const container = document.getElementById("results");
+  container.innerHTML = "";
+  container.style.display = "flex";
+
+  Object.entries(checks).forEach(([key, check]) => {
+    const count   = check.issues.length;
+    const hasFail = count > 0;
+    const iconCls = hasFail ? "icon-fail" : "icon-pass";
+    const badgeCls = hasFail ? "badge-fail" : "badge-pass";
+    const badgeText = hasFail ? `${count} issue${count !== 1 ? "s" : ""}` : "Pass";
+
+    const card = document.createElement("div");
+    card.className = "check-card";
+    card.innerHTML = `
+      <div class="check-header">
+        <div class="check-icon ${iconCls}">${ICONS[check.icon] || "•"}</div>
+        <div class="check-info">
+          <div class="check-label">${check.label}</div>
+          <div class="check-desc">${check.description}</div>
+        </div>
+        <span class="check-badge ${badgeCls}">${badgeText}</span>
+        ${hasFail ? '<span class="check-chevron">▼</span>' : ""}
+      </div>
+      ${hasFail ? `<div class="issue-list">
+        ${check.issues.map(issue => `
+          <div class="issue-row" data-id="${issue.id}">
+            <div class="issue-dot"></div>
+            <div class="issue-text">
+              <div class="issue-label">${issue.label}</div>
+              <div class="issue-path">${issue.path}</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>` : ""}
+    `;
+
+    // Toggle expand
+    if (hasFail) {
+      card.querySelector(".check-header").addEventListener("click", () => {
+        card.classList.toggle("open");
+      });
+      // Click issue → focus in canvas
+      card.querySelectorAll(".issue-row").forEach(row => {
+        row.addEventListener("click", (e) => {
+          e.stopPropagation();
+          parent.postMessage({
+            pluginMessage: { type: "focus-node", id: row.dataset.id }
+          }, "*");
+        });
+      });
+    }
+
+    container.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>

@@ -3,318 +3,510 @@
 <head>
 <meta charset="UTF-8" />
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  body {
-    font-family: Inter, system-ui, sans-serif;
-    background: #1e1e2e;
-    color: #cdd6f4;
-    font-size: 12px;
-    height: 620px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+body {
+  font-family: Inter, system-ui, sans-serif;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-size: 12px;
+  height: 640px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-  /* ── Hero ── */
-  #hero {
-    background: linear-gradient(135deg, #1e1e2e 0%, #181825 100%);
-    border-bottom: 1px solid #313244;
-    padding: 20px 20px 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-  }
+/* ── Tabs ── */
+#tabs {
+  display: flex;
+  border-bottom: 1px solid #313244;
+  background: #181825;
+  flex-shrink: 0;
+}
+.tab-btn {
+  flex: 1;
+  padding: 11px 0;
+  border: none;
+  background: transparent;
+  color: #6c7086;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+}
+.tab-btn.active { color: #89b4fa; border-bottom-color: #89b4fa; }
+.tab-btn:hover:not(.active) { color: #cdd6f4; }
 
-  #hero h1 { font-size: 14px; font-weight: 600; color: #cdd6f4; }
-  #hero p  { font-size: 11px; color: #6c7086; text-align: center; }
+/* ── Tab panes ── */
+.pane { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+.pane.active { display: flex; }
 
-  #run-btn {
-    margin-top: 4px;
-    padding: 10px 28px;
-    border-radius: 8px;
-    border: none;
-    background: #89b4fa;
-    color: #1e1e2e;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s;
-    letter-spacing: 0.01em;
-  }
-  #run-btn:hover  { opacity: 0.9; }
-  #run-btn:active { transform: scale(0.97); }
-  #run-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; transform: none; }
+/* ── Shared: hero / run button ── */
+#hero {
+  background: linear-gradient(135deg, #1e1e2e 0%, #181825 100%);
+  border-bottom: 1px solid #313244;
+  padding: 18px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+#hero h1  { font-size: 14px; font-weight: 600; }
+#hero p   { font-size: 11px; color: #6c7086; text-align: center; }
 
-  /* ── Score ── */
-  #score-bar {
-    display: none;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 20px;
-    background: #181825;
-    border-bottom: 1px solid #313244;
-    flex-shrink: 0;
-  }
+.primary-btn {
+  padding: 10px 28px;
+  border-radius: 8px;
+  border: none;
+  background: #89b4fa;
+  color: #1e1e2e;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.primary-btn:hover   { opacity: 0.9; }
+.primary-btn:active  { transform: scale(0.97); }
+.primary-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; transform: none; }
 
-  #score-ring {
-    position: relative;
-    width: 52px;
-    height: 52px;
-    flex-shrink: 0;
-  }
-  #score-ring svg { transform: rotate(-90deg); }
-  #score-ring .track { fill: none; stroke: #313244; stroke-width: 4; }
-  #score-ring .arc   { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
-  #score-num {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-  }
+/* ── Score bar ── */
+#score-bar {
+  display: none;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  background: #181825;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+#score-ring { position: relative; width: 52px; height: 52px; flex-shrink: 0; }
+#score-ring svg { transform: rotate(-90deg); }
+#score-ring .track { fill: none; stroke: #313244; stroke-width: 4; }
+#score-ring .arc   { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+#score-num {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+}
+#score-verdict { font-size: 13px; font-weight: 600; }
+#score-sub     { font-size: 11px; color: #6c7086; margin-top: 3px; }
 
-  #score-text { flex: 1; }
-  #score-verdict { font-size: 13px; font-weight: 600; }
-  #score-sub     { font-size: 11px; color: #6c7086; margin-top: 3px; }
+/* ── Check cards ── */
+#results {
+  flex: 1; overflow-y: auto;
+  padding: 10px 12px;
+  display: none; flex-direction: column; gap: 4px;
+}
+.check-card { border-radius: 8px; border: 1px solid #313244; background: #181825; overflow: hidden; }
+.check-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; cursor: pointer; user-select: none; transition: background 0.12s;
+}
+.check-header:hover { background: #1e1e2e; }
+.check-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.icon-pass { background: #a6e3a140; } .icon-fail { background: #f38ba840; }
+.check-info { flex: 1; min-width: 0; }
+.check-label { font-size: 12px; font-weight: 600; color: #cdd6f4; }
+.check-desc  { font-size: 10px; color: #6c7086; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.check-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 99px; flex-shrink: 0; }
+.badge-pass  { background: #a6e3a120; color: #a6e3a1; }
+.badge-fail  { background: #f38ba820; color: #f38ba8; }
+.check-chevron { font-size: 10px; color: #6c7086; flex-shrink: 0; transition: transform 0.2s; }
+.check-card.open .check-chevron { transform: rotate(180deg); }
+.issue-list { display: none; border-top: 1px solid #313244; padding: 6px 0; max-height: 180px; overflow-y: auto; }
+.check-card.open .issue-list { display: block; }
+.issue-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 12px; cursor: pointer; transition: background 0.1s; border-radius: 4px; }
+.issue-row:hover { background: #313244; }
+.issue-dot { width: 5px; height: 5px; border-radius: 50%; background: #f38ba8; margin-top: 4px; flex-shrink: 0; }
+.issue-text { flex: 1; min-width: 0; }
+.issue-label { font-size: 11px; color: #cdd6f4; font-weight: 500; }
+.issue-path  { font-size: 10px; color: #6c7086; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* ── Checks list ── */
-  #results {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px 12px;
-    display: none;
-    flex-direction: column;
-    gap: 4px;
-  }
+/* ── Import pane ── */
+#import-pane { padding: 14px 14px 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 10px; }
 
-  .check-card {
-    border-radius: 8px;
-    border: 1px solid #313244;
-    background: #181825;
-    overflow: hidden;
-  }
+#import-pane .hint {
+  font-size: 11px; color: #6c7086; line-height: 1.65;
+  background: #181825; border: 1px solid #313244; border-radius: 8px;
+  padding: 10px 12px; flex-shrink: 0;
+}
+#import-pane .hint b { color: #89b4fa; }
 
-  .check-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    cursor: pointer;
-    user-select: none;
-    transition: background 0.12s;
-  }
-  .check-header:hover { background: #1e1e2e; }
+/* Drop zone */
+#drop-zone {
+  border: 2px dashed #313244;
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+#drop-zone:hover, #drop-zone.drag-over { border-color: #89b4fa; background: #89b4fa0d; }
+#drop-zone .dz-icon { font-size: 22px; margin-bottom: 6px; }
+#drop-zone .dz-label { font-size: 12px; color: #cdd6f4; font-weight: 600; }
+#drop-zone .dz-sub   { font-size: 10px; color: #6c7086; margin-top: 3px; }
 
-  .check-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    flex-shrink: 0;
-  }
-  .icon-pass  { background: #a6e3a140; }
-  .icon-warn  { background: #f9e2af40; }
-  .icon-fail  { background: #f38ba840; }
+/* File queue */
+#file-queue { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+#file-queue:empty::after {
+  content: "No files selected yet";
+  display: block; text-align: center;
+  font-size: 11px; color: #45475a;
+  padding: 16px 0;
+}
 
-  .check-info { flex: 1; min-width: 0; }
-  .check-label { font-size: 12px; font-weight: 600; color: #cdd6f4; }
-  .check-desc  { font-size: 10px; color: #6c7086; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  border: 1px solid #313244; background: #181825;
+  transition: border-color 0.2s;
+}
+.file-row.success { border-color: #a6e3a140; }
+.file-row.error   { border-color: #f38ba840; }
 
-  .check-badge {
-    font-size: 10px;
-    font-weight: 700;
-    padding: 3px 8px;
-    border-radius: 99px;
-    flex-shrink: 0;
-  }
-  .badge-pass { background: #a6e3a120; color: #a6e3a1; }
-  .badge-warn { background: #f9e2af20; color: #f9e2af; }
-  .badge-fail { background: #f38ba820; color: #f38ba8; }
+.file-icon { font-size: 14px; flex-shrink: 0; }
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-size: 11px; color: #cdd6f4; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-type { font-size: 10px; color: #6c7086; margin-top: 2px; }
+.file-status { font-size: 10px; font-weight: 600; flex-shrink: 0; }
+.file-status.ok  { color: #a6e3a1; }
+.file-status.err { color: #f38ba8; }
+.file-remove {
+  background: none; border: none; color: #45475a;
+  cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1;
+  flex-shrink: 0; transition: color 0.1s;
+}
+.file-remove:hover { color: #f38ba8; }
 
-  .check-chevron {
-    font-size: 10px;
-    color: #6c7086;
-    flex-shrink: 0;
-    transition: transform 0.2s;
-  }
-  .check-card.open .check-chevron { transform: rotate(180deg); }
+/* Import action bar */
+#import-actions {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0 14px; flex-shrink: 0;
+  border-top: 1px solid #313244;
+}
+#import-actions .file-count { font-size: 11px; color: #6c7086; flex: 1; }
 
-  .issue-list {
-    display: none;
-    border-top: 1px solid #313244;
-    padding: 6px 0;
-    max-height: 180px;
-    overflow-y: auto;
-  }
-  .check-card.open .issue-list { display: block; }
-
-  .issue-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    transition: background 0.1s;
-    border-radius: 4px;
-  }
-  .issue-row:hover { background: #313244; }
-
-  .issue-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #f38ba8;
-    margin-top: 4px;
-    flex-shrink: 0;
-  }
-  .issue-text { flex: 1; min-width: 0; }
-  .issue-label { font-size: 11px; color: #cdd6f4; font-weight: 500; }
-  .issue-path  { font-size: 10px; color: #6c7086; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  /* ── Scrollbar ── */
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #313244; border-radius: 99px; }
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #313244; border-radius: 99px; }
 </style>
 </head>
 <body>
 
-<!-- Hero -->
-<div id="hero">
-  <h1>Is it ready for dev? 🔍</h1>
-  <p>Audits naming, auto layout, color variables,<br>text styles, hidden layers &amp; empty containers.</p>
-  <button id="run-btn">Run audit on current page</button>
+<!-- Tab bar -->
+<div id="tabs">
+  <button class="tab-btn active" data-tab="audit">🔍 Audit</button>
+  <button class="tab-btn"        data-tab="import">📥 Import Variables</button>
 </div>
 
-<!-- Score bar (shown after audit) -->
-<div id="score-bar">
-  <div id="score-ring">
-    <svg width="52" height="52" viewBox="0 0 52 52">
-      <circle class="track" cx="26" cy="26" r="22" />
-      <circle class="arc"   cx="26" cy="26" r="22" id="arc" />
-    </svg>
-    <div id="score-num"></div>
+<!-- ── AUDIT PANE ─────────────────────────────────── -->
+<div class="pane active" id="pane-audit">
+
+  <div id="hero">
+    <h1>Is it ready for dev?</h1>
+    <p>Audits naming, auto layout, color variables,<br>text styles, hidden layers &amp; empty containers.</p>
+    <button id="run-btn" class="primary-btn">Run audit on current page</button>
   </div>
-  <div id="score-text">
-    <div id="score-verdict"></div>
-    <div id="score-sub"></div>
+
+  <div id="score-bar">
+    <div id="score-ring">
+      <svg width="52" height="52" viewBox="0 0 52 52">
+        <circle class="track" cx="26" cy="26" r="22" />
+        <circle class="arc"   cx="26" cy="26" r="22" id="arc" />
+      </svg>
+      <div id="score-num"></div>
+    </div>
+    <div id="score-text">
+      <div id="score-verdict"></div>
+      <div id="score-sub"></div>
+    </div>
   </div>
+
+  <div id="results"></div>
 </div>
 
-<!-- Results -->
-<div id="results"></div>
+<!-- ── IMPORT PANE ────────────────────────────────── -->
+<div class="pane" id="pane-import">
+  <div id="import-pane">
+
+    <div class="hint">
+      Select JSON files exported from the <b>Figma Variables Generator</b>.<br>
+      Keep original filenames — type is auto-detected from the name.<br>
+      For Colors: import <b>colors-light.json</b> first, then <b>colors-dark.json</b>.
+    </div>
+
+    <div id="drop-zone">
+      <input type="file" id="file-input" multiple accept=".json" style="display:none">
+      <div class="dz-icon">📂</div>
+      <div class="dz-label">Click to select JSON files</div>
+      <div class="dz-sub">or drag and drop here</div>
+    </div>
+
+    <div id="file-queue"></div>
+
+    <div id="import-actions">
+      <span class="file-count" id="file-count">No files queued</span>
+      <button id="import-btn" class="primary-btn" disabled>Import to Figma</button>
+    </div>
+
+  </div>
+</div>
 
 <script>
-const ICONS = {
-  tag:     "🏷",
-  layout:  "⬜",
-  palette: "🎨",
-  type:    "✏️",
-  "eye-off": "🙈",
-  box:     "📦",
-};
+// ── Tab switching ──────────────────────────────────────────────────────────────
+document.querySelectorAll(".tab-btn").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+    document.querySelectorAll(".pane").forEach(function(p)    { p.classList.remove("active"); });
+    btn.classList.add("active");
+    document.getElementById("pane-" + btn.dataset.tab).classList.add("active");
+  });
+});
 
-document.getElementById("run-btn").addEventListener("click", () => {
-  const btn = document.getElementById("run-btn");
-  btn.disabled = true;
-  btn.textContent = "Scanning…";
+// ── Audit ──────────────────────────────────────────────────────────────────────
+var ICONS = { tag:"🏷", layout:"⬜", palette:"🎨", type:"✏️", "eye-off":"🙈", box:"📦" };
+
+document.getElementById("run-btn").addEventListener("click", function() {
+  var btn = document.getElementById("run-btn");
+  btn.disabled = true; btn.textContent = "Scanning…";
   parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
 });
 
-window.onmessage = (event) => {
-  const msg = event.data.pluginMessage;
-  if (!msg || msg.type !== "audit-results") return;
-  renderResults(msg.results);
+// ── Import ──────────────────────────────────────────────────────────────────────
+var fileQueue = []; // { file, name, detectedType, status: null|"ok"|"error", message }
+
+var TYPE_LABELS = {
+  "primitives":   "🎨 Primitives → \"Primitives\" collection",
+  "colors-light": "🌤 Colors Light → \"Colors\" collection (Light mode)",
+  "colors-dark":  "🌙 Colors Dark → \"Colors\" collection (Dark mode)",
+  "spacing":      "📐 Spacing → \"Spacing\" collection",
+  "typography":   "✏️ Typography → \"Typography\" collection",
+  "radius":       "⬜ Radius → \"Radius\" collection",
+  "border":       "─ Border Width → \"Border Width\" collection",
+  "shadows":      "🌑 Shadows → \"Shadows\" collection",
+  "zindex":       "📦 Z-Index → \"Z-Index\" collection",
+  "breakpoints":  "📱 Breakpoints → \"Breakpoints\" collection",
+  "unknown":      "❓ Unknown — rename file to match token type",
 };
 
-function renderResults({ checks, totalNodes, totalIssues, score }) {
-  // Re-enable button
-  const btn = document.getElementById("run-btn");
-  btn.disabled = false;
-  btn.textContent = "Re-run audit";
+function detectType(filename) {
+  var fn = filename.toLowerCase();
+  if (fn.indexOf("primitive")  !== -1) return "primitives";
+  if (fn.indexOf("dark")       !== -1) return "colors-dark";
+  if (fn.indexOf("light")      !== -1) return "colors-light";
+  if (fn.indexOf("color")      !== -1 || fn.indexOf("colour") !== -1) return "colors-light";
+  if (fn.indexOf("spacing")    !== -1) return "spacing";
+  if (fn.indexOf("typography") !== -1) return "typography";
+  if (fn.indexOf("radius")     !== -1) return "radius";
+  if (fn.indexOf("border")     !== -1) return "border";
+  if (fn.indexOf("shadow")     !== -1) return "shadows";
+  if (fn.indexOf("z-index")    !== -1) return "zindex";
+  if (fn.indexOf("breakpoint") !== -1) return "breakpoints";
+  return "unknown";
+}
 
-  // Score ring
-  const circumference = 2 * Math.PI * 22;
-  const arc = document.getElementById("arc");
+function renderQueue() {
+  var q   = document.getElementById("file-queue");
+  var btn = document.getElementById("import-btn");
+  var cnt = document.getElementById("file-count");
+  q.innerHTML = "";
+
+  fileQueue.forEach(function(item, idx) {
+    var row = document.createElement("div");
+    row.className = "file-row" + (item.status === "ok" ? " success" : item.status === "error" ? " error" : "");
+
+    var statusHTML = "";
+    if (item.status === "ok")    statusHTML = "<span class='file-status ok'>✓ " + item.message + "</span>";
+    if (item.status === "error") statusHTML = "<span class='file-status err'>✗ Failed</span>";
+
+    row.innerHTML =
+      "<span class='file-icon'>📄</span>" +
+      "<div class='file-info'>" +
+        "<div class='file-name'>" + item.name + "</div>" +
+        "<div class='file-type'>" + (TYPE_LABELS[item.detectedType] || "Unknown") + "</div>" +
+      "</div>" +
+      statusHTML +
+      (item.status ? "" : "<button class='file-remove' data-idx='" + idx + "'>×</button>");
+
+    q.appendChild(row);
+  });
+
+  // Remove buttons
+  q.querySelectorAll(".file-remove").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      fileQueue.splice(parseInt(btn.dataset.idx), 1);
+      renderQueue();
+    });
+  });
+
+  var pending = fileQueue.filter(function(f) { return !f.status; });
+  cnt.textContent = pending.length + " file" + (pending.length !== 1 ? "s" : "") + " queued";
+  btn.disabled = pending.length === 0;
+}
+
+function addFiles(fileList) {
+  for (var i = 0; i < fileList.length; i++) {
+    var file = fileList[i];
+    // avoid duplicates
+    var exists = fileQueue.some(function(f) { return f.name === file.name; });
+    if (!exists) {
+      fileQueue.push({ file: file, name: file.name, detectedType: detectType(file.name), status: null, message: "" });
+    }
+  }
+  renderQueue();
+}
+
+// File input
+document.getElementById("drop-zone").addEventListener("click", function() {
+  document.getElementById("file-input").click();
+});
+document.getElementById("file-input").addEventListener("change", function(e) {
+  addFiles(e.target.files);
+  e.target.value = "";
+});
+
+// Drag & drop
+var dz = document.getElementById("drop-zone");
+dz.addEventListener("dragover",  function(e) { e.preventDefault(); dz.classList.add("drag-over"); });
+dz.addEventListener("dragleave", function()  { dz.classList.remove("drag-over"); });
+dz.addEventListener("drop", function(e) {
+  e.preventDefault(); dz.classList.remove("drag-over");
+  addFiles(e.dataTransfer.files);
+});
+
+// Import button — processes queue one file at a time
+var importIndex = 0;
+
+document.getElementById("import-btn").addEventListener("click", function() {
+  document.getElementById("import-btn").disabled = true;
+  importIndex = 0;
+  processNext();
+});
+
+function processNext() {
+  // find next pending file
+  while (importIndex < fileQueue.length && fileQueue[importIndex].status) importIndex++;
+  if (importIndex >= fileQueue.length) {
+    renderQueue();
+    return;
+  }
+  var item = fileQueue[importIndex];
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      parent.postMessage({ pluginMessage: { type: "import-tokens", filename: item.name, data: data } }, "*");
+    } catch(err) {
+      item.status  = "error";
+      item.message = "Invalid JSON";
+      importIndex++;
+      renderQueue();
+      processNext();
+    }
+  };
+  reader.readAsText(item.file);
+}
+
+// ── Message handler ────────────────────────────────────────────────────────────
+window.onmessage = function(event) {
+  var msg = event.data.pluginMessage;
+  if (!msg) return;
+
+  if (msg.type === "audit-results") {
+    renderAudit(msg.results);
+    return;
+  }
+
+  if (msg.type === "import-result") {
+    // find matching file
+    for (var i = 0; i < fileQueue.length; i++) {
+      if (fileQueue[i].name === msg.filename && !fileQueue[i].status) {
+        fileQueue[i].status  = msg.success ? "ok"    : "error";
+        fileQueue[i].message = msg.success ? msg.message : msg.message;
+        break;
+      }
+    }
+    importIndex++;
+    renderQueue();
+    processNext();
+  }
+};
+
+// ── Audit render ───────────────────────────────────────────────────────────────
+function renderAudit(data) {
+  var checks = data.checks, totalNodes = data.totalNodes, totalIssues = data.totalIssues, score = data.score;
+
+  var btn = document.getElementById("run-btn");
+  btn.disabled = false; btn.textContent = "Re-run audit";
+
+  var circumference = 2 * Math.PI * 22;
+  var arc = document.getElementById("arc");
   arc.style.strokeDasharray  = circumference;
   arc.style.strokeDashoffset = circumference - (score / 100) * circumference;
   arc.style.stroke = score >= 80 ? "#a6e3a1" : score >= 50 ? "#f9e2af" : "#f38ba8";
 
-  document.getElementById("score-num").textContent = score;
-  document.getElementById("score-num").style.color =
-    score >= 80 ? "#a6e3a1" : score >= 50 ? "#f9e2af" : "#f38ba8";
+  var scoreEl = document.getElementById("score-num");
+  scoreEl.textContent = score;
+  scoreEl.style.color = score >= 80 ? "#a6e3a1" : score >= 50 ? "#f9e2af" : "#f38ba8";
 
-  const verdict =
-    score >= 80 ? "✅ Looking good!" :
-    score >= 50 ? "⚠️ Needs some work" :
-                  "❌ Not ready yet";
-  document.getElementById("score-verdict").textContent = verdict;
+  document.getElementById("score-verdict").textContent =
+    score >= 80 ? "✅ Looking good!" : score >= 50 ? "⚠️ Needs some work" : "❌ Not ready yet";
   document.getElementById("score-sub").textContent =
-    `${totalIssues} issue${totalIssues !== 1 ? "s" : ""} across ${totalNodes} nodes`;
+    totalIssues + " issue" + (totalIssues !== 1 ? "s" : "") + " across " + totalNodes + " nodes";
 
   document.getElementById("score-bar").style.display = "flex";
 
-  // Build check cards
-  const container = document.getElementById("results");
+  var container = document.getElementById("results");
   container.innerHTML = "";
   container.style.display = "flex";
 
-  Object.entries(checks).forEach(([key, check]) => {
-    const count   = check.issues.length;
-    const hasFail = count > 0;
-    const iconCls = hasFail ? "icon-fail" : "icon-pass";
-    const badgeCls = hasFail ? "badge-fail" : "badge-pass";
-    const badgeText = hasFail ? `${count} issue${count !== 1 ? "s" : ""}` : "Pass";
-
-    const card = document.createElement("div");
+  Object.keys(checks).forEach(function(key) {
+    var check = checks[key];
+    var count = check.issues.length;
+    var card  = document.createElement("div");
     card.className = "check-card";
-    card.innerHTML = `
-      <div class="check-header">
-        <div class="check-icon ${iconCls}">${ICONS[check.icon] || "•"}</div>
-        <div class="check-info">
-          <div class="check-label">${check.label}</div>
-          <div class="check-desc">${check.description}</div>
-        </div>
-        <span class="check-badge ${badgeCls}">${badgeText}</span>
-        ${hasFail ? '<span class="check-chevron">▼</span>' : ""}
-      </div>
-      ${hasFail ? `<div class="issue-list">
-        ${check.issues.map(issue => `
-          <div class="issue-row" data-id="${issue.id}">
-            <div class="issue-dot"></div>
-            <div class="issue-text">
-              <div class="issue-label">${issue.label}</div>
-              <div class="issue-path">${issue.path}</div>
-            </div>
-          </div>
-        `).join("")}
-      </div>` : ""}
-    `;
+    card.innerHTML =
+      "<div class='check-header'>" +
+        "<div class='check-icon " + (count ? "icon-fail" : "icon-pass") + "'>" + (ICONS[check.icon] || "•") + "</div>" +
+        "<div class='check-info'>" +
+          "<div class='check-label'>" + check.label + "</div>" +
+          "<div class='check-desc'>"  + check.description + "</div>" +
+        "</div>" +
+        "<span class='check-badge " + (count ? "badge-fail" : "badge-pass") + "'>" +
+          (count ? count + " issue" + (count !== 1 ? "s" : "") : "Pass") +
+        "</span>" +
+        (count ? "<span class='check-chevron'>▼</span>" : "") +
+      "</div>" +
+      (count ?
+        "<div class='issue-list'>" +
+          check.issues.map(function(issue) {
+            return "<div class='issue-row' data-id='" + issue.id + "'>" +
+              "<div class='issue-dot'></div>" +
+              "<div class='issue-text'>" +
+                "<div class='issue-label'>" + issue.label + "</div>" +
+                "<div class='issue-path'>"  + issue.path  + "</div>" +
+              "</div>" +
+            "</div>";
+          }).join("") +
+        "</div>"
+      : "");
 
-    // Toggle expand
-    if (hasFail) {
-      card.querySelector(".check-header").addEventListener("click", () => {
+    if (count) {
+      card.querySelector(".check-header").addEventListener("click", function() {
         card.classList.toggle("open");
       });
-      // Click issue → focus in canvas
-      card.querySelectorAll(".issue-row").forEach(row => {
-        row.addEventListener("click", (e) => {
+      card.querySelectorAll(".issue-row").forEach(function(row) {
+        row.addEventListener("click", function(e) {
           e.stopPropagation();
-          parent.postMessage({
-            pluginMessage: { type: "focus-node", id: row.dataset.id }
-          }, "*");
+          parent.postMessage({ pluginMessage: { type: "focus-node", id: row.dataset.id } }, "*");
         });
       });
     }
-
     container.appendChild(card);
   });
 }

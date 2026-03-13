@@ -196,6 +196,20 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-font-input::placeholder { color: #45475a; }
 .wf-color-clear:hover { color: #f38ba8; }
 .wf-add-color-btn button:hover { border-color: #89b4fa !important; color: #89b4fa !important; }
+/* Text styles table */
+.wf-ts-group-hdr { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #585b70; padding: 8px 0 4px; border-bottom: 1px solid #313244; margin-bottom: 2px; }
+.wf-ts-row { display: grid; grid-template-columns: 70px 90px 1fr 1fr 1fr 1.4fr 1.4fr 22px; gap: 4px; align-items: center; padding: 2px 0; }
+.wf-ts-col-hdr { padding-bottom: 2px; }
+.wf-ts-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
+.wf-ts-inp { background: #1e1e2e; border: 1px solid #313244; border-radius: 3px; padding: 4px 5px; font-size: 10px; color: #cdd6f4; outline: none; width: 100%; box-sizing: border-box; font-family: inherit; }
+.wf-ts-inp:focus { border-color: #89b4fa; }
+.wf-ts-num { font-family: "SF Mono", Monaco, monospace; text-align: right; }
+.wf-ts-select { background: #1e1e2e; border: 1px solid #313244; border-radius: 3px; padding: 4px 3px; font-size: 10px; color: #cdd6f4; outline: none; width: 100%; box-sizing: border-box; cursor: pointer; }
+.wf-ts-select:focus { border-color: #89b4fa; }
+.wf-ts-del { background: none; border: none; color: #45475a; font-size: 13px; cursor: pointer; padding: 0; line-height: 1; }
+.wf-ts-del:hover { color: #f38ba8; }
+.wf-ts-add { background: none; border: 1px dashed #313244; border-radius: 4px; color: #585b70; font-size: 10px; padding: 4px 8px; cursor: pointer; margin-top: 4px; margin-bottom: 8px; width: 100%; }
+.wf-ts-add:hover { border-color: #89b4fa; color: #89b4fa; }
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
 .wf-page-row.found    { background: #a6e3a108; border-color: #a6e3a120; }
@@ -679,6 +693,26 @@ var wfCustomColors = []; // { name: "Success", hex: "#22C55E" }
 var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
 var wfGenerating = false;
 
+var TS_GROUPS = ["heading","body","links","buttons","input","label"];
+var wfTextStyles = [
+  {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
+  {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
+  {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
+  {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
+  {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
+  {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
+  {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+  {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+  {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+  {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
+];
+var wfTsNextId = 16;
+
 function getWfColors() {
   return {
     primary:   wfColors.primary || "#3B82F6",
@@ -845,14 +879,6 @@ function buildCustomColorSlot(idx, onRemove, onUpdate) {
   return slot;
 }
 
-function getWfFonts() {
-  return {
-    primary:   wfFonts.primary || "Inter, sans-serif",
-    secondary: wfFonts.secondary || "",
-    tertiary:  wfFonts.tertiary || ""
-  };
-}
-
 var FONT_FAMILIES = [
   {label:"Inter", value:"Inter, sans-serif"},
   {label:"Roboto", value:"Roboto, sans-serif"},
@@ -893,7 +919,7 @@ var FONT_FAMILIES = [
   {label:"cursive", value:"cursive"}
 ];
 
-function buildFontSlot(key, label, isOptional) {
+function buildFontFamilyPicker(key, label, isOptional) {
   var val = wfFonts[key] || "";
   var slot = document.createElement("div");
   slot.className = "wf-font-slot";
@@ -906,14 +932,12 @@ function buildFontSlot(key, label, isOptional) {
   var sel = document.createElement("select");
   sel.className = "wf-font-input";
   sel.style.fontFamily = val || "inherit";
-
   if (isOptional) {
     var emptyOpt = document.createElement("option");
     emptyOpt.value = "";
     emptyOpt.textContent = "Same as Primary";
     sel.appendChild(emptyOpt);
   }
-
   var matched = false;
   for (var i = 0; i < FONT_FAMILIES.length; i++) {
     var opt = document.createElement("option");
@@ -923,7 +947,6 @@ function buildFontSlot(key, label, isOptional) {
     if (val === FONT_FAMILIES[i].value) { opt.selected = true; matched = true; }
     sel.appendChild(opt);
   }
-  // If current value doesn't match any preset, add it as an option
   if (val && !matched) {
     var custom = document.createElement("option");
     custom.value = val;
@@ -931,14 +954,138 @@ function buildFontSlot(key, label, isOptional) {
     custom.selected = true;
     sel.appendChild(custom);
   }
-
   sel.addEventListener("change", function() {
     wfFonts[key] = sel.value;
     sel.style.fontFamily = sel.value || "inherit";
   });
-
   slot.appendChild(sel);
   return slot;
+}
+
+function buildFontRoleSelect(currentRole) {
+  var sel = document.createElement("select");
+  sel.className = "wf-ts-select";
+  var roles = [
+    { value: "primary",   label: "Primary" },
+    { value: "secondary", label: "Secondary" },
+    { value: "tertiary",  label: "Tertiary" }
+  ];
+  for (var i = 0; i < roles.length; i++) {
+    var opt = document.createElement("option");
+    opt.value = roles[i].value;
+    opt.textContent = roles[i].label;
+    if (currentRole === roles[i].value) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  return sel;
+}
+
+function buildTextStylesPanel(panel) {
+  panel.innerHTML = "";
+
+  // Font family pickers at the top
+  var fontGrid = document.createElement("div");
+  fontGrid.className = "wf-font-grid";
+  fontGrid.appendChild(buildFontFamilyPicker("primary", "Primary", false));
+  fontGrid.appendChild(buildFontFamilyPicker("secondary", "Secondary", true));
+  fontGrid.appendChild(buildFontFamilyPicker("tertiary", "Tertiary", true));
+  panel.appendChild(fontGrid);
+
+  var sep = document.createElement("div");
+  sep.style.cssText = "height:1px;background:#313244;margin:10px 0 6px;";
+  panel.appendChild(sep);
+
+  TS_GROUPS.forEach(function(group) {
+    var styles = wfTextStyles.filter(function(s) { return s.group === group; });
+    if (styles.length === 0) return;
+
+    // Group header
+    var ghdr = document.createElement("div");
+    ghdr.className = "wf-ts-group-hdr";
+    ghdr.textContent = group;
+    panel.appendChild(ghdr);
+
+    // Column headers
+    var colHdr = document.createElement("div");
+    colHdr.className = "wf-ts-row wf-ts-col-hdr";
+    colHdr.innerHTML = "<span>Name</span><span>Font</span><span>Size (px)</span><span>Weight</span><span>Line Height (×)</span><span>Letter Spacing (px)</span><span>Paragraph Spacing (px)</span><span></span>";
+    panel.appendChild(colHdr);
+
+    styles.forEach(function(s) {
+      var row = document.createElement("div");
+      row.className = "wf-ts-row";
+
+      // Name
+      var nameInp = document.createElement("input");
+      nameInp.className = "wf-ts-inp";
+      nameInp.value = s.name;
+      nameInp.addEventListener("input", function() { s.name = nameInp.value.trim(); });
+      row.appendChild(nameInp);
+
+      // Font role (Primary / Secondary / Tertiary)
+      var fontSel = buildFontRoleSelect(s.fontRole || "primary");
+      fontSel.addEventListener("change", function() { s.fontRole = fontSel.value; });
+      row.appendChild(fontSel);
+
+      // Size
+      var sizeInp = document.createElement("input");
+      sizeInp.className = "wf-ts-inp wf-ts-num";
+      sizeInp.value = s.fontSize;
+      sizeInp.addEventListener("input", function() { s.fontSize = sizeInp.value.trim(); });
+      row.appendChild(sizeInp);
+
+      // Weight
+      var weightInp = document.createElement("input");
+      weightInp.className = "wf-ts-inp wf-ts-num";
+      weightInp.value = s.fontWeight;
+      weightInp.addEventListener("input", function() { s.fontWeight = weightInp.value.trim(); });
+      row.appendChild(weightInp);
+
+      // Line height
+      var lhInp = document.createElement("input");
+      lhInp.className = "wf-ts-inp wf-ts-num";
+      lhInp.value = s.lineHeight;
+      lhInp.addEventListener("input", function() { s.lineHeight = lhInp.value.trim(); });
+      row.appendChild(lhInp);
+
+      // Letter spacing
+      var lsInp = document.createElement("input");
+      lsInp.className = "wf-ts-inp wf-ts-num";
+      lsInp.value = s.letterSpacing;
+      lsInp.addEventListener("input", function() { s.letterSpacing = lsInp.value.trim(); });
+      row.appendChild(lsInp);
+
+      // Paragraph spacing
+      var psInp = document.createElement("input");
+      psInp.className = "wf-ts-inp wf-ts-num";
+      psInp.value = s.paragraphSpacing || "0";
+      psInp.addEventListener("input", function() { s.paragraphSpacing = psInp.value.trim(); });
+      row.appendChild(psInp);
+
+      // Delete button
+      var delBtn = document.createElement("button");
+      delBtn.className = "wf-ts-del";
+      delBtn.textContent = "×";
+      delBtn.title = "Remove style";
+      delBtn.addEventListener("click", function() {
+        wfTextStyles = wfTextStyles.filter(function(x) { return x.id !== s.id; });
+        buildTextStylesPanel(panel);
+      });
+      row.appendChild(delBtn);
+
+      panel.appendChild(row);
+    });
+
+    // Add style button
+    var addBtn = document.createElement("button");
+    addBtn.className = "wf-ts-add";
+    addBtn.textContent = "+ Add style to " + group;
+    addBtn.addEventListener("click", function() {
+      wfTextStyles.push({ id: wfTsNextId++, group: group, name: "new", fontRole: "primary", fontSize: "16", fontWeight: "400", lineHeight: "1.5", letterSpacing: "0", paragraphSpacing: "0" });
+      buildTextStylesPanel(panel);
+    });
+    panel.appendChild(addBtn);
+  });
 }
 
 function renderStep2(container) {
@@ -1091,13 +1238,7 @@ function renderStep2(container) {
         }
 
         if (def.hasConfig === "fonts") {
-          // Font family dropdowns inside panel
-          var fontGrid = document.createElement("div");
-          fontGrid.className = "wf-font-grid";
-          fontGrid.appendChild(buildFontSlot("primary", "Primary", false));
-          fontGrid.appendChild(buildFontSlot("secondary", "Secondary", true));
-          fontGrid.appendChild(buildFontSlot("tertiary", "Tertiary", true));
-          panel.appendChild(fontGrid);
+          buildTextStylesPanel(panel);
         }
 
         acc.appendChild(panel);
@@ -1118,7 +1259,6 @@ function renderStep2(container) {
       wfGenerating = true;
       genAllBtn.disabled = true; genAllBtn.textContent = "Generating…";
       var colors = getWfColors();
-      var fonts = getWfFonts();
       var customCols = wfCustomColors.filter(function(c) { return c.name && /^#[0-9A-Fa-f]{6}$/.test(c.hex); });
       // Collect all enabled categories
       var enabledCats = [];
@@ -1133,9 +1273,12 @@ function renderStep2(container) {
         secondaryColor: colors.secondary,
         tertiaryColor: colors.tertiary,
         customColors: customCols,
-        fontPrimary: fonts.primary,
-        fontSecondary: fonts.secondary,
-        fontTertiary: fonts.tertiary,
+        textStyles: wfTextStyles,
+        fontFamilies: {
+          primary: wfFonts.primary || "Inter, sans-serif",
+          secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
+          tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
+        },
         enabledCategories: enabledCats
       } }, "*");
     });

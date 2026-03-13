@@ -165,7 +165,13 @@ figma.ui.onmessage = async function(msg) {
       primary: brandHex, secondary: secondaryHex, tertiary: tertiaryHex,
       custom: msg.customColors || []
     };
-    var fontOpts = { primary: msg.fontPrimary || "Inter, sans-serif", secondary: msg.fontSecondary || "", tertiary: msg.fontTertiary || "" };
+    var fontFamilies = msg.fontFamilies || { primary: "Inter, sans-serif", secondary: "Inter, sans-serif", tertiary: "Inter, sans-serif" };
+    var textStylesData = (msg.textStyles || []).map(function(s) {
+      var resolved = {};
+      for (var k in s) resolved[k] = s[k];
+      resolved.fontFamily = fontFamilies[s.fontRole] || fontFamilies.primary;
+      return resolved;
+    });
     var enabledCats = msg.enabledCategories || null;
     var GEN_ORDER = ["colors","colors-light","colors-dark","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
 
@@ -174,7 +180,7 @@ figma.ui.onmessage = async function(msg) {
 
     for (var gi = 0; gi < catsToRun.length; gi++) {
       try {
-        var gd = generateTokenData(catsToRun[gi], colorOpts, fontOpts);
+        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData);
         var gr = await importTokens(gd.filename, gd.data);
         figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:true, message:gr });
       } catch(e) {
@@ -763,7 +769,7 @@ async function importTextStyles(data){
   await Promise.all(fontsNeeded.map(function(f){return figma.loadFontAsync({family:f.family,style:f.style}).catch(function(){});}));
   var existingStyles=figma.getLocalTextStyles(),styleMap={};existingStyles.forEach(function(s){styleMap[s.name]=s;});
   var count=0,skipped=0;
-  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var styleName=groupKey+"/"+key;try{var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var fontStyle=weightToStyle(val.fontWeight||400);var style=styleMap[styleName]||figma.createTextStyle();style.name=styleName;style.fontName={family:family,style:fontStyle};var fs=val.fontSize;style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);var lh=val.lineHeight;if(lh){if(typeof lh==="object"){if(lh.unit==="PIXELS")style.lineHeight={unit:"PIXELS",value:lh.value||24};else style.lineHeight={unit:"PERCENT",value:(lh.value||1.5)*100};}else style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};}var ls=val.letterSpacing;if(ls!==undefined){var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);style.letterSpacing={unit:"PIXELS",value:lsVal};}var ps=val.paragraphSpacing;if(ps!==undefined)style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);var td=val.textDecoration;style.textDecoration=(td&&td!=="NONE")?td:"NONE";if(token["$description"])style.description=token["$description"];styleMap[styleName]=style;count++;}catch(e){skipped++;}});});
+  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var styleName=groupKey+"/"+key;try{var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var fontStyle=weightToStyle(val.fontWeight||400);var style=styleMap[styleName]||figma.createTextStyle();style.name=styleName;style.fontName={family:family,style:fontStyle};var fs=val.fontSize;style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);var lh=val.lineHeight;if(lh){if(typeof lh==="object"){if(lh.unit==="PIXELS")style.lineHeight={unit:"PIXELS",value:lh.value||24};else if(lh.unit==="MULTIPLIER"){var lhPx=(lh.value||1.5)*style.fontSize;style.lineHeight={unit:"PIXELS",value:lhPx};}else style.lineHeight={unit:"PERCENT",value:(lh.value||1.5)*100};}else style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};}var ls=val.letterSpacing;if(ls!==undefined){var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);style.letterSpacing={unit:"PIXELS",value:lsVal};}var ps=val.paragraphSpacing;if(ps!==undefined)style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);var td=val.textDecoration;style.textDecoration=(td&&td!=="NONE")?td:"NONE";if(token["$description"])style.description=token["$description"];styleMap[styleName]=style;count++;}catch(e){skipped++;}});});
   var msg="Created/updated "+count+" text style"+(count!==1?"s":"");if(skipped>0)msg+=" ("+skipped+" skipped — font not installed)";return msg;
 }
 
@@ -1077,50 +1083,30 @@ function generateBreakpointsData() {
   };
 }
 
-function generateTextStylesData(fontOpts) {
-  var primary = (fontOpts && fontOpts.primary) || "Inter, sans-serif";
-  var secondary = (fontOpts && fontOpts.secondary) || primary;
-  var tertiary = (fontOpts && fontOpts.tertiary) || primary;
-
-  function ts(family, size, weight, lh, ls) {
-    return {
+function generateTextStylesData(textStyles) {
+  var data = {};
+  for (var i = 0; i < textStyles.length; i++) {
+    var s = textStyles[i];
+    var group = s.group || "body";
+    var name = s.name || "default";
+    if (!data[group]) data[group] = {};
+    data[group][name] = {
       "$type": "textStyle",
       "$value": {
-        fontFamily: family,
-        fontSize: size,
-        fontWeight: weight,
-        lineHeight: { unit: "PIXELS", value: lh },
-        letterSpacing: { value: ls || 0 }
+        fontFamily: s.fontFamily || "Inter, sans-serif",
+        fontSize: { value: parseFloat(s.fontSize) || 16, unit: "px" },
+        fontWeight: parseFloat(s.fontWeight) || 400,
+        lineHeight: { value: parseFloat(s.lineHeight) || 1.5, unit: "MULTIPLIER" },
+        letterSpacing: { value: parseFloat(s.letterSpacing) || 0, unit: "px" },
+        paragraphSpacing: { value: parseFloat(s.paragraphSpacing) || 0, unit: "px" }
       }
     };
   }
-  return {
-    heading: {
-      h1: ts(primary, 48, 700, 56, -0.5),
-      h2: ts(primary, 36, 700, 44, -0.3),
-      h3: ts(primary, 28, 600, 36, 0),
-      h4: ts(primary, 22, 600, 28, 0),
-      h5: ts(primary, 18, 600, 24, 0)
-    },
-    body: {
-      lg: ts(secondary, 18, 400, 28, 0),
-      md: ts(secondary, 16, 400, 24, 0),
-      sm: ts(secondary, 14, 400, 20, 0)
-    },
-    caption: {
-      md: ts(tertiary, 12, 400, 16, 0.2),
-      sm: ts(tertiary, 10, 400, 14, 0.3)
-    },
-    label: {
-      lg: ts(tertiary, 14, 600, 20, 0.2),
-      md: ts(tertiary, 12, 600, 16, 0.3),
-      sm: ts(tertiary, 10, 600, 14, 0.4)
-    }
-  };
+  return data;
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
-function generateTokenData(category, colorOpts, fontOpts) {
+function generateTokenData(category, colorOpts, textStylesData) {
   // Normalize: if a plain string is passed, wrap it
   if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
   switch (category) {
@@ -1128,7 +1114,7 @@ function generateTokenData(category, colorOpts, fontOpts) {
     case "colors-light": return { filename: "colors-light.json", data: generateSemanticColors(colorOpts, "light") };
     case "colors-dark":  return { filename: "colors-dark.json",  data: generateSemanticColors(colorOpts, "dark") };
     case "spacing":      return { filename: "spacing.json",      data: generateSpacingData() };
-    case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(fontOpts) };
+    case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(textStylesData) };
     case "radius":       return { filename: "radius.json",       data: generateRadiusData() };
     case "border":       return { filename: "border.json",       data: generateBorderData() };
     case "shadows":      return { filename: "shadows.json",      data: generateShadowsData() };

@@ -240,6 +240,10 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-bd-col-hdr { padding-bottom: 2px; }
 .wf-bd-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
 .wf-bd-bar { height: var(--h, 1px); background: #89b4fa; border-radius: 1px; min-width: 1px; max-height: 20px; transition: height 0.1s; }
+/* Z-Index */
+.wf-zi-row { display: grid; grid-template-columns: 90px 70px 22px; gap: 6px; align-items: center; padding: 2px 0; }
+.wf-zi-col-hdr { padding-bottom: 2px; }
+.wf-zi-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
 /* Spacing info */
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
@@ -301,7 +305,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 <!-- ── AUDIT ─────────────────────────── -->
 <div class="pane" id="pane-audit">
   <div id="hero">
-    <h1>Is it ready for dev?</h1>
+    <h1>Dev-Ready Tools for Designers by wowbrands</h1>
     <p>13 weighted checks across naming, layout, variables, typography &amp; hygiene.</p>
     <button id="run-btn" class="primary-btn">Run audit on current page</button>
   </div>
@@ -711,7 +715,7 @@ var TOKEN_DEFS = [
   { key: "radius",       cats: ["radius"],                              countKey: "radius",       icon: "◻️",  name: "Radius",            desc: "Corner radius tokens",              hasConfig: "radius" },
   { key: "shadows",      cats: ["shadows"],                             countKey: "effectStyles", icon: "✨", name: "Shadows",           desc: "Shadows as reusable effect styles",  hasConfig: "shadows" },
   { key: "border",       cats: ["border"],                              countKey: null,           icon: "▭",  name: "Border",            desc: "Border width tokens",               hasConfig: "border" },
-  { key: "zindex",       cats: ["zindex"],                              countKey: null,           icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens"              },
+  { key: "zindex",       cats: ["zindex"],                              countKey: null,           icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens",             hasConfig: "zindex" },
   { key: "breakpoints",  cats: ["breakpoints"],                         countKey: null,           icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints"             }
 ];
 
@@ -770,6 +774,17 @@ var wfBorders = [
   { name: "heavy", value: "4" }
 ];
 var wfBdNextId = 5;
+
+var wfZIndex = [
+  { name: "hide", value: "-1" },
+  { name: "base", value: "0" },
+  { name: "dropdown", value: "1000" },
+  { name: "sticky", value: "1100" },
+  { name: "overlay", value: "1300" },
+  { name: "modal", value: "1400" },
+  { name: "toast", value: "1700" }
+];
+var wfZiNextId = 8;
 
 function getWfColors() {
   return {
@@ -1486,6 +1501,55 @@ function buildBorderPanel(panel, acc, chk) {
   panel.appendChild(addBtn);
 }
 
+function buildZIndexPanel(panel, acc, chk) {
+  panel.innerHTML = "";
+
+  var colHdr = document.createElement("div");
+  colHdr.className = "wf-zi-row wf-zi-col-hdr";
+  colHdr.innerHTML = "<span>Name</span><span>Value</span><span></span>";
+  panel.appendChild(colHdr);
+
+  wfZIndex.forEach(function(z) {
+    var row = document.createElement("div");
+    row.className = "wf-zi-row";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp";
+    nameInp.value = z.name;
+    nameInp.addEventListener("input", function() { z.name = nameInp.value.trim(); });
+    row.appendChild(nameInp);
+
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-ts-num";
+    valInp.value = z.value;
+    valInp.addEventListener("input", function() { z.value = valInp.value.trim(); });
+    row.appendChild(valInp);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      wfZIndex = wfZIndex.filter(function(x) { return x !== z; });
+      if (wfZIndex.length === 0) syncTokenEnabled("zindex", acc, chk, false);
+      buildZIndexPanel(panel, acc, chk);
+    });
+    row.appendChild(delBtn);
+
+    panel.appendChild(row);
+  });
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add z-index token";
+  addBtn.addEventListener("click", function() {
+    var wasEmpty = wfZIndex.length === 0;
+    wfZIndex.push({ id: wfZiNextId++, name: "new", value: "0" });
+    if (wasEmpty) syncTokenEnabled("zindex", acc, chk, true);
+    buildZIndexPanel(panel, acc, chk);
+  });
+  panel.appendChild(addBtn);
+}
+
 function renderStep2(container) {
   var prev = document.getElementById("wf-step-2");
   if (prev) prev.remove();
@@ -1655,6 +1719,10 @@ function renderStep2(container) {
           buildBorderPanel(panel, acc, chk);
         }
 
+        if (def.hasConfig === "zindex") {
+          buildZIndexPanel(panel, acc, chk);
+        }
+
         acc.appendChild(panel);
       }
 
@@ -1697,6 +1765,7 @@ function renderStep2(container) {
         radius: wfRadius,
         shadows: wfShadows,
         borders: wfBorders,
+        zindex: wfZIndex,
         enabledCategories: enabledCats
       } }, "*");
     });

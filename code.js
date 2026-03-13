@@ -1,4 +1,4 @@
-figma.showUI(__html__, { width: 920, height: 680, title: "Is it ready for dev?" });
+figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for Designers by wowbrands" });
 
 figma.on("selectionchange", function() { pushDebugData(); });
 
@@ -176,6 +176,7 @@ figma.ui.onmessage = async function(msg) {
     var radiusData = msg.radius || [];
     var shadowsData = msg.shadows || [];
     var bordersData = msg.borders || [];
+    var zindexData = msg.zindex || [];
     var enabledCats = msg.enabledCategories || null;
     var GEN_ORDER = ["colors","colors-light","colors-dark","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
 
@@ -184,7 +185,7 @@ figma.ui.onmessage = async function(msg) {
 
     for (var gi = 0; gi < catsToRun.length; gi++) {
       try {
-        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData);
+        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData, zindexData);
         var gr = await importTokens(gd.filename, gd.data);
         figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:true, message:gr });
       } catch(e) {
@@ -1065,16 +1066,15 @@ function generateShadowsData(shadowsList) {
   return tokens;
 }
 
-function generateZIndexData() {
-  return {
-    hide:     { "$type": "number", "$value": -1 },
-    base:     { "$type": "number", "$value": 0 },
-    dropdown: { "$type": "number", "$value": 1000 },
-    sticky:   { "$type": "number", "$value": 1100 },
-    overlay:  { "$type": "number", "$value": 1300 },
-    modal:    { "$type": "number", "$value": 1400 },
-    toast:    { "$type": "number", "$value": 1700 }
-  };
+function generateZIndexData(zindexList) {
+  var tokens = {};
+  for (var i = 0; i < zindexList.length; i++) {
+    var z = zindexList[i];
+    if (z.name) {
+      tokens[z.name] = { "$type": "number", "$value": parseFloat(z.value) || 0 };
+    }
+  }
+  return tokens;
 }
 
 function generateBreakpointsData() {
@@ -1110,7 +1110,7 @@ function generateTextStylesData(textStyles) {
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
-function generateTokenData(category, colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData) {
+function generateTokenData(category, colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData, zindexData) {
   // Normalize: if a plain string is passed, wrap it
   if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
   switch (category) {
@@ -1122,7 +1122,7 @@ function generateTokenData(category, colorOpts, textStylesData, spacingData, rad
     case "radius":       return { filename: "radius.json",       data: generateRadiusData(radiusData) };
     case "border":       return { filename: "border.json",       data: generateBorderData(bordersData) };
     case "shadows":      return { filename: "shadows.json",      data: generateShadowsData(shadowsData) };
-    case "zindex":       return { filename: "z-index.json",      data: generateZIndexData() };
+    case "zindex":       return { filename: "z-index.json",      data: generateZIndexData(zindexData) };
     case "breakpoints":  return { filename: "breakpoints.json",  data: generateBreakpointsData() };
     default: throw new Error("Unknown generator category: " + category);
   }

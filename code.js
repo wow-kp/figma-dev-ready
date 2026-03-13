@@ -172,6 +172,7 @@ figma.ui.onmessage = async function(msg) {
       resolved.fontFamily = fontFamilies[s.fontRole] || fontFamilies.primary;
       return resolved;
     });
+    var spacingData = msg.spacing || [];
     var enabledCats = msg.enabledCategories || null;
     var GEN_ORDER = ["colors","colors-light","colors-dark","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
 
@@ -180,7 +181,7 @@ figma.ui.onmessage = async function(msg) {
 
     for (var gi = 0; gi < catsToRun.length; gi++) {
       try {
-        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData);
+        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData);
         var gr = await importTokens(gd.filename, gd.data);
         figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:true, message:gr });
       } catch(e) {
@@ -1017,15 +1018,13 @@ function generateSemanticColors(colorOpts, mode) {
   }
 }
 
-function generateSpacingData() {
+function generateSpacingData(spacingList) {
   var tokens = {};
-  var scale = [
-    ["2xs", 2], ["xs", 4], ["sm", 8], ["md", 12], ["base", 16],
-    ["lg", 20], ["xl", 24], ["2xl", 32], ["3xl", 40], ["4xl", 48],
-    ["5xl", 64], ["6xl", 96]
-  ];
-  for (var i = 0; i < scale.length; i++) {
-    tokens[scale[i][0]] = { "$type": "dimension", "$value": { value: scale[i][1], unit: "px" } };
+  for (var i = 0; i < spacingList.length; i++) {
+    var s = spacingList[i];
+    if (s.name) {
+      tokens[s.name] = { "$type": "dimension", "$value": { value: parseFloat(s.value) || 0, unit: "px" } };
+    }
   }
   return tokens;
 }
@@ -1106,14 +1105,14 @@ function generateTextStylesData(textStyles) {
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
-function generateTokenData(category, colorOpts, textStylesData) {
+function generateTokenData(category, colorOpts, textStylesData, spacingData) {
   // Normalize: if a plain string is passed, wrap it
   if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
   switch (category) {
     case "colors":       return { filename: "colors.json",       data: generateColorTokens(colorOpts) };
     case "colors-light": return { filename: "colors-light.json", data: generateSemanticColors(colorOpts, "light") };
     case "colors-dark":  return { filename: "colors-dark.json",  data: generateSemanticColors(colorOpts, "dark") };
-    case "spacing":      return { filename: "spacing.json",      data: generateSpacingData() };
+    case "spacing":      return { filename: "spacing.json",      data: generateSpacingData(spacingData) };
     case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(textStylesData) };
     case "radius":       return { filename: "radius.json",       data: generateRadiusData() };
     case "border":       return { filename: "border.json",       data: generateBorderData() };

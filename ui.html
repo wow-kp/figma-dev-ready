@@ -210,6 +210,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-ts-del:hover { color: #f38ba8; }
 .wf-ts-add { background: none; border: 1px dashed #313244; border-radius: 4px; color: #585b70; font-size: 10px; padding: 4px 8px; cursor: pointer; margin-top: 4px; margin-bottom: 8px; width: 100%; }
 .wf-ts-add:hover { border-color: #89b4fa; color: #89b4fa; }
+/* Spacing table */
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
 .wf-page-row.found    { background: #a6e3a108; border-color: #a6e3a120; }
@@ -676,7 +677,7 @@ function renderWorkflow(data) {
 var TOKEN_DEFS = [
   { key: "colors",       cats: ["colors","colors-light","colors-dark"], countKey: "colors",       icon: "🎨", name: "Color Variables",  desc: "Fills, strokes, backgrounds",       hasConfig: "colors" },
   { key: "text-styles",  cats: ["text-styles"],                         countKey: "textStyles",   icon: "✏️",  name: "Text Styles",      desc: "Typography presets for all text",   hasConfig: "fonts" },
-  { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins"              },
+  { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins",             hasConfig: "spacing" },
   { key: "radius",       cats: ["radius"],                              countKey: "radius",       icon: "◻️",  name: "Radius",            desc: "Corner radius tokens"               },
   { key: "shadows",      cats: ["shadows"],                             countKey: "effectStyles", icon: "✨", name: "Shadows",           desc: "Shadows as reusable effect styles"  },
   { key: "border",       cats: ["border"],                              countKey: null,           icon: "▭",  name: "Border",            desc: "Border width tokens"                },
@@ -712,6 +713,15 @@ var wfTextStyles = [
   {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
 ];
 var wfTsNextId = 16;
+
+var wfSpacing = [
+  {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
+  {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
+  {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
+  {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
+  {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
+  {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
+];
 
 function getWfColors() {
   return {
@@ -1088,6 +1098,17 @@ function buildTextStylesPanel(panel) {
   });
 }
 
+function buildSpacingPanel(panel) {
+  panel.innerHTML = "";
+
+  var info = document.createElement("div");
+  info.style.cssText = "font-size:11px;color:#a6adc8;line-height:1.5;";
+  info.innerHTML = "A 4 px based, Tailwind-inspired spacing scale with <strong>18 tokens</strong> ranging from <strong>0</strong> to <strong>128 px</strong>. " +
+    "The <strong>px</strong> token is a 1 px utility value for fine adjustments like borders and outlines.<br>" +
+    "<span style='color:#585b70;'>0 (0px), px (1px), 0.5 (2px), 1 (4px), 1.5 (6px), 2 (8px), 2.5 (10px), 3 (12px), 4 (16px), 5 (20px), 6 (24px), 8 (32px), 10 (40px), 12 (48px), 16 (64px), 20 (80px), 24 (96px), 32 (128px)</span>";
+  panel.appendChild(info);
+}
+
 function renderStep2(container) {
   var prev = document.getElementById("wf-step-2");
   if (prev) prev.remove();
@@ -1241,6 +1262,10 @@ function renderStep2(container) {
           buildTextStylesPanel(panel);
         }
 
+        if (def.hasConfig === "spacing") {
+          buildSpacingPanel(panel);
+        }
+
         acc.appendChild(panel);
       }
 
@@ -1279,6 +1304,7 @@ function renderStep2(container) {
           secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
           tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
         },
+        spacing: wfSpacing,
         enabledCategories: enabledCats
       } }, "*");
     });

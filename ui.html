@@ -132,7 +132,8 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 #wf-container { padding: 14px 12px 20px; display: flex; flex-direction: column; gap: 16px; }
 .wf-step { background: #181825; border: 1px solid #313244; border-radius: 10px; overflow: hidden; }
 .wf-step-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; cursor: pointer; user-select: none; transition: background 0.12s; }
-.wf-step-header:hover { background: #1e1e2e; }
+.wf-step:not(.complete) .wf-step-header:hover { background: #1e1e2e; }
+.wf-step.complete .wf-step-header { cursor: default; }
 .wf-step.collapsed .wf-step-header { border-bottom: none; }
 .wf-step:not(.collapsed) .wf-step-header { border-bottom: 1px solid #313244; }
 .wf-step-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
@@ -147,6 +148,28 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-step.collapsed .wf-step-chevron { transform: rotate(-90deg); }
 .wf-step-body { display: block; }
 .wf-step.collapsed .wf-step-body { display: none; }
+.wf-step.locked { opacity: 0.4; pointer-events: none; }
+.wf-step.locked .wf-step-header { cursor: default; }
+.wf-step-lock-msg { font-size: 10px; color: #585b70; font-style: italic; margin-left: 2px; }
+/* ── Token rows ── */
+.wf-token-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+.wf-token-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; }
+.wf-token-row.ok      { background: #a6e3a108; border-color: #a6e3a120; }
+.wf-token-row.missing  { background: #f38ba808; border-color: #f38ba820; }
+.wf-token-row.partial  { background: #f9e2af08; border-color: #f9e2af20; }
+.wf-token-icon { font-size: 15px; flex-shrink: 0; width: 22px; text-align: center; }
+.wf-token-info { flex: 1; min-width: 0; }
+.wf-token-name { font-size: 11px; font-weight: 600; }
+.wf-token-row.ok      .wf-token-name { color: #a6e3a1; }
+.wf-token-row.missing .wf-token-name { color: #f38ba8; }
+.wf-token-row.partial .wf-token-name { color: #f9e2af; }
+.wf-token-desc { font-size: 10px; color: #585b70; margin-top: 1px; }
+.wf-token-count { font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.wf-token-row.ok      .wf-token-count { color: #a6e3a1; }
+.wf-token-row.missing .wf-token-count { color: #585b70; }
+.wf-token-row.partial .wf-token-count { color: #f9e2af; }
+.wf-import-link { padding: 3px 10px; border-radius: 5px; border: 1px solid #89b4fa40; background: transparent; color: #89b4fa; font-size: 10px; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; white-space: nowrap; }
+.wf-import-link:hover { background: #89b4fa18; }
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
 .wf-page-row.found    { background: #a6e3a108; border-color: #a6e3a120; }
@@ -417,7 +440,9 @@ function renderAudit(data){
 
 // ── Workflow ───────────────────────────────────────────────────────────────
 // Persists cover form values across re-renders
-var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true };
+var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true };
+var wfTokensData = null;
+var wfStep1Color = "red"; // track step 1 status for step 2 gating
 
 var REQUIRED_PAGES = [
   { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover",       critical:false },
@@ -461,7 +486,7 @@ function renderWorkflow(data) {
 
   var stepOpen = wfFormState.stepOpen;
   var step = document.createElement("div");
-  step.className = "wf-step" + (stepOpen ? "" : " collapsed");
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (allGood ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
@@ -598,6 +623,128 @@ function renderWorkflow(data) {
   }
   step.appendChild(body);
   container.appendChild(step);
+
+  // Track step 1 status for gating step 2
+  wfStep1Color = indicatorColor;
+
+  // Request token data and render step 2
+  parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+  renderStep2(container);
+}
+
+function renderStep2(container) {
+  // Remove previous step 2 if re-rendering
+  var prev = document.getElementById("wf-step-2");
+  if (prev) prev.remove();
+
+  var locked = wfStep1Color === "red";
+  var tokens = wfTokensData;
+
+  var REQUIRED_TOKENS = [
+    { key:"colors",       icon:"🎨", name:"Color Variables",   desc:"Fills, strokes, backgrounds",         critical:true },
+    { key:"textStyles",   icon:"✏️", name:"Text Styles",        desc:"Typography presets for all text",      critical:true },
+    { key:"spacing",      icon:"📐", name:"Spacing Variables",  desc:"Padding, gap, margins",               critical:true },
+    { key:"radius",       icon:"◻️", name:"Radius Variables",   desc:"Corner radius tokens",                critical:false },
+    { key:"effectStyles", icon:"✨", name:"Effect Styles",      desc:"Shadows, blurs as reusable styles",   critical:false },
+  ];
+
+  // Determine status for each token type
+  var results = REQUIRED_TOKENS.map(function(req) {
+    var count = tokens ? (tokens[req.key] || 0) : 0;
+    var status = count === 0 ? "missing" : "ok";
+    return { req: req, count: count, status: status };
+  });
+
+  var missingTokens = results.filter(function(r) { return r.status === "missing"; });
+  var hasCriticalMissing = missingTokens.some(function(r) { return r.req.critical; });
+  var allGood = missingTokens.length === 0;
+  var indicatorColor = locked ? "red" : (allGood ? "green" : (hasCriticalMissing ? "red" : "yellow"));
+
+  // Auto-collapse when all good
+  if (allGood && !locked) wfFormState.step2Open = false;
+
+  var stepOpen = locked ? false : wfFormState.step2Open;
+
+  var step = document.createElement("div");
+  step.id = "wf-step-2";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allGood && !locked ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 2</div>" +
+      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allGood ? " — All set" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Complete file structure first</div>" :
+       (stepOpen ? "<div class='wf-step-desc'>Variables and styles needed before designing. Import them in the Import tab.</div>" : "")) +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step2Open = !wfFormState.step2Open;
+      step.classList.toggle("collapsed", !wfFormState.step2Open);
+      // Re-render to update description visibility
+      var prev2 = document.getElementById("wf-step-2");
+      if (prev2) prev2.remove();
+      renderStep2(container);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!tokens) {
+    body.innerHTML = "<div class='wf-token-list'><div style='padding:8px;font-size:11px;color:#585b70;text-align:center'>Loading…</div></div>";
+  } else {
+    var list = document.createElement("div");
+    list.className = "wf-token-list";
+
+    results.forEach(function(r) {
+      var row = document.createElement("div");
+      row.className = "wf-token-row " + r.status;
+      row.innerHTML =
+        "<span class='wf-token-icon'>" + r.req.icon + "</span>" +
+        "<div class='wf-token-info'>" +
+          "<div class='wf-token-name'>" + esc(r.req.name) + "</div>" +
+          "<div class='wf-token-desc'>" + esc(r.req.desc) + "</div>" +
+        "</div>" +
+        "<span class='wf-token-count'>" + (r.count > 0 ? r.count + " found" : "None") + "</span>";
+
+      if (r.status === "missing") {
+        var btn = document.createElement("button");
+        btn.className = "wf-import-link";
+        btn.textContent = "Import →";
+        btn.addEventListener("click", function() {
+          // Switch to Import tab
+          document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+          document.querySelectorAll(".pane").forEach(function(p) { p.classList.remove("active"); });
+          var importTab = document.querySelector("[data-tab='import']");
+          if (importTab) importTab.classList.add("active");
+          document.getElementById("pane-import").classList.add("active");
+        });
+        row.appendChild(btn);
+      }
+
+      list.appendChild(row);
+    });
+
+    // Collections summary
+    if (tokens.collections && tokens.collections.length > 0) {
+      var colSummary = document.createElement("div");
+      colSummary.style.cssText = "padding: 6px 8px; font-size: 10px; color: #585b70; border-top: 1px solid #313244; margin-top: 4px;";
+      var colText = tokens.collections.map(function(c) { return c.name + " (" + c.count + ")"; }).join("  ·  ");
+      colSummary.textContent = "Collections: " + colText;
+      list.appendChild(colSummary);
+    }
+
+    body.appendChild(list);
+  }
+
+  step.appendChild(body);
+  container.appendChild(step);
 }
 
 function buildCoverForm(fileInfo) {
@@ -732,6 +879,11 @@ window.onmessage=function(event){
   if(msg.type==="pages-data"){
     try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
     catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
+  }
+  if(msg.type==="tokens-data"){
+    wfTokensData = msg.tokens || null;
+    var c = document.getElementById("wf-container");
+    if (c) renderStep2(c);
   }
   if(msg.type==="cover-generated"){
     wfFormState.generated = true;

@@ -122,6 +122,40 @@ figma.ui.onmessage = async function(msg) {
       userName: figma.currentUser ? (figma.currentUser.name || "") : "",
     }});
   }
+  // ── Workflow: design tokens check ─────────────────────────────────────────
+  if (msg.type === "check-tokens") {
+    try {
+      var allVars = figma.variables.getLocalVariables();
+      var collections = figma.variables.getLocalVariableCollections();
+      var textStyles = figma.getLocalTextStyles();
+      var effectStyles = figma.getLocalEffectStyles();
+
+      var colorVars = 0, spacingVars = 0, radiusVars = 0, otherVars = 0;
+      for (var vi = 0; vi < allVars.length; vi++) {
+        var v = allVars[vi];
+        var colName = "";
+        for (var ci = 0; ci < collections.length; ci++) {
+          if (collections[ci].id === v.variableCollectionId) { colName = collections[ci].name.toLowerCase(); break; }
+        }
+        if (v.resolvedType === "COLOR") colorVars++;
+        else if (v.resolvedType === "FLOAT" && (colName.indexOf("spacing") !== -1 || colName.indexOf("gap") !== -1)) spacingVars++;
+        else if (v.resolvedType === "FLOAT" && (colName.indexOf("radius") !== -1 || colName.indexOf("corner") !== -1)) radiusVars++;
+        else otherVars++;
+      }
+
+      figma.ui.postMessage({ type: "tokens-data", tokens: {
+        colors: colorVars,
+        spacing: spacingVars,
+        radius: radiusVars,
+        other: otherVars,
+        textStyles: textStyles.length,
+        effectStyles: effectStyles.length,
+        collections: collections.map(function(c) { return { name: c.name, count: allVars.filter(function(v) { return v.variableCollectionId === c.id; }).length }; })
+      }});
+    } catch(e) {
+      figma.ui.postMessage({ type: "tokens-data", tokens: null, error: String(e) });
+    }
+  }
 };
 
 // ── Token Debugger ────────────────────────────────────────────────────────────

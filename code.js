@@ -173,6 +173,8 @@ figma.ui.onmessage = async function(msg) {
       return resolved;
     });
     var spacingData = msg.spacing || [];
+    var radiusData = msg.radius || [];
+    var shadowsData = msg.shadows || [];
     var enabledCats = msg.enabledCategories || null;
     var GEN_ORDER = ["colors","colors-light","colors-dark","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
 
@@ -181,7 +183,7 @@ figma.ui.onmessage = async function(msg) {
 
     for (var gi = 0; gi < catsToRun.length; gi++) {
       try {
-        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData);
+        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData, radiusData, shadowsData);
         var gr = await importTokens(gd.filename, gd.data);
         figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:true, message:gr });
       } catch(e) {
@@ -1029,15 +1031,15 @@ function generateSpacingData(spacingList) {
   return tokens;
 }
 
-function generateRadiusData() {
-  return {
-    none: { "$type": "dimension", "$value": { value: 0, unit: "px" } },
-    sm:   { "$type": "dimension", "$value": { value: 4, unit: "px" } },
-    md:   { "$type": "dimension", "$value": { value: 8, unit: "px" } },
-    lg:   { "$type": "dimension", "$value": { value: 16, unit: "px" } },
-    xl:   { "$type": "dimension", "$value": { value: 24, unit: "px" } },
-    full: { "$type": "dimension", "$value": { value: 9999, unit: "px" } }
-  };
+function generateRadiusData(radiusList) {
+  var tokens = {};
+  for (var i = 0; i < radiusList.length; i++) {
+    var r = radiusList[i];
+    if (r.name) {
+      tokens[r.name] = { "$type": "dimension", "$value": { value: parseFloat(r.value) || 0, unit: "px" } };
+    }
+  }
+  return tokens;
 }
 
 function generateBorderData() {
@@ -1049,15 +1051,15 @@ function generateBorderData() {
   };
 }
 
-function generateShadowsData() {
-  return {
-    sm:  { "$type": "string", "$value": "0 1px 2px rgba(0,0,0,0.05)" },
-    md:  { "$type": "string", "$value": "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)" },
-    lg:  { "$type": "string", "$value": "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)" },
-    xl:  { "$type": "string", "$value": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)" },
-    "2xl": { "$type": "string", "$value": "0 25px 50px -12px rgba(0,0,0,0.25)" },
-    inner: { "$type": "string", "$value": "inset 0 2px 4px rgba(0,0,0,0.06)" }
-  };
+function generateShadowsData(shadowsList) {
+  var tokens = {};
+  for (var i = 0; i < shadowsList.length; i++) {
+    var s = shadowsList[i];
+    if (s.name) {
+      tokens[s.name] = { "$type": "string", "$value": s.value || "" };
+    }
+  }
+  return tokens;
 }
 
 function generateZIndexData() {
@@ -1105,7 +1107,7 @@ function generateTextStylesData(textStyles) {
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
-function generateTokenData(category, colorOpts, textStylesData, spacingData) {
+function generateTokenData(category, colorOpts, textStylesData, spacingData, radiusData, shadowsData) {
   // Normalize: if a plain string is passed, wrap it
   if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
   switch (category) {
@@ -1114,9 +1116,9 @@ function generateTokenData(category, colorOpts, textStylesData, spacingData) {
     case "colors-dark":  return { filename: "colors-dark.json",  data: generateSemanticColors(colorOpts, "dark") };
     case "spacing":      return { filename: "spacing.json",      data: generateSpacingData(spacingData) };
     case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(textStylesData) };
-    case "radius":       return { filename: "radius.json",       data: generateRadiusData() };
+    case "radius":       return { filename: "radius.json",       data: generateRadiusData(radiusData) };
     case "border":       return { filename: "border.json",       data: generateBorderData() };
-    case "shadows":      return { filename: "shadows.json",      data: generateShadowsData() };
+    case "shadows":      return { filename: "shadows.json",      data: generateShadowsData(shadowsData) };
     case "zindex":       return { filename: "z-index.json",      data: generateZIndexData() };
     case "breakpoints":  return { filename: "breakpoints.json",  data: generateBreakpointsData() };
     default: throw new Error("Unknown generator category: " + category);

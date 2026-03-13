@@ -235,6 +235,11 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-sh-slider-row input[type="range"] { flex: 1; accent-color: #89b4fa; cursor: pointer; }
 .wf-sh-slider-row input[type="number"] { width: 44px; text-align: center; font-family: monospace; font-size: 10px; }
 .wf-sh-slider-row span.wf-sh-unit { font-size: 9px; color: #585b70; width: 14px; flex-shrink: 0; }
+/* Borders */
+.wf-bd-row { display: grid; grid-template-columns: 70px 50px 1fr 22px; gap: 6px; align-items: center; padding: 2px 0; }
+.wf-bd-col-hdr { padding-bottom: 2px; }
+.wf-bd-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
+.wf-bd-bar { height: var(--h, 1px); background: #89b4fa; border-radius: 1px; min-width: 1px; max-height: 20px; transition: height 0.1s; }
 /* Spacing info */
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
@@ -705,7 +710,7 @@ var TOKEN_DEFS = [
   { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins",             hasConfig: "spacing" },
   { key: "radius",       cats: ["radius"],                              countKey: "radius",       icon: "◻️",  name: "Radius",            desc: "Corner radius tokens",              hasConfig: "radius" },
   { key: "shadows",      cats: ["shadows"],                             countKey: "effectStyles", icon: "✨", name: "Shadows",           desc: "Shadows as reusable effect styles",  hasConfig: "shadows" },
-  { key: "border",       cats: ["border"],                              countKey: null,           icon: "▭",  name: "Border",            desc: "Border width tokens"                },
+  { key: "border",       cats: ["border"],                              countKey: null,           icon: "▭",  name: "Border",            desc: "Border width tokens",               hasConfig: "border" },
   { key: "zindex",       cats: ["zindex"],                              countKey: null,           icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens"              },
   { key: "breakpoints",  cats: ["breakpoints"],                         countKey: null,           icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints"             }
 ];
@@ -757,6 +762,14 @@ var wfRadius = [
 var wfShadows = [
   { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
 ];
+
+var wfBorders = [
+  { name: "thin", value: "1" },
+  { name: "default", value: "1.5" },
+  { name: "thick", value: "2" },
+  { name: "heavy", value: "4" }
+];
+var wfBdNextId = 5;
 
 function getWfColors() {
   return {
@@ -1416,6 +1429,63 @@ function buildShadowsPanel(panel, acc, chk) {
   panel.appendChild(addBtn);
 }
 
+function buildBorderPanel(panel, acc, chk) {
+  panel.innerHTML = "";
+
+  var colHdr = document.createElement("div");
+  colHdr.className = "wf-bd-row wf-bd-col-hdr";
+  colHdr.innerHTML = "<span>Name</span><span>Width (px)</span><span>Preview</span><span></span>";
+  panel.appendChild(colHdr);
+
+  wfBorders.forEach(function(b) {
+    var row = document.createElement("div");
+    row.className = "wf-bd-row";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp";
+    nameInp.value = b.name;
+    nameInp.addEventListener("input", function() { b.name = nameInp.value.trim(); });
+    row.appendChild(nameInp);
+
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-ts-num";
+    valInp.value = b.value;
+    valInp.addEventListener("input", function() {
+      b.value = valInp.value.trim();
+      bar.style.setProperty("--h", Math.min(parseFloat(b.value) || 0, 20) + "px");
+    });
+    row.appendChild(valInp);
+
+    var bar = document.createElement("div");
+    bar.className = "wf-bd-bar";
+    bar.style.setProperty("--h", Math.min(parseFloat(b.value) || 0, 20) + "px");
+    row.appendChild(bar);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      wfBorders = wfBorders.filter(function(x) { return x !== b; });
+      if (wfBorders.length === 0) syncTokenEnabled("border", acc, chk, false);
+      buildBorderPanel(panel, acc, chk);
+    });
+    row.appendChild(delBtn);
+
+    panel.appendChild(row);
+  });
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add border token";
+  addBtn.addEventListener("click", function() {
+    var wasEmpty = wfBorders.length === 0;
+    wfBorders.push({ id: wfBdNextId++, name: "new", value: "1" });
+    if (wasEmpty) syncTokenEnabled("border", acc, chk, true);
+    buildBorderPanel(panel, acc, chk);
+  });
+  panel.appendChild(addBtn);
+}
+
 function renderStep2(container) {
   var prev = document.getElementById("wf-step-2");
   if (prev) prev.remove();
@@ -1581,6 +1651,10 @@ function renderStep2(container) {
           buildShadowsPanel(panel, acc, chk);
         }
 
+        if (def.hasConfig === "border") {
+          buildBorderPanel(panel, acc, chk);
+        }
+
         acc.appendChild(panel);
       }
 
@@ -1622,6 +1696,7 @@ function renderStep2(container) {
         spacing: wfSpacing,
         radius: wfRadius,
         shadows: wfShadows,
+        borders: wfBorders,
         enabledCategories: enabledCats
       } }, "*");
     });

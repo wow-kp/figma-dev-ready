@@ -175,6 +175,7 @@ figma.ui.onmessage = async function(msg) {
     var spacingData = msg.spacing || [];
     var radiusData = msg.radius || [];
     var shadowsData = msg.shadows || [];
+    var bordersData = msg.borders || [];
     var enabledCats = msg.enabledCategories || null;
     var GEN_ORDER = ["colors","colors-light","colors-dark","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
 
@@ -183,7 +184,7 @@ figma.ui.onmessage = async function(msg) {
 
     for (var gi = 0; gi < catsToRun.length; gi++) {
       try {
-        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData, radiusData, shadowsData);
+        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData);
         var gr = await importTokens(gd.filename, gd.data);
         figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:true, message:gr });
       } catch(e) {
@@ -1042,13 +1043,15 @@ function generateRadiusData(radiusList) {
   return tokens;
 }
 
-function generateBorderData() {
-  return {
-    thin:    { "$type": "dimension", "$value": { value: 1, unit: "px" } },
-    "default": { "$type": "dimension", "$value": { value: 1.5, unit: "px" } },
-    thick:   { "$type": "dimension", "$value": { value: 2, unit: "px" } },
-    heavy:   { "$type": "dimension", "$value": { value: 4, unit: "px" } }
-  };
+function generateBorderData(bordersList) {
+  var tokens = {};
+  for (var i = 0; i < bordersList.length; i++) {
+    var b = bordersList[i];
+    if (b.name) {
+      tokens[b.name] = { "$type": "dimension", "$value": { value: parseFloat(b.value) || 0, unit: "px" } };
+    }
+  }
+  return tokens;
 }
 
 function generateShadowsData(shadowsList) {
@@ -1107,7 +1110,7 @@ function generateTextStylesData(textStyles) {
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
-function generateTokenData(category, colorOpts, textStylesData, spacingData, radiusData, shadowsData) {
+function generateTokenData(category, colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData) {
   // Normalize: if a plain string is passed, wrap it
   if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
   switch (category) {
@@ -1117,7 +1120,7 @@ function generateTokenData(category, colorOpts, textStylesData, spacingData, rad
     case "spacing":      return { filename: "spacing.json",      data: generateSpacingData(spacingData) };
     case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(textStylesData) };
     case "radius":       return { filename: "radius.json",       data: generateRadiusData(radiusData) };
-    case "border":       return { filename: "border.json",       data: generateBorderData() };
+    case "border":       return { filename: "border.json",       data: generateBorderData(bordersData) };
     case "shadows":      return { filename: "shadows.json",      data: generateShadowsData(shadowsData) };
     case "zindex":       return { filename: "z-index.json",      data: generateZIndexData() };
     case "breakpoints":  return { filename: "breakpoints.json",  data: generateBreakpointsData() };

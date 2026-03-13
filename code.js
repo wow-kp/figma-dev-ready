@@ -177,15 +177,16 @@ figma.ui.onmessage = async function(msg) {
     var shadowsData = msg.shadows || [];
     var bordersData = msg.borders || [];
     var zindexData = msg.zindex || [];
+    var typographyData = msg.typography || { sizes: [], weights: [], lineHeights: [] };
     var enabledCats = msg.enabledCategories || null;
-    var GEN_ORDER = ["colors","colors-light","colors-dark","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
+    var GEN_ORDER = ["colors","colors-light","colors-dark","typography","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
 
     // Filter to only enabled categories if provided
     var catsToRun = enabledCats ? GEN_ORDER.filter(function(c) { return enabledCats.indexOf(c) !== -1; }) : GEN_ORDER;
 
     for (var gi = 0; gi < catsToRun.length; gi++) {
       try {
-        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData, zindexData);
+        var gd = generateTokenData(catsToRun[gi], colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData, zindexData, typographyData, fontFamilies);
         var gr = await importTokens(gd.filename, gd.data);
         figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:true, message:gr });
       } catch(e) {
@@ -1079,12 +1080,34 @@ function generateZIndexData(zindexList) {
 
 function generateBreakpointsData() {
   return {
-    sm:   { "$type": "number", "$value": 640 },
-    md:   { "$type": "number", "$value": 768 },
-    lg:   { "$type": "number", "$value": 1024 },
-    xl:   { "$type": "number", "$value": 1280 },
-    "2xl": { "$type": "number", "$value": 1536 }
+    xs:   { "$type": "number", "$value": 0 },
+    sm:   { "$type": "number", "$value": 567 },
+    md:   { "$type": "number", "$value": 767 },
+    lg:   { "$type": "number", "$value": 991 }
   };
+}
+
+function generateTypographyData(typo, fontFamilies) {
+  var t = { family: {}, size: {}, weight: {}, "line-height": {} };
+
+  // Font families from the text styles config
+  if (fontFamilies.primary)   t.family.primary   = { "$type": "fontFamily", "$value": fontFamilies.primary };
+  if (fontFamilies.secondary) t.family.secondary = { "$type": "fontFamily", "$value": fontFamilies.secondary };
+  if (fontFamilies.tertiary)  t.family.tertiary  = { "$type": "fontFamily", "$value": fontFamilies.tertiary };
+
+  for (var i = 0; i < typo.sizes.length; i++) {
+    var s = typo.sizes[i];
+    if (s.name) t.size[s.name] = { "$type": "dimension", "$value": { value: parseFloat(s.value) || 0, unit: "px" } };
+  }
+  for (var j = 0; j < typo.weights.length; j++) {
+    var w = typo.weights[j];
+    if (w.name) t.weight[w.name] = { "$type": "number", "$value": parseFloat(w.value) || 0 };
+  }
+  for (var k = 0; k < typo.lineHeights.length; k++) {
+    var l = typo.lineHeights[k];
+    if (l.name) t["line-height"][l.name] = { "$type": "number", "$value": parseFloat(l.value) || 0 };
+  }
+  return t;
 }
 
 function generateTextStylesData(textStyles) {
@@ -1110,13 +1133,14 @@ function generateTextStylesData(textStyles) {
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
-function generateTokenData(category, colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData, zindexData) {
+function generateTokenData(category, colorOpts, textStylesData, spacingData, radiusData, shadowsData, bordersData, zindexData, typographyData, fontFamilies) {
   // Normalize: if a plain string is passed, wrap it
   if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
   switch (category) {
     case "colors":       return { filename: "colors.json",       data: generateColorTokens(colorOpts) };
     case "colors-light": return { filename: "colors-light.json", data: generateSemanticColors(colorOpts, "light") };
     case "colors-dark":  return { filename: "colors-dark.json",  data: generateSemanticColors(colorOpts, "dark") };
+    case "typography":   return { filename: "typography.json",   data: generateTypographyData(typographyData, fontFamilies) };
     case "spacing":      return { filename: "spacing.json",      data: generateSpacingData(spacingData) };
     case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(textStylesData) };
     case "radius":       return { filename: "radius.json",       data: generateRadiusData(radiusData) };

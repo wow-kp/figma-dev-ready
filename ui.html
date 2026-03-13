@@ -244,6 +244,11 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-zi-row { display: grid; grid-template-columns: 90px 70px 22px; gap: 6px; align-items: center; padding: 2px 0; }
 .wf-zi-col-hdr { padding-bottom: 2px; }
 .wf-zi-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
+/* Typography */
+.wf-typo-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.wf-typo-section { min-width: 0; }
+.wf-typo-label { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.wf-typo-row { display: grid; grid-template-columns: 1fr 1fr 18px; gap: 4px; align-items: center; padding: 2px 0; }
 /* Spacing info */
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
@@ -711,12 +716,13 @@ function renderWorkflow(data) {
 var TOKEN_DEFS = [
   { key: "colors",       cats: ["colors","colors-light","colors-dark"], countKey: "colors",       icon: "🎨", name: "Color Variables",  desc: "Fills, strokes, backgrounds",       hasConfig: "colors" },
   { key: "text-styles",  cats: ["text-styles"],                         countKey: "textStyles",   icon: "✏️",  name: "Text Styles",      desc: "Typography presets for all text",   hasConfig: "fonts" },
-  { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins",             hasConfig: "spacing" },
+  { key: "typography",   cats: ["typography"],                          countKey: null,           icon: "🔤", name: "Typography",        desc: "Font sizes, weights & line heights", hasConfig: "typography" },
   { key: "radius",       cats: ["radius"],                              countKey: "radius",       icon: "◻️",  name: "Radius",            desc: "Corner radius tokens",              hasConfig: "radius" },
   { key: "shadows",      cats: ["shadows"],                             countKey: "effectStyles", icon: "✨", name: "Shadows",           desc: "Shadows as reusable effect styles",  hasConfig: "shadows" },
   { key: "border",       cats: ["border"],                              countKey: null,           icon: "▭",  name: "Border",            desc: "Border width tokens",               hasConfig: "border" },
   { key: "zindex",       cats: ["zindex"],                              countKey: null,           icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens",             hasConfig: "zindex" },
-  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: null,           icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints"             }
+  { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins",             hasConfig: "spacing", noCheckbox: true },
+  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: null,           icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints",            hasConfig: "breakpoints", noCheckbox: true }
 ];
 
 // Track which tokens are enabled and which panels are open
@@ -756,6 +762,25 @@ var wfSpacing = [
   {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
   {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
 ];
+
+var wfTypography = {
+  sizes: [
+    { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
+    { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
+    { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
+    { name: "6xl", value: "60" }
+  ],
+  weights: [
+    { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
+    { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
+    { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
+  ],
+  lineHeights: [
+    { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
+    { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
+    { name: "loose", value: "2" }
+  ]
+};
 
 var wfRadius = [
   { name: "sm", value: "4" },
@@ -1172,6 +1197,71 @@ function buildSpacingPanel(panel) {
   panel.appendChild(info);
 }
 
+function buildTypoSection(panel, items, label, unit, onRebuild) {
+  var section = document.createElement("div");
+  section.className = "wf-typo-section";
+
+  var lbl = document.createElement("div");
+  lbl.className = "wf-typo-label";
+  lbl.textContent = label + (unit ? " (" + unit + ")" : "");
+  section.appendChild(lbl);
+
+  items.forEach(function(item) {
+    var row = document.createElement("div");
+    row.className = "wf-typo-row";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp";
+    nameInp.value = item.name;
+    nameInp.addEventListener("input", function() { item.name = nameInp.value.trim(); });
+    row.appendChild(nameInp);
+
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-ts-num";
+    valInp.value = item.value;
+    valInp.addEventListener("input", function() { item.value = valInp.value.trim(); });
+    row.appendChild(valInp);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      var idx = items.indexOf(item);
+      if (idx !== -1) items.splice(idx, 1);
+      onRebuild();
+    });
+    row.appendChild(delBtn);
+
+    section.appendChild(row);
+  });
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add " + label.toLowerCase() + " token";
+  addBtn.addEventListener("click", function() {
+    items.push({ name: "new", value: "0" });
+    onRebuild();
+  });
+  section.appendChild(addBtn);
+
+  return section;
+}
+
+function buildTypographyPanel(panel) {
+  panel.innerHTML = "";
+
+  var grid = document.createElement("div");
+  grid.className = "wf-typo-grid";
+
+  function rebuild() { buildTypographyPanel(panel); }
+
+  grid.appendChild(buildTypoSection(panel, wfTypography.sizes, "Font size", "px", rebuild));
+  grid.appendChild(buildTypoSection(panel, wfTypography.weights, "Font weight", "", rebuild));
+  grid.appendChild(buildTypoSection(panel, wfTypography.lineHeights, "Line height", "×", rebuild));
+
+  panel.appendChild(grid);
+}
+
 var wfRadNextId = 4;
 
 function syncTokenEnabled(key, acc, chk, hasItems) {
@@ -1550,6 +1640,16 @@ function buildZIndexPanel(panel, acc, chk) {
   panel.appendChild(addBtn);
 }
 
+function buildBreakpointsPanel(panel) {
+  panel.innerHTML = "";
+
+  var info = document.createElement("div");
+  info.style.cssText = "font-size:11px;color:#a6adc8;line-height:1.5;";
+  info.innerHTML = "Responsive breakpoints for consistent media queries across design and code.<br>" +
+    "<span style='color:#585b70;'>xs (0–567px), sm (567–767px), md (767–991px), lg (991px+)</span>";
+  panel.appendChild(info);
+}
+
 function renderStep2(container) {
   var prev = document.getElementById("wf-step-2");
   if (prev) prev.remove();
@@ -1617,14 +1717,19 @@ function renderStep2(container) {
       chk.type = "checkbox";
       chk.className = "wf-token-chk";
       chk.checked = isEnabled;
-      chk.addEventListener("click", function(e) { e.stopPropagation(); });
-      chk.addEventListener("change", function(e) {
-        e.stopPropagation();
-        wfTokenEnabled[def.key] = chk.checked;
-        acc.classList.toggle("enabled", chk.checked);
-        acc.classList.toggle("disabled", !chk.checked);
-        if (!chk.checked) { wfTokenOpen[def.key] = false; acc.classList.remove("open"); }
-      });
+      if (def.noCheckbox) {
+        chk.style.cssText = "visibility:hidden;";
+        wfTokenEnabled[def.key] = true;
+      } else {
+        chk.addEventListener("click", function(e) { e.stopPropagation(); });
+        chk.addEventListener("change", function(e) {
+          e.stopPropagation();
+          wfTokenEnabled[def.key] = chk.checked;
+          acc.classList.toggle("enabled", chk.checked);
+          acc.classList.toggle("disabled", !chk.checked);
+          if (!chk.checked) { wfTokenOpen[def.key] = false; acc.classList.remove("open"); }
+        });
+      }
       hdr.appendChild(chk);
 
       var iconSpan = document.createElement("span");
@@ -1703,6 +1808,10 @@ function renderStep2(container) {
           buildTextStylesPanel(panel);
         }
 
+        if (def.hasConfig === "typography") {
+          buildTypographyPanel(panel);
+        }
+
         if (def.hasConfig === "spacing") {
           buildSpacingPanel(panel);
         }
@@ -1721,6 +1830,10 @@ function renderStep2(container) {
 
         if (def.hasConfig === "zindex") {
           buildZIndexPanel(panel, acc, chk);
+        }
+
+        if (def.hasConfig === "breakpoints") {
+          buildBreakpointsPanel(panel);
         }
 
         acc.appendChild(panel);
@@ -1761,6 +1874,7 @@ function renderStep2(container) {
           secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
           tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
         },
+        typography: wfTypography,
         spacing: wfSpacing,
         radius: wfRadius,
         shadows: wfShadows,

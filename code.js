@@ -16,8 +16,38 @@ figma.ui.onmessage = async function(msg) {
     var node = figma.getNodeById(msg.id);
     if (node) { figma.currentPage.selection=[node]; figma.viewport.scrollAndZoomIntoView([node]); }
   }
+  // ── Per-issue inline fixes ────────────────────────────────────────────────
+  if (msg.type === "rename-node") {
+    var node = figma.getNodeById(msg.id);
+    if (node && msg.name && msg.name.trim()) { node.name = msg.name.trim(); }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "delete-node") {
+    var node = figma.getNodeById(msg.id);
+    if (node) { try { node.remove(); } catch(e) {} }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "bind-fill") {
+    var node = figma.getNodeById(msg.id);
+    if (node && "fills" in node && Array.isArray(node.fills)) {
+      var colorVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "COLOR"; });
+      if (colorVars.length > 0) {
+        var newFills = node.fills.map(function(fill, i) {
+          if (fill.type !== "SOLID" || fill.visible === false) return fill;
+          var bv = node.boundVariables && node.boundVariables.fills && node.boundVariables.fills[i];
+          if (bv) return fill;
+          var nearest = findNearestColorVar(fill.color, colorVars);
+          if (nearest) { try { return figma.variables.setBoundVariableForPaint(fill,"color",nearest); } catch(e) { return fill; } }
+          return fill;
+        });
+        try { node.fills = newFills; } catch(e) {}
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  // ── Bulk fix (kept for backward compat) ──────────────────────────────────
   if (msg.type === "run-fixes") {
-    figma.ui.postMessage({ type:"fix-done", stats:runFixes(msg.fixes), audit:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:(function(){ runFixes(msg.fixes); return runAudit(); })() });
   }
   if (msg.type === "import-tokens") {
     try {
@@ -28,6 +58,47 @@ figma.ui.onmessage = async function(msg) {
     }
   }
   if (msg.type === "request-debug") { pushDebugData(); }
+  // ── Workflow: page structure ──────────────────────────────────────────────
+  if (msg.type === "check-pages") {
+    var pages = figma.root.children.map(function(p) { return { id: p.id, name: p.name }; });
+    figma.ui.postMessage({ type: "pages-data", pages: pages });
+  }
+  if (msg.type === "create-pages") {
+    // Page definitions in the correct order they should appear in the file
+    var PAGE_DEFS = {
+      cover:       "_Cover",
+      foundations: "🎨 Foundations",
+      components:  "🧩 Components",
+      mobile:      "📱 Mobile",
+      desktop:     "🖥️ Desktop",
+      archive:     "🗄️ Archive",
+    };
+    var ORDER = ["cover","foundations","components","mobile","desktop","archive"];
+    msg.keys.forEach(function(key) {
+      if (!PAGE_DEFS[key]) return;
+      // Don't create if a page with this hint already exists
+      var hint = key === "cover" ? "cover" : PAGE_DEFS[key].toLowerCase().replace(/[^a-z]/g,"");
+      var exists = figma.root.children.some(function(p) {
+        return p.name.toLowerCase().replace(/[^a-z]/g,"").indexOf(hint) !== -1;
+      });
+      if (!exists) figma.createPage().name = PAGE_DEFS[key];
+    });
+    // Re-sort pages to match the recommended order
+    var allPages = figma.root.children.slice();
+    var sorted = [];
+    ORDER.forEach(function(key) {
+      var hint = key === "cover" ? "cover" : PAGE_DEFS[key].toLowerCase().replace(/[^a-z]/g,"");
+      for (var i = 0; i < allPages.length; i++) {
+        if (allPages[i].name.toLowerCase().replace(/[^a-z]/g,"").indexOf(hint) !== -1) {
+          sorted.push(allPages.splice(i,1)[0]); break;
+        }
+      }
+    });
+    // Append any pages not in the required set (custom pages) after
+    allPages.forEach(function(p) { sorted.push(p); });
+    sorted.forEach(function(p, i) { figma.root.insertChild(i, p); });
+    figma.ui.postMessage({ type: "pages-created" });
+  }
 };
 
 // ── Token Debugger ────────────────────────────────────────────────────────────
@@ -88,7 +159,252 @@ function isDefaultName(n){return DEFAULT_NAME_RE.test(n.trim());}
 function rgbToHex(c){return "#"+[c.r,c.g,c.b].map(function(v){return Math.round(v*255).toString(16).padStart(2,"0");}).join("");}
 function getPath(node){var parts=[],n=node.parent;while(n&&n.type!=="PAGE"&&n.type!=="DOCUMENT"){parts.unshift(n.name);n=n.parent;}return parts.length?parts.join(" › "):"Page root";}
 function trunc(s,l){l=l||38;return s&&s.length>l?s.slice(0,l)+"…":(s||"");}
-function generateName(node){if(node.type==="TEXT")return(node.characters&&node.characters.trim().slice(0,30))||"Label";if("children"in node&&node.children&&node.children.length){for(var i=0;i<node.children.length;i++){var c=node.children[i];if(c.type==="TEXT"&&c.characters&&c.characters.trim())return c.characters.trim().slice(0,30);}var types={};node.children.forEach(function(c){types[c.type]=(types[c.type]||0)+1;});var dom=Object.keys(types).sort(function(a,b){return types[b]-types[a];})[0];var dn={INSTANCE:"Component Group",TEXT:"Text Block",RECTANGLE:"Card",FRAME:"Layout",VECTOR:"Icon Container",IMAGE:"Media"};if(dn[dom])return dn[dom];}var fn={FRAME:"Container",GROUP:"Group",RECTANGLE:"Shape",ELLIPSE:"Circle",VECTOR:"Icon",COMPONENT:"Component",INSTANCE:"Instance",IMAGE:"Image",SECTION:"Section",LINE:"Divider"};return fn[node.type]||node.type;}
+
+// ── Kebab-case helpers ────────────────────────────────────────────────────────
+// Convert any string to kebab-case (preserves slash hierarchy for components)
+function toKebab(str) {
+  if (!str) return "";
+  return str
+    .split("/")
+    .map(function(seg) {
+      return seg
+        .replace(/([a-z0-9])([A-Z])/g, "$1-$2")    // camelCase split: heroSection → hero-Section
+        .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")  // ACRONYMWord split: XMLParser → XML-Parser
+        .replace(/[\s_]+/g, "-")                     // spaces & underscores to hyphens
+        .replace(/[^a-zA-Z0-9-]/g, "")              // strip remaining special chars
+        .replace(/--+/g, "-")                        // collapse double hyphens
+        .replace(/^-|-$/g, "")                       // trim leading/trailing hyphens
+        .toLowerCase();
+    })
+    .filter(function(s) { return s.length > 0; })
+    .join("/");
+}
+
+// Returns the violation type string, or null if name is valid
+// Components (COMPONENT/INSTANCE) use Title/Pascal slash segments — skip them
+function getKebabViolation(node) {
+  var name = node.name;
+  if (isDefaultName(name)) return null;                // default names handled by separate check
+  if (node.type === "COMPONENT" || node.type === "INSTANCE") return null; // components have own convention
+  if (node.type === "SECTION") return null;            // Figma sections are org tools, relax rule
+  // Skip children of mask groups — they're clipping mechanics, not semantic layers
+  if (node.parent && "children" in node.parent &&
+      node.parent.children.some(function(c) { return c.isMask; })) return null;
+  // Skip text layers whose name is derived from their content — Figma auto-sets this,
+  // normalizing newlines to spaces and truncating. Collapse all whitespace before comparing
+  // so newline vs space differences don't cause false positives.
+  if (node.type === "TEXT" && node.characters) {
+    var normName  = node.name.trim().replace(/\s+/g, " ");
+    var normChars = node.characters.trim().replace(/\s+/g, " ");
+    if (normChars.startsWith(normName)) return null;
+  }
+  var segments = name.split("/");
+  for (var i = 0; i < segments.length; i++) {
+    var seg = segments[i];
+    if (!seg) return "empty segment";
+    if (/[A-Z]/.test(seg) && /^[A-Z]/.test(seg)) return "PascalCase";
+    if (/[A-Z]/.test(seg)) return "camelCase or mixed caps";
+    if (/\s/.test(seg)) return "spaces in name";
+    if (/_/.test(seg)) return "snake_case";
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(seg)) return "invalid characters";
+  }
+  return null;
+}
+
+// Suggest a proper kebab-case name based on layer content, structure and context
+function generateName(node) {
+  var parentIsPage = node.parent && node.parent.type === "PAGE";
+  var parentName   = node.parent && node.parent.name ? toKebab(node.parent.name.split("/")[0]) : "";
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  // Collect ALL text content in a subtree, shortest first (most likely labels)
+  function collectTexts(n, out, depth) {
+    if (!out) out = []; if (!depth) depth = 0; if (depth > 4) return out;
+    if (n.type === "TEXT" && n.characters && n.characters.trim()) {
+      var t = n.characters.trim().replace(/\s+/g, " ");
+      if (t.length <= 32) out.push(t);
+    }
+    if ("children" in n && n.children) {
+      n.children.forEach(function(c) { collectTexts(c, out, depth + 1); });
+    }
+    return out;
+  }
+  // Pick the most useful text: prefer short strings (button labels, headings)
+  // over long body copy
+  function bestText(texts) {
+    if (!texts || !texts.length) return null;
+    var sorted = texts.slice().sort(function(a, b) { return a.length - b.length; });
+    return sorted[0];
+  }
+  // Convert text content to a kebab prefix, stripping punctuation noise
+  function textToPrefix(str) {
+    if (!str) return null;
+    var k = toKebab(str.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim());
+    // Truncate to max 3 meaningful words
+    var parts = k.split("-").filter(function(p) { return p.length > 1; });
+    return parts.slice(0, 3).join("-") || null;
+  }
+  // Check if any node in subtree has an image fill
+  function hasImageFill(n) {
+    if (n.fills && Array.isArray(n.fills) && n.fills.some(function(f) { return f.type === "IMAGE"; })) return true;
+    if ("children" in n && n.children) return n.children.some(function(c) { return hasImageFill(c); });
+    return false;
+  }
+  // Count child types at direct level
+  function childTypes(n) {
+    var t = {};
+    if ("children" in n && n.children) n.children.forEach(function(c) { t[c.type] = (t[c.type] || 0) + 1; });
+    return t;
+  }
+  function dominant(types) {
+    return Object.keys(types).sort(function(a, b) { return types[b] - types[a]; })[0] || null;
+  }
+
+  // ── TEXT node ─────────────────────────────────────────────────────────────
+  if (node.type === "TEXT") {
+    var chars = node.characters && node.characters.trim();
+    if (chars) {
+      var fs = node.fontSize !== figma.mixed ? node.fontSize : null;
+      var fw = node.fontWeight !== figma.mixed ? node.fontWeight : null;
+      var prefix = textToPrefix(chars);
+      if (fs >= 36 || fw >= 700) return (prefix || "heading") + "-heading";
+      if (fs >= 24)              return (prefix || "subheading") + "-subheading";
+      if (fs >= 16)              return (prefix || "body") + "-text";
+      if (fs <= 12)              return (prefix || "caption") + "-caption";
+      return (prefix || "label") + "-text";
+    }
+    return "label-text";
+  }
+
+  // ── Simple shapes ─────────────────────────────────────────────────────────
+  if (node.type === "LINE") return "divider";
+  if (node.type === "VECTOR" || node.type === "BOOLEAN_OPERATION") return "icon";
+  if (node.type === "ELLIPSE") {
+    // Ellipse with image fill = avatar
+    if (hasImageFill(node)) return "avatar-image";
+    return "circle";
+  }
+  if (node.type === "RECTANGLE") {
+    if (hasImageFill(node)) return "image";
+    return "shape";
+  }
+
+  // ── Frames, Groups, Components ────────────────────────────────────────────
+  if (!("children" in node) || !node.children || !node.children.length) {
+    return parentIsPage ? "section" : "container";
+  }
+
+  var texts   = collectTexts(node);
+  var best    = bestText(texts);
+  var prefix  = textToPrefix(best);
+  var types   = childTypes(node);
+  var dom     = dominant(types);
+  var kids    = node.children.length;
+  var isHoriz = node.layoutMode === "HORIZONTAL";
+  var isVert  = node.layoutMode === "VERTICAL";
+  var w       = node.width  || 0;
+  var h       = node.height || 0;
+  var hasImg  = hasImageFill(node);
+  var hasVec  = types.VECTOR > 0 || types.BOOLEAN_OPERATION > 0;
+  var hasText = types.TEXT > 0 || texts.length > 0;
+  var hasInst = types.INSTANCE > 0;
+
+  // ── Top-level page section ────────────────────────────────────────────────
+  if (parentIsPage && node.type === "FRAME") {
+    return (prefix || "section") + "-section";
+  }
+
+  // ── Navigation bar ────────────────────────────────────────────────────────
+  // Horizontal with 3+ links/instances and typically wide
+  if (isHoriz && kids >= 3 && w > 300 && (hasInst || types.TEXT >= 3)) {
+    return (prefix || "nav") + "-bar";
+  }
+
+  // ── Button ────────────────────────────────────────────────────────────────
+  // Small frame, 1–3 children, has text, optionally an icon, not too tall
+  if (kids <= 3 && hasText && h <= 64 && w <= 320) {
+    // Check if the only children are text + optional icon
+    var nonTextKids = kids - (types.TEXT || 0);
+    if (nonTextKids <= 1 && (!nonTextKids || hasVec || hasInst)) {
+      return (prefix || "btn") + "-btn";
+    }
+  }
+
+  // ── Badge / Tag / Chip ────────────────────────────────────────────────────
+  if (kids <= 3 && hasText && h <= 36 && w <= 160) {
+    return (prefix || "badge") + "-badge";
+  }
+
+  // ── Avatar / Profile ──────────────────────────────────────────────────────
+  if (types.ELLIPSE && hasText && kids <= 4) {
+    return (prefix || "avatar") + "-avatar";
+  }
+  if (types.ELLIPSE && !hasText && kids <= 2) {
+    return "avatar-image";
+  }
+
+  // ── Input field ──────────────────────────────────────────────────────────
+  // Has a text layer with short content like "Email", "Password", "Search"
+  if (hasText && kids <= 5 && h <= 60) {
+    var inputHints = ["email","password","search","name","phone","username","url","enter","type","write"];
+    var lowerBest = best ? best.toLowerCase() : "";
+    for (var ii = 0; ii < inputHints.length; ii++) {
+      if (lowerBest.indexOf(inputHints[ii]) !== -1) {
+        return "input-" + inputHints[ii];
+      }
+    }
+  }
+
+  // ── Card ──────────────────────────────────────────────────────────────────
+  // Has image + text content, or is a self-contained contained block
+  if (hasImg && hasText) {
+    return (prefix || (parentName || "")) + (prefix ? "-card" : "card");
+  }
+  if (isVert && hasText && kids >= 2 && kids <= 8 && w <= 480) {
+    return (prefix || (parentName || "")) + (prefix ? "-card" : "card");
+  }
+
+  // ── Modal / Dialog ────────────────────────────────────────────────────────
+  if (!parentIsPage && node.type === "FRAME" && w > 300 && h > 200 && node.layoutMode === "NONE") {
+    return (prefix || "modal") + "-modal";
+  }
+
+  // ── List ─────────────────────────────────────────────────────────────────
+  if (types[dom] >= 3 && (isVert || isHoriz)) {
+    if (dom === "INSTANCE") return (prefix || parentName || "item") + "-list";
+    if (dom === "FRAME")    return (prefix || parentName || "item") + "-list";
+    if (dom === "TEXT")     return (prefix || "text") + "-list";
+  }
+
+  // ── Icon container ────────────────────────────────────────────────────────
+  if (dom === "VECTOR" || dom === "BOOLEAN_OPERATION") {
+    return (prefix || "icon") + (kids > 1 ? "-group" : "");
+  }
+
+  // ── Generic wrapper with content hint ────────────────────────────────────
+  if (prefix) {
+    if (parentIsPage || h > 300) return prefix + "-section";
+    return prefix + "-wrapper";
+  }
+
+  // ── Parent-name-informed fallback ─────────────────────────────────────────
+  if (parentName && !isDefaultName(parentName) && parentName !== "root") {
+    // strip common suffixes before re-appending a role
+    var stripped = parentName.replace(/-(section|wrapper|container|card|list|group)$/, "");
+    return stripped + "-item";
+  }
+
+  // ── Last resort type fallback ─────────────────────────────────────────────
+  var typeMap = {
+    FRAME:     "container",
+    GROUP:     "group",
+    COMPONENT: "component",
+    INSTANCE:  "instance",
+    IMAGE:     "image",
+    SECTION:   "section"
+  };
+  return typeMap[node.type] || node.type.toLowerCase();
+}
 function getVarColor(v){var col=figma.variables.getVariableCollectionById(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(!val||typeof val!=="object"||val.type==="VARIABLE_ALIAS")return null;return val;}
 function colorDist(a,b){var dr=a.r-b.r,dg=a.g-b.g,db=a.b-b.b;return Math.sqrt(dr*dr+dg*dg+db*db);}
 function findNearestColorVar(color,vars){var best=null,bestDist=0.04;for(var i=0;i<vars.length;i++){var vc=getVarColor(vars[i]);if(!vc)continue;var d=colorDist(color,vc);if(d<bestDist){bestDist=d;best=vars[i];}}return best;}
@@ -97,9 +413,10 @@ function mk(label,desc,icon,group){return{label:label,description:desc,icon:icon
 function runAudit(){
   var page=figma.currentPage;
   var checks={
-    naming:        mk("Default Layer Names",   "Layers using Figma auto-generated names",           "🏷",  "Naming & Structure"),
-    duplicates:    mk("Duplicate Layer Names", "Sibling layers sharing the same name",              "👯",  "Naming & Structure"),
-    deepNesting:   mk("Deep Nesting",          "Frames or groups nested 6+ levels deep",            "🪆",  "Naming & Structure"),
+    naming:        mk("Default Layer Names",     "Layers using Figma auto-generated names",                   "🏷",  "Naming & Structure"),
+    namingFormat:  mk("Naming Convention",       "Names not in kebab-case (spaces, caps, underscores)",       "📝",  "Naming & Structure"),
+    duplicates:    mk("Duplicate Layer Names",   "Sibling layers sharing the same name",                      "👯",  "Naming & Structure"),
+    deepNesting:   mk("Deep Nesting",            "Frames or groups nested 6+ levels deep",                    "🪆",  "Naming & Structure"),
     autoLayout:    mk("Auto Layout",           "Frames with 2+ children not using Auto Layout",     "⬜",  "Layout"),
     colors:        mk("Color Variables",       "Solid fills/strokes not bound to a variable",       "🎨",  "Variables & Styles"),
     spacingVars:   mk("Spacing Variables",     "Auto layout padding/gap not bound to a variable",   "📐",  "Variables & Styles"),
@@ -114,7 +431,11 @@ function runAudit(){
   var totalNodes=0;
   function walk(node,depth){
     totalNodes++;var path=getPath(node);
-    if(isDefaultName(node.name))checks.naming.issues.push({id:node.id,label:node.type+': "'+node.name+'"',path:path});
+    // ── Naming: include suggestedName for inline rename pre-fill ──────────────
+    if(isDefaultName(node.name))checks.naming.issues.push({id:node.id,label:node.type+': "'+node.name+'"',path:path,suggestedName:generateName(node)});
+    // ── Naming convention: flag non-kebab-case names ───────────────────────
+    var violation = getKebabViolation(node);
+    if(violation)checks.namingFormat.issues.push({id:node.id,label:'"'+trunc(node.name)+'\" — '+violation,path:path,suggestedName:toKebab(node.name)});
     if("children"in node&&node.children&&node.children.length>1){var seen={};node.children.forEach(function(child){if(!seen[child.name])seen[child.name]=[];seen[child.name].push(child);});Object.keys(seen).forEach(function(name){if(seen[name].length>1)checks.duplicates.issues.push({id:seen[name][0].id,label:seen[name].length+'× "'+trunc(name)+'"',path:path+" › "+trunc(node.name,22)});});}
     if(depth>=6&&(node.type==="FRAME"||node.type==="GROUP"))checks.deepNesting.issues.push({id:node.id,label:"Depth "+depth+': "'+trunc(node.name)+'"',path:path});
     if((node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode==="NONE"&&"children"in node&&node.children.length>=2)checks.autoLayout.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.children.length+' children',path:path});
@@ -131,7 +452,7 @@ function runAudit(){
     if("children"in node&&node.children)node.children.forEach(function(child){walk(child,depth+1);});
   }
   page.children.forEach(function(n){walk(n,0);});
-  var WEIGHTS={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,mixedText:4,radiusVars:4,duplicates:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+  var WEIGHTS={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,duplicates:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
   function issuePenalty(count,weight){if(!count)return 0;var s=count<=2?.12:count<=5?.30:count<=10?.52:count<=20?.72:.95;return s*weight;}
   var keys=Object.keys(checks);
   var totalWeight=keys.reduce(function(s,k){return s+(WEIGHTS[k]||1);},0);
@@ -143,7 +464,7 @@ function runAudit(){
   return{checks:checks,totalNodes:totalNodes,totalIssues:totalIssues,score:score,fixable:fixable};
 }
 
-// ── Fixes ─────────────────────────────────────────────────────────────────────
+// ── Fixes (bulk, kept for compat) ─────────────────────────────────────────────
 function runFixes(fixes){
   var page=figma.currentPage,stats={naming:0,empty:0,hidden:0,colors:0};
   var allNodes=[];
@@ -151,7 +472,10 @@ function runFixes(fixes){
   page.children.forEach(function(n){collect(n);});
   if(fixes.indexOf("hidden")!==-1){allNodes.forEach(function(node){if(node.visible===false){try{node.remove();stats.hidden++;}catch(e){}}});allNodes=[];page.children.forEach(function(n){collect(n);});}
   if(fixes.indexOf("empty")!==-1){allNodes.forEach(function(node){if((node.type==="FRAME"||node.type==="GROUP")&&"children"in node&&node.children.length===0){try{node.remove();stats.empty++;}catch(e){}}});allNodes=[];page.children.forEach(function(n){collect(n);});}
-  if(fixes.indexOf("naming")!==-1){allNodes.forEach(function(node){if(isDefaultName(node.name)){try{node.name=generateName(node);stats.naming++;}catch(e){}}});}
+  if(fixes.indexOf("naming")!==-1){allNodes.forEach(function(node){
+    if(isDefaultName(node.name)){try{node.name=generateName(node);stats.naming++;}catch(e){}}
+    else{var v=getKebabViolation(node);if(v){try{node.name=toKebab(node.name);stats.naming++;}catch(e){}}}
+  });}
   if(fixes.indexOf("colors")!==-1){var colorVars=figma.variables.getLocalVariables().filter(function(v){return v.resolvedType==="COLOR";});if(colorVars.length>0){allNodes.forEach(function(node){if(!("fills"in node)||!Array.isArray(node.fills))return;var changed=false;var newFills=node.fills.map(function(fill,i){if(fill.type!=="SOLID"||fill.visible===false)return fill;var bv=node.boundVariables&&node.boundVariables.fills&&node.boundVariables.fills[i];if(bv)return fill;var nearest=findNearestColorVar(fill.color,colorVars);if(nearest){try{var f=figma.variables.setBoundVariableForPaint(fill,"color",nearest);stats.colors++;changed=true;return f;}catch(e){return fill;}}return fill;});if(changed){try{node.fills=newFills;}catch(e){}}});}}
   return stats;
 }
@@ -195,110 +519,16 @@ async function importTokens(filename,data){
   throw new Error('Cannot detect type from "'+filename+'". Keep original filenames.');
 }
 
-// ── Text Styles import ────────────────────────────────────────────────────────
-function weightToStyle(w){
-  var n=parseInt(w)||400;
-  if(n<=100)return"Thin";
-  if(n<=200)return"ExtraLight";
-  if(n<=300)return"Light";
-  if(n<=400)return"Regular";
-  if(n<=500)return"Medium";
-  if(n<=600)return"SemiBold";
-  if(n<=700)return"Bold";
-  if(n<=800)return"ExtraBold";
-  return"Black";
-}
+function weightToStyle(w){var n=parseInt(w)||400;if(n<=100)return"Thin";if(n<=200)return"ExtraLight";if(n<=300)return"Light";if(n<=400)return"Regular";if(n<=500)return"Medium";if(n<=600)return"SemiBold";if(n<=700)return"Bold";if(n<=800)return"ExtraBold";return"Black";}
 
 async function importTextStyles(data){
-  // Collect unique fonts needed
   var fontsNeeded=[],seen={};
-  Object.keys(data).forEach(function(groupKey){
-    var group=data[groupKey];
-    if(!group||typeof group!=="object")return;
-    Object.keys(group).forEach(function(key){
-      var token=group[key];
-      if(!token||!token["$value"])return;
-      var val=token["$value"];
-      var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");
-      var style=weightToStyle(val.fontWeight||400);
-      var k=family+":"+style;
-      if(!seen[k]){seen[k]=true;fontsNeeded.push({family:family,style:style});}
-    });
-  });
-
-  // Load all fonts — ignore individual failures (font not installed)
-  await Promise.all(fontsNeeded.map(function(f){
-    return figma.loadFontAsync({family:f.family,style:f.style}).catch(function(){});
-  }));
-
-  // Build a map of existing text styles by name
-  var existingStyles=figma.getLocalTextStyles();
-  var styleMap={};
-  existingStyles.forEach(function(s){styleMap[s.name]=s;});
-
+  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var style=weightToStyle(val.fontWeight||400);var k=family+":"+style;if(!seen[k]){seen[k]=true;fontsNeeded.push({family:family,style:style});}});});
+  await Promise.all(fontsNeeded.map(function(f){return figma.loadFontAsync({family:f.family,style:f.style}).catch(function(){});}));
+  var existingStyles=figma.getLocalTextStyles(),styleMap={};existingStyles.forEach(function(s){styleMap[s.name]=s;});
   var count=0,skipped=0;
-  Object.keys(data).forEach(function(groupKey){
-    var group=data[groupKey];
-    if(!group||typeof group!=="object")return;
-    Object.keys(group).forEach(function(key){
-      var token=group[key];
-      if(!token||!token["$value"])return;
-      var val=token["$value"];
-      var styleName=groupKey+"/"+key;
-
-      try {
-        var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");
-        var fontStyle=weightToStyle(val.fontWeight||400);
-
-        // Create or update
-        var style=styleMap[styleName]||figma.createTextStyle();
-        style.name=styleName;
-        style.fontName={family:family,style:fontStyle};
-
-        // Font size
-        var fs=val.fontSize;
-        style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);
-
-        // Line height
-        var lh=val.lineHeight;
-        if(lh){
-          if(typeof lh==="object"){
-            if(lh.unit==="PIXELS")   style.lineHeight={unit:"PIXELS",  value:lh.value||24};
-            else                     style.lineHeight={unit:"PERCENT", value:(lh.value||1.5)*100};
-          } else {
-            style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};
-          }
-        }
-
-        // Letter spacing
-        var ls=val.letterSpacing;
-        if(ls!==undefined){
-          var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);
-          style.letterSpacing={unit:"PIXELS",value:lsVal};
-        }
-
-        // Paragraph spacing
-        var ps=val.paragraphSpacing;
-        if(ps!==undefined){
-          style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);
-        }
-
-        // Text decoration
-        var td=val.textDecoration;
-        style.textDecoration=(td&&td!=="NONE")?td:"NONE";
-
-        // Description from token
-        if(token["$description"]) style.description=token["$description"];
-
-        styleMap[styleName]=style;
-        count++;
-      } catch(e){ skipped++; }
-    });
-  });
-
-  var msg="Created/updated "+count+" text style"+(count!==1?"s":"");
-  if(skipped>0)msg+=" ("+skipped+" skipped — font not installed)";
-  return msg;
+  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var styleName=groupKey+"/"+key;try{var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var fontStyle=weightToStyle(val.fontWeight||400);var style=styleMap[styleName]||figma.createTextStyle();style.name=styleName;style.fontName={family:family,style:fontStyle};var fs=val.fontSize;style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);var lh=val.lineHeight;if(lh){if(typeof lh==="object"){if(lh.unit==="PIXELS")style.lineHeight={unit:"PIXELS",value:lh.value||24};else style.lineHeight={unit:"PERCENT",value:(lh.value||1.5)*100};}else style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};}var ls=val.letterSpacing;if(ls!==undefined){var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);style.letterSpacing={unit:"PIXELS",value:lsVal};}var ps=val.paragraphSpacing;if(ps!==undefined)style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);var td=val.textDecoration;style.textDecoration=(td&&td!=="NONE")?td:"NONE";if(token["$description"])style.description=token["$description"];styleMap[styleName]=style;count++;}catch(e){skipped++;}});});
+  var msg="Created/updated "+count+" text style"+(count!==1?"s":"");if(skipped>0)msg+=" ("+skipped+" skipped — font not installed)";return msg;
 }
 
 function importPrimitives(data){var col=findOrCreateCollection("Primitives"),modeId=col.modes[0].modeId;col.renameMode(modeId,"Value");var map=buildVarMap(col),count=0;Object.keys(data).forEach(function(gk){var g=data[gk];if(!g||typeof g!=="object"||g["$value"]!==undefined)return;Object.keys(g).forEach(function(sk){var t=g[sk];if(!t||t["$value"]===undefined||t["$type"]!=="color")return;try{var v=getOrCreateVar(gk+"/"+sk,col,"COLOR",map);v.setValueForMode(modeId,dtcgToFigmaColor(t["$value"]));count++;}catch(e){}});});return"Imported "+count+" variables";}

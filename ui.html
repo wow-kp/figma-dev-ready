@@ -11,8 +11,8 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .tab-btn { flex: 1; padding: 10px 0; border: none; background: transparent; color: #6c7086; font-size: 11px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
 .tab-btn.active { color: #89b4fa; border-bottom-color: #89b4fa; }
 .tab-btn:hover:not(.active) { color: #cdd6f4; }
-.pane { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-.pane.active { display: flex; }
+.pane { display: none; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+.pane.active { display: flex; overflow: hidden; }
 
 /* ── Shared ── */
 #hero { background: #181825; border-bottom: 1px solid #313244; padding: 14px 20px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -129,12 +129,24 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 #import-actions .file-count { font-size: 11px; color: #6c7086; flex: 1; }
 
 /* ── Workflow ── */
-#wf-container { flex: 1; overflow-y: auto; padding: 14px 12px 20px; display: flex; flex-direction: column; gap: 16px; }
+#wf-container { padding: 14px 12px 20px; display: flex; flex-direction: column; gap: 16px; }
 .wf-step { background: #181825; border: 1px solid #313244; border-radius: 10px; overflow: hidden; }
-.wf-step-header { padding: 12px 14px 10px; border-bottom: 1px solid #313244; }
+.wf-step-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; cursor: pointer; user-select: none; transition: background 0.12s; }
+.wf-step-header:hover { background: #1e1e2e; }
+.wf-step.collapsed .wf-step-header { border-bottom: none; }
+.wf-step:not(.collapsed) .wf-step-header { border-bottom: 1px solid #313244; }
+.wf-step-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.wf-step-indicator.green  { background: #a6e3a1; box-shadow: 0 0 6px #a6e3a140; }
+.wf-step-indicator.yellow { background: #f9e2af; box-shadow: 0 0 6px #f9e2af40; }
+.wf-step-indicator.red    { background: #f38ba8; box-shadow: 0 0 6px #f38ba840; }
+.wf-step-info { flex: 1; min-width: 0; }
 .wf-step-num { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: #45475a; margin-bottom: 4px; }
 .wf-step-title { font-size: 13px; font-weight: 700; color: #cdd6f4; }
 .wf-step-desc { font-size: 11px; color: #6c7086; margin-top: 3px; line-height: 1.5; }
+.wf-step-chevron { font-size: 10px; color: #585b70; flex-shrink: 0; transition: transform 0.18s; }
+.wf-step.collapsed .wf-step-chevron { transform: rotate(-90deg); }
+.wf-step-body { display: block; }
+.wf-step.collapsed .wf-step-body { display: none; }
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
 .wf-page-row.found    { background: #a6e3a108; border-color: #a6e3a120; }
@@ -156,10 +168,29 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-create-all-btn { padding: 7px 16px; border-radius: 7px; border: none; background: #89b4fa; color: #1e1e2e; font-size: 11px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; flex-shrink: 0; }
 .wf-create-all-btn:hover { opacity: 0.88; }
 .wf-create-all-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
-.wf-all-good { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px 12px; text-align: center; }
-.wf-all-good-icon { font-size: 22px; }
-.wf-all-good-label { font-size: 12px; font-weight: 600; color: #a6e3a1; }
-.wf-all-good-sub { font-size: 10px; color: #585b70; }
+/* ── Cover form ── */
+.wf-cover-card { border: 1px solid #313244; border-radius: 7px; overflow: hidden; margin-top: 2px; }
+.wf-cover-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; cursor: pointer; user-select: none; }
+.wf-cover-row.found   { background: #a6e3a108; border-color: #a6e3a120; border-radius: 7px 7px 0 0; }
+.wf-cover-row.missing { background: #f38ba808; border-color: #f38ba820; border-radius: 7px 7px 0 0; }
+.wf-cover-row.closed  { border-radius: 7px; }
+.wf-cover-row:hover   { filter: brightness(1.15); }
+.wf-cover-row.found  .wf-page-name { color: #a6e3a1; }
+.wf-cover-row.found  .wf-page-status { color: #a6e3a1; }
+.wf-chevron { font-size: 9px; color: #585b70; flex-shrink: 0; transition: transform 0.18s; }
+.wf-cover-row.open .wf-chevron { transform: rotate(180deg); }
+.wf-cover-form { padding: 10px 10px 12px; border-top: 1px solid #313244; background: #0f0f1a; }
+.wf-cover-form-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6c7086; margin-bottom: 8px; }
+.wf-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.wf-form-full { grid-column: 1 / -1; }
+.wf-field { display: flex; flex-direction: column; gap: 3px; }
+.wf-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #45475a; }
+.wf-input { background: #1e1e2e; border: 1px solid #313244; border-radius: 5px; padding: 6px 8px; font-size: 11px; color: #cdd6f4; outline: none; font-family: inherit; transition: border-color 0.12s; }
+.wf-input:focus { border-color: #89b4fa; }
+.wf-select { background: #1e1e2e; border: 1px solid #313244; border-radius: 5px; padding: 6px 8px; font-size: 11px; color: #cdd6f4; outline: none; font-family: inherit; cursor: pointer; }
+.wf-generate-btn { width: 100%; padding: 8px 0; border-radius: 6px; border: none; background: #89b4fa; color: #1e1e2e; font-size: 11px; font-weight: 700; cursor: pointer; margin-top: 8px; transition: opacity 0.15s; }
+.wf-generate-btn:hover { opacity: 0.88; }
+.wf-generate-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #313244; border-radius: 99px; }
 </style>
@@ -195,8 +226,13 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 </div>
 
 <!-- ── WORKFLOW ────────────────────────── -->
-<div class="pane active" id="pane-workflow">
-  <div id="wf-container"></div>
+<div class="pane active" id="pane-workflow" style="overflow-y:auto;">
+  <div id="wf-container">
+    <div id="wf-loading" style="display:flex;align-items:center;justify-content:center;padding:40px 0;flex-direction:column;gap:8px;">
+      <div style="font-size:20px;opacity:0.4">🗂</div>
+      <div style="font-size:12px;color:#45475a;">Loading file structure…</div>
+    </div>
+  </div>
 </div>
 
 <!-- ── TOKEN DEBUGGER ─────────────────── -->
@@ -380,24 +416,34 @@ function renderAudit(data){
 }
 
 // ── Workflow ───────────────────────────────────────────────────────────────
+// Persists cover form values across re-renders
+var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true };
+
 var REQUIRED_PAGES = [
-  { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover" },
-  { key:"foundations", icon:"🎨", name:"🎨 Foundations",   desc:"Colours, typography, spacing, radius, shadows, icons", hint:"foundations" },
-  { key:"components",  icon:"🧩", name:"🧩 Components",    desc:"All master components organised by type",              hint:"components" },
-  { key:"mobile",      icon:"📱", name:"📱 Mobile",        desc:"Complete screens at mobile breakpoint",                hint:"mobile" },
-  { key:"desktop",     icon:"🖥️", name:"🖥️ Desktop",      desc:"Complete screens at desktop breakpoint",               hint:"desktop" },
-  { key:"archive",     icon:"🗄️", name:"🗄️ Archive",      desc:"Deprecated screens, never delete old work",            hint:"archive" },
+  { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover",       critical:false },
+  { key:"foundations", icon:"🎨", name:"🎨 Foundations",   desc:"Colours, typography, spacing, radius, shadows, icons", hint:"foundations", critical:true },
+  { key:"components",  icon:"🧩", name:"🧩 Components",    desc:"All master components organised by type",              hint:"components",  critical:true },
+  { key:"mobile",      icon:"📱", name:"📱 Mobile",        desc:"Complete screens at mobile breakpoint",                hint:"mobile",      critical:true },
+  { key:"desktop",     icon:"🖥️", name:"🖥️ Desktop",      desc:"Complete screens at desktop breakpoint",               hint:"desktop",     critical:true },
+  { key:"archive",     icon:"🗄️", name:"🗄️ Archive",      desc:"Deprecated screens, never delete old work",            hint:"archive",     critical:false },
 ];
 
-function renderWorkflow(pages) {
+function renderWorkflow(data) {
+  var pages    = data.pages ? Array.prototype.slice.call(data.pages) : [];
+  var fileInfo = data.fileInfo || {};
   var container = document.getElementById("wf-container");
   container.innerHTML = "";
+  // Show error if code.js reported one
+  if (data.error) {
+    container.innerHTML = "<div style='padding:20px;font-size:11px;color:#f38ba8;margin:12px;border:1px solid #f38ba830;border-radius:8px;background:#f38ba810'>Plugin error: "+esc(data.error)+"</div>";
+    return;
+  }
 
   // Match each required page against the actual pages list
   var results = REQUIRED_PAGES.map(function(req) {
     var match = pages.find(function(p) {
-      var lower = p.name.toLowerCase();
-      return lower.indexOf(req.hint) !== -1;
+      var stripped = p.name.toLowerCase().replace(/[^a-z]/g, "");
+      return stripped.indexOf(req.hint) !== -1;
     });
     return { req: req, match: match || null, found: !!match };
   });
@@ -406,22 +452,104 @@ function renderWorkflow(pages) {
   var allGood  = missing.length === 0;
 
   // ── Step 1: File Structure ────────────────────────────────────────────────
+  // Determine indicator color: green = all found, red = critical missing, yellow = only non-critical missing
+  var hasCriticalMissing = missing.some(function(r) { return r.req.critical; });
+  var indicatorColor = allGood ? "green" : (hasCriticalMissing ? "red" : "yellow");
+
+  // Auto-collapse when all good
+  if (allGood) wfFormState.stepOpen = false;
+
+  var stepOpen = wfFormState.stepOpen;
   var step = document.createElement("div");
-  step.className = "wf-step";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
   header.innerHTML =
-    "<div class='wf-step-num'>Step 1 of 1</div>" +
-    "<div class='wf-step-title'>File Structure</div>" +
-    "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>";
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 1</div>" +
+      "<div class='wf-step-title'>File Structure" + (allGood ? " — All set" : "") + "</div>" +
+      (stepOpen ? "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>" : "") +
+    "</div>" +
+    "<span class='wf-step-chevron'>▼</span>";
+  header.addEventListener("click", function() {
+    wfFormState.stepOpen = !wfFormState.stepOpen;
+    step.classList.toggle("collapsed", !wfFormState.stepOpen);
+    // Re-render to update description visibility
+    renderWorkflow({ pages: pages, fileInfo: data.fileInfo || {} });
+  });
   step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
 
   // Page rows
   var list = document.createElement("div");
   list.className = "wf-page-list";
 
   results.forEach(function(r) {
+    // ── Cover page gets a special collapsible card ──────────────────────────
+    if (r.req.key === "cover") {
+      var coverOpen = wfFormState.coverOpen !== false; // default open
+
+      var card = document.createElement("div");
+      card.className = "wf-cover-card";
+
+      var actualName = r.found ? esc(r.match.name) : esc(r.req.name);
+      var row = document.createElement("div");
+      row.className = "wf-cover-row " + (r.found ? "found" : "missing") + (coverOpen ? " open" : " closed");
+      row.innerHTML =
+        "<span class='wf-page-icon'>" + r.req.icon + "</span>" +
+        "<div class='wf-page-info'>" +
+          "<div class='wf-page-name'>" + actualName + "</div>" +
+          "<div class='wf-page-desc'>" + esc(r.req.desc) + "</div>" +
+        "</div>" +
+        "<span class='wf-page-status'>" + (r.found ? "✓ Found" : "Missing") + "</span>";
+
+      // Create button — only shown when form is collapsed and page is missing
+      var createBtn = null;
+      if (!r.found) {
+        createBtn = document.createElement("button");
+        createBtn.className = "wf-create-btn";
+        createBtn.textContent = "+ Create";
+        createBtn.style.display = coverOpen ? "none" : "";
+        createBtn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          createBtn.disabled = true; createBtn.textContent = "…";
+          parent.postMessage({ pluginMessage: { type: "create-pages", keys: ["cover"] } }, "*");
+        });
+        row.appendChild(createBtn);
+      }
+
+      // Chevron
+      var chev = document.createElement("span");
+      chev.className = "wf-chevron";
+      chev.textContent = "▼";
+      row.appendChild(chev);
+
+      card.appendChild(row);
+
+      // Form panel
+      var form = buildCoverForm(fileInfo);
+      form.style.display = coverOpen ? "block" : "none";
+      card.appendChild(form);
+
+      // Toggle on row click
+      row.addEventListener("click", function() {
+        coverOpen = !coverOpen;
+        wfFormState.coverOpen = coverOpen;
+        form.style.display = coverOpen ? "block" : "none";
+        row.classList.toggle("open", coverOpen);
+        row.classList.toggle("closed", !coverOpen);
+        if (createBtn) createBtn.style.display = coverOpen ? "none" : "";
+      });
+
+      list.appendChild(card);
+      return;
+    }
+
+    // ── All other pages ─────────────────────────────────────────────────────
     var row = document.createElement("div");
     row.className = "wf-page-row " + (r.found ? "found" : "missing");
 
@@ -446,17 +574,12 @@ function renderWorkflow(pages) {
     }
     list.appendChild(row);
   });
-  step.appendChild(list);
 
-  // Footer
-  var footer = document.createElement("div");
-  if (allGood) {
-    footer.className = "wf-all-good";
-    footer.innerHTML =
-      "<div class='wf-all-good-icon'>✅</div>" +
-      "<div class='wf-all-good-label'>All required pages found</div>" +
-      "<div class='wf-all-good-sub'>File structure is ready — proceed to design.</div>";
-  } else {
+  body.appendChild(list);
+
+  // Footer — only show when there are missing pages
+  if (!allGood) {
+    var footer = document.createElement("div");
     footer.className = "wf-footer";
     var summary = document.createElement("span");
     summary.className = "wf-summary";
@@ -471,9 +594,95 @@ function renderWorkflow(pages) {
     });
     footer.appendChild(summary);
     footer.appendChild(createAll);
+    body.appendChild(footer);
   }
-  step.appendChild(footer);
+  step.appendChild(body);
   container.appendChild(step);
+}
+
+function buildCoverForm(fileInfo) {
+  var today = new Date();
+  var dateStr = today.getFullYear() + "-" +
+    String(today.getMonth()+1).padStart(2,"0") + "-" +
+    String(today.getDate()).padStart(2,"0");
+
+  // Seed state on first load; always refresh designers/project if still empty
+  if (!wfFormState.initialised) {
+    wfFormState.project    = fileInfo.fileName || "";
+    wfFormState.date       = dateStr;
+    wfFormState.initialised = true;
+  }
+  if (!wfFormState.designers && fileInfo.userName) {
+    wfFormState.designers = fileInfo.userName;
+  }
+  if (!wfFormState.project && fileInfo.fileName) {
+    wfFormState.project = fileInfo.fileName;
+  }
+
+  var wrap = document.createElement("div");
+  wrap.className = "wf-cover-form";
+  wrap.innerHTML =
+
+    "<div class='wf-form-grid'>" +
+      "<div class='wf-field wf-form-full'>" +
+        "<label class='wf-label'>Project Name</label>" +
+        "<input class='wf-input' id='cf-project' value='" + esc(wfFormState.project) + "' placeholder='My Project' />" +
+      "</div>" +
+      "<div class='wf-field'>" +
+        "<label class='wf-label'>Version</label>" +
+        "<input class='wf-input' id='cf-version' value='" + esc(wfFormState.version) + "' placeholder='v1.0.0' />" +
+      "</div>" +
+      "<div class='wf-field'>" +
+        "<label class='wf-label'>Last Updated</label>" +
+        "<input class='wf-input' id='cf-date' value='" + esc(wfFormState.date) + "' placeholder='YYYY-MM-DD' />" +
+      "</div>" +
+      "<div class='wf-field wf-form-full'>" +
+        "<label class='wf-label'>Designer(s)</label>" +
+        "<input class='wf-input' id='cf-designers' value='" + esc(wfFormState.designers) + "' placeholder='Designer names' />" +
+      "</div>" +
+      "<div class='wf-field wf-form-full'>" +
+        "<label class='wf-label'>Status</label>" +
+        "<select class='wf-select' id='cf-status'>" +
+          "<option value='In Progress'" + (wfFormState.status==="In Progress"?" selected":"") + ">🟡 In Progress</option>" +
+          "<option value='Ready for Review'" + (wfFormState.status==="Ready for Review"?" selected":"") + ">🔵 Ready for Review</option>" +
+          "<option value='Dev Ready'" + (wfFormState.status==="Dev Ready"?" selected":"") + ">🟢 Dev Ready</option>" +
+        "</select>" +
+      "</div>" +
+    "</div>" +
+    "<button class='wf-generate-btn' id='cf-generate-btn'>✦ Generate Cover Page</button>";
+
+  // Save field changes to wfFormState so they survive re-renders
+  ["cf-project","cf-version","cf-date","cf-designers"].forEach(function(id) {
+    var el = wrap.querySelector("#"+id);
+    var key = id.replace("cf-","");
+    if (el) el.addEventListener("input", function() { wfFormState[key] = el.value; });
+  });
+  var selEl = wrap.querySelector("#cf-status");
+  if (selEl) selEl.addEventListener("change", function() { wfFormState.status = selEl.value; });
+
+  // Update button label if already generated
+  var genBtn = wrap.querySelector("#cf-generate-btn");
+  if (wfFormState.generated) genBtn.textContent = "✦ Regenerate Cover Page";
+
+  genBtn.addEventListener("click", function() {
+    genBtn.disabled = true; genBtn.textContent = "Generating…";
+    // Snapshot current values into state
+    wfFormState.project   = wrap.querySelector("#cf-project").value.trim()   || "My Project";
+    wfFormState.version   = wrap.querySelector("#cf-version").value.trim()   || "v1.0.0";
+    wfFormState.date      = wrap.querySelector("#cf-date").value.trim()      || dateStr;
+    wfFormState.designers = wrap.querySelector("#cf-designers").value.trim() || "Designer";
+    wfFormState.status    = wrap.querySelector("#cf-status").value;
+    parent.postMessage({ pluginMessage: {
+      type:      "generate-cover",
+      project:   wfFormState.project,
+      version:   wfFormState.version,
+      date:      wfFormState.date,
+      designers: wfFormState.designers,
+      status:    wfFormState.status,
+    }}, "*");
+  });
+
+  return wrap;
 }
 
 // ── Token Debugger ──────────────────────────────────────────────────────────
@@ -520,8 +729,15 @@ function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].st
 window.onmessage=function(event){
   var msg=event.data.pluginMessage; if(!msg)return;
   if(msg.type==="audit-results"){renderAudit(msg.results);}
-  if(msg.type==="pages-data"){renderWorkflow(msg.pages);}
-  if(msg.type==="pages-created"){parent.postMessage({pluginMessage:{type:"check-pages"}},"*");}
+  if(msg.type==="pages-data"){
+    try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
+    catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
+  }
+  if(msg.type==="cover-generated"){
+    wfFormState.generated = true;
+    wfFormState.coverOpen = false;
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+  }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();processNext();}
 };

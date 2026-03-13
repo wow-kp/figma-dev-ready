@@ -151,25 +151,51 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-step.locked { opacity: 0.4; pointer-events: none; }
 .wf-step.locked .wf-step-header { cursor: default; }
 .wf-step-lock-msg { font-size: 10px; color: #585b70; font-style: italic; margin-left: 2px; }
-/* ── Token rows ── */
-.wf-token-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
-.wf-token-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; }
-.wf-token-row.ok      { background: #a6e3a108; border-color: #a6e3a120; }
-.wf-token-row.missing  { background: #f38ba808; border-color: #f38ba820; }
-.wf-token-row.partial  { background: #f9e2af08; border-color: #f9e2af20; }
+/* ── Token accordion rows ── */
+.wf-token-list { padding: 4px 10px; display: flex; flex-direction: column; gap: 2px; }
+.wf-token-acc { border-radius: 7px; border: 1px solid transparent; overflow: hidden; }
+.wf-token-acc.enabled  { border-color: #313244; }
+.wf-token-acc.disabled { opacity: 0.5; }
+.wf-token-header { display: flex; align-items: center; gap: 8px; padding: 7px 8px; cursor: pointer; user-select: none; }
+.wf-token-header:hover { background: #1e1e2e40; }
+.wf-token-chk { width: 14px; height: 14px; accent-color: #89b4fa; cursor: pointer; flex-shrink: 0; }
 .wf-token-icon { font-size: 15px; flex-shrink: 0; width: 22px; text-align: center; }
 .wf-token-info { flex: 1; min-width: 0; }
-.wf-token-name { font-size: 11px; font-weight: 600; }
-.wf-token-row.ok      .wf-token-name { color: #a6e3a1; }
-.wf-token-row.missing .wf-token-name { color: #f38ba8; }
-.wf-token-row.partial .wf-token-name { color: #f9e2af; }
+.wf-token-name { font-size: 11px; font-weight: 600; color: #cdd6f4; }
 .wf-token-desc { font-size: 10px; color: #585b70; margin-top: 1px; }
-.wf-token-count { font-size: 10px; font-weight: 700; flex-shrink: 0; }
-.wf-token-row.ok      .wf-token-count { color: #a6e3a1; }
-.wf-token-row.missing .wf-token-count { color: #585b70; }
-.wf-token-row.partial .wf-token-count { color: #f9e2af; }
-.wf-import-link { padding: 3px 10px; border-radius: 5px; border: 1px solid #89b4fa40; background: transparent; color: #89b4fa; font-size: 10px; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; white-space: nowrap; }
-.wf-import-link:hover { background: #89b4fa18; }
+.wf-token-count { font-size: 10px; font-weight: 700; flex-shrink: 0; color: #585b70; }
+.wf-token-acc.has-tokens .wf-token-count { color: #a6e3a1; }
+.wf-token-chevron { font-size: 10px; color: #585b70; flex-shrink: 0; transition: transform 0.15s; }
+.wf-token-acc.open .wf-token-chevron { transform: rotate(180deg); }
+.wf-token-panel { display: none; padding: 8px 10px; border-top: 1px solid #313244; }
+.wf-token-acc.open.enabled .wf-token-panel { display: block; }
+.wf-gen-btn { padding: 3px 10px; border-radius: 5px; border: 1px solid #a6e3a140; background: transparent; color: #a6e3a1; font-size: 10px; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; white-space: nowrap; }
+.wf-gen-btn:hover { background: #a6e3a118; }
+.wf-gen-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+/* Color pickers */
+.wf-color-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.wf-color-slot { flex: 0 0 15%; max-width: 15%; display: flex; flex-direction: column; gap: 4px; }
+.wf-color-slot .wf-color-label-row { height: 20px; display: flex; align-items: center; }
+.wf-color-label { font-size: 9px; font-weight: 600; color: #6c7086; }
+.wf-color-label .optional { color: #45475a; font-weight: 400; }
+.wf-color-pick { display: flex; align-items: center; gap: 5px; }
+.wf-color-swatch { width: 28px; height: 28px; border-radius: 6px; border: 2px solid #313244; cursor: pointer; flex-shrink: 0; overflow: hidden; position: relative; transition: border-color 0.15s; }
+.wf-color-swatch:hover { border-color: #45475a; }
+.wf-color-swatch.empty { background: #1e1e2e; border-style: dashed; }
+.wf-color-swatch input[type="color"] { position: absolute; inset: -6px; width: 40px; height: 40px; border: none; padding: 0; cursor: pointer; opacity: 0; }
+.wf-color-hex { background: #1e1e2e; border: 1px solid #313244; border-radius: 4px; padding: 4px 6px; font-size: 10px; color: #cdd6f4; outline: none; flex: 1; min-width: 0; font-family: "SF Mono", Monaco, monospace; }
+.wf-color-hex:focus { border-color: #89b4fa; }
+.wf-color-clear { background: none; border: none; color: #45475a; font-size: 12px; cursor: pointer; padding: 2px; flex-shrink: 0; line-height: 1; }
+.wf-panel-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #45475a; margin-bottom: 8px; }
+.wf-font-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.wf-font-slot { flex: 1 1 calc(33% - 8px); min-width: 100px; display: flex; flex-direction: column; gap: 4px; }
+.wf-font-label { font-size: 9px; font-weight: 600; color: #6c7086; }
+.wf-font-label .optional { color: #45475a; font-weight: 400; }
+.wf-font-input { background: #1e1e2e; border: 1px solid #313244; border-radius: 4px; padding: 5px 6px; font-size: 10px; color: #cdd6f4; outline: none; width: 100%; box-sizing: border-box; font-family: inherit; transition: border-color 0.12s; cursor: pointer; }
+.wf-font-input:focus { border-color: #89b4fa; }
+.wf-font-input::placeholder { color: #45475a; }
+.wf-color-clear:hover { color: #f38ba8; }
+.wf-add-color-btn button:hover { border-color: #89b4fa !important; color: #89b4fa !important; }
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
 .wf-page-row.found    { background: #a6e3a108; border-color: #a6e3a120; }
@@ -632,42 +658,308 @@ function renderWorkflow(data) {
   renderStep2(container);
 }
 
+// Accordion token definitions: key matches generator category, countKey maps to tokens-data counts
+var TOKEN_DEFS = [
+  { key: "colors",       cats: ["colors","colors-light","colors-dark"], countKey: "colors",       icon: "🎨", name: "Color Variables",  desc: "Fills, strokes, backgrounds",       hasConfig: "colors" },
+  { key: "text-styles",  cats: ["text-styles"],                         countKey: "textStyles",   icon: "✏️",  name: "Text Styles",      desc: "Typography presets for all text",   hasConfig: "fonts" },
+  { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins"              },
+  { key: "radius",       cats: ["radius"],                              countKey: "radius",       icon: "◻️",  name: "Radius",            desc: "Corner radius tokens"               },
+  { key: "shadows",      cats: ["shadows"],                             countKey: "effectStyles", icon: "✨", name: "Shadows",           desc: "Shadows as reusable effect styles"  },
+  { key: "border",       cats: ["border"],                              countKey: null,           icon: "▭",  name: "Border",            desc: "Border width tokens"                },
+  { key: "zindex",       cats: ["zindex"],                              countKey: null,           icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens"              },
+  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: null,           icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints"             }
+];
+
+// Track which tokens are enabled and which panels are open
+var wfTokenEnabled = {};
+var wfTokenOpen = {};
+(function() { TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; }); })();
+var wfColors = { primary: "#3B82F6", secondary: "", tertiary: "" };
+var wfCustomColors = []; // { name: "Success", hex: "#22C55E" }
+var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
+var wfGenerating = false;
+
+function getWfColors() {
+  return {
+    primary:   wfColors.primary || "#3B82F6",
+    secondary: wfColors.secondary || "",
+    tertiary:  wfColors.tertiary || ""
+  };
+}
+
+function buildColorSlot(key, label, isOptional) {
+  var val = wfColors[key] || "";
+  var hasVal = /^#[0-9A-Fa-f]{6}$/.test(val);
+  var slot = document.createElement("div");
+  slot.className = "wf-color-slot";
+
+  var lblRow = document.createElement("div");
+  lblRow.className = "wf-color-label-row";
+  var lbl = document.createElement("div");
+  lbl.className = "wf-color-label";
+  lbl.innerHTML = label + (isOptional ? " <span class='optional'>(optional)</span>" : "");
+  lblRow.appendChild(lbl);
+  slot.appendChild(lblRow);
+
+  var pick = document.createElement("div");
+  pick.className = "wf-color-pick";
+
+  var swatch = document.createElement("div");
+  swatch.className = "wf-color-swatch" + (hasVal ? "" : " empty");
+  if (hasVal) swatch.style.background = val;
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = hasVal ? val : "#6366F1";
+  swatch.appendChild(colorInput);
+  pick.appendChild(swatch);
+
+  var hexInp = document.createElement("input");
+  hexInp.type = "text";
+  hexInp.className = "wf-color-hex";
+  hexInp.value = hasVal ? val : "";
+  hexInp.placeholder = isOptional ? "—" : "#hex";
+  hexInp.maxLength = 7;
+  hexInp.spellcheck = false;
+  pick.appendChild(hexInp);
+
+  if (isOptional && hasVal) {
+    var clearBtn = document.createElement("button");
+    clearBtn.className = "wf-color-clear";
+    clearBtn.textContent = "×";
+    clearBtn.title = "Clear";
+    clearBtn.addEventListener("click", function() {
+      wfColors[key] = "";
+      hexInp.value = "";
+      swatch.style.background = "";
+      swatch.classList.add("empty");
+      clearBtn.remove();
+    });
+    pick.appendChild(clearBtn);
+  }
+
+  // Sync picker → hex → state
+  colorInput.addEventListener("input", function() {
+    wfColors[key] = colorInput.value;
+    hexInp.value = colorInput.value;
+    swatch.style.background = colorInput.value;
+    swatch.classList.remove("empty");
+    // Add clear button if optional and not already there
+    if (isOptional && !pick.querySelector(".wf-color-clear")) {
+      var cb = document.createElement("button");
+      cb.className = "wf-color-clear"; cb.textContent = "×"; cb.title = "Clear";
+      cb.addEventListener("click", function() { wfColors[key]=""; hexInp.value=""; swatch.style.background=""; swatch.classList.add("empty"); cb.remove(); });
+      pick.appendChild(cb);
+    }
+  });
+  hexInp.addEventListener("input", function() {
+    var v = hexInp.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) {
+      wfColors[key] = v;
+      colorInput.value = v;
+      swatch.style.background = v;
+      swatch.classList.remove("empty");
+      if (isOptional && !pick.querySelector(".wf-color-clear")) {
+        var cb = document.createElement("button");
+        cb.className = "wf-color-clear"; cb.textContent = "×"; cb.title = "Clear";
+        cb.addEventListener("click", function() { wfColors[key]=""; hexInp.value=""; swatch.style.background=""; swatch.classList.add("empty"); cb.remove(); });
+        pick.appendChild(cb);
+      }
+    }
+  });
+
+  slot.appendChild(pick);
+  return slot;
+}
+
+function buildCustomColorSlot(idx, onRemove, onUpdate) {
+  var entry = wfCustomColors[idx];
+  var hasVal = /^#[0-9A-Fa-f]{6}$/.test(entry.hex);
+  var slot = document.createElement("div");
+  slot.className = "wf-color-slot";
+
+  // Editable name input
+  var nameRow = document.createElement("div");
+  nameRow.className = "wf-color-label-row";
+  nameRow.style.cssText = "gap:3px;";
+  var nameInp = document.createElement("input");
+  nameInp.type = "text";
+  nameInp.className = "wf-font-input";
+  nameInp.style.cssText = "padding:2px 4px;font-size:9px;font-weight:600;";
+  nameInp.value = entry.name;
+  nameInp.placeholder = "Color name";
+  nameInp.spellcheck = false;
+  nameInp.addEventListener("input", function() {
+    wfCustomColors[idx].name = nameInp.value.trim();
+  });
+  var rmBtn = document.createElement("button");
+  rmBtn.className = "wf-color-clear";
+  rmBtn.textContent = "×";
+  rmBtn.title = "Remove";
+  rmBtn.addEventListener("click", function() {
+    wfCustomColors.splice(idx, 1);
+    onRemove();
+  });
+  nameRow.appendChild(nameInp);
+  nameRow.appendChild(rmBtn);
+  slot.appendChild(nameRow);
+
+  // Color picker + hex (same pattern as buildColorSlot)
+  var pick = document.createElement("div");
+  pick.className = "wf-color-pick";
+
+  var swatch = document.createElement("div");
+  swatch.className = "wf-color-swatch" + (hasVal ? "" : " empty");
+  if (hasVal) swatch.style.background = entry.hex;
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = hasVal ? entry.hex : "#6366F1";
+  swatch.appendChild(colorInput);
+  pick.appendChild(swatch);
+
+  var hexInp = document.createElement("input");
+  hexInp.type = "text";
+  hexInp.className = "wf-color-hex";
+  hexInp.value = hasVal ? entry.hex : "";
+  hexInp.placeholder = "#hex";
+  hexInp.maxLength = 7;
+  hexInp.spellcheck = false;
+  pick.appendChild(hexInp);
+
+  colorInput.addEventListener("input", function() {
+    wfCustomColors[idx].hex = colorInput.value;
+    hexInp.value = colorInput.value;
+    swatch.style.background = colorInput.value;
+    swatch.classList.remove("empty");
+  });
+  hexInp.addEventListener("input", function() {
+    var v = hexInp.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) {
+      wfCustomColors[idx].hex = v;
+      colorInput.value = v;
+      swatch.style.background = v;
+      swatch.classList.remove("empty");
+    }
+  });
+
+  slot.appendChild(pick);
+  return slot;
+}
+
+function getWfFonts() {
+  return {
+    primary:   wfFonts.primary || "Inter, sans-serif",
+    secondary: wfFonts.secondary || "",
+    tertiary:  wfFonts.tertiary || ""
+  };
+}
+
+var FONT_FAMILIES = [
+  {label:"Inter", value:"Inter, sans-serif"},
+  {label:"Roboto", value:"Roboto, sans-serif"},
+  {label:"Open Sans", value:"Open Sans, sans-serif"},
+  {label:"Lato", value:"Lato, sans-serif"},
+  {label:"Montserrat", value:"Montserrat, sans-serif"},
+  {label:"Poppins", value:"Poppins, sans-serif"},
+  {label:"Nunito", value:"Nunito, sans-serif"},
+  {label:"Raleway", value:"Raleway, sans-serif"},
+  {label:"Work Sans", value:"Work Sans, sans-serif"},
+  {label:"DM Sans", value:"DM Sans, sans-serif"},
+  {label:"Plus Jakarta Sans", value:"Plus Jakarta Sans, sans-serif"},
+  {label:"Source Sans 3", value:"Source Sans 3, sans-serif"},
+  {label:"Manrope", value:"Manrope, sans-serif"},
+  {label:"Outfit", value:"Outfit, sans-serif"},
+  {label:"Space Grotesk", value:"Space Grotesk, sans-serif"},
+  {label:"Arial", value:"Arial, sans-serif"},
+  {label:"Helvetica Neue", value:"Helvetica Neue, sans-serif"},
+  {label:"SF Pro Display", value:"SF Pro Display, sans-serif"},
+  {label:"Playfair Display", value:"Playfair Display, serif"},
+  {label:"Merriweather", value:"Merriweather, serif"},
+  {label:"Lora", value:"Lora, serif"},
+  {label:"PT Serif", value:"PT Serif, serif"},
+  {label:"Libre Baskerville", value:"Libre Baskerville, serif"},
+  {label:"EB Garamond", value:"EB Garamond, serif"},
+  {label:"Crimson Text", value:"Crimson Text, serif"},
+  {label:"Georgia", value:"Georgia, serif"},
+  {label:"Times New Roman", value:"Times New Roman, serif"},
+  {label:"Fira Code", value:"Fira Code, monospace"},
+  {label:"JetBrains Mono", value:"JetBrains Mono, monospace"},
+  {label:"Source Code Pro", value:"Source Code Pro, monospace"},
+  {label:"IBM Plex Mono", value:"IBM Plex Mono, monospace"},
+  {label:"Roboto Mono", value:"Roboto Mono, monospace"},
+  {label:"Courier New", value:"Courier New, monospace"},
+  {label:"Menlo", value:"Menlo, monospace"},
+  {label:"Inconsolata", value:"Inconsolata, monospace"},
+  {label:"system-ui", value:"system-ui, sans-serif"},
+  {label:"cursive", value:"cursive"}
+];
+
+function buildFontSlot(key, label, isOptional) {
+  var val = wfFonts[key] || "";
+  var slot = document.createElement("div");
+  slot.className = "wf-font-slot";
+
+  var lbl = document.createElement("div");
+  lbl.className = "wf-font-label";
+  lbl.innerHTML = label + (isOptional ? " <span class='optional'>(optional)</span>" : "");
+  slot.appendChild(lbl);
+
+  var sel = document.createElement("select");
+  sel.className = "wf-font-input";
+  sel.style.fontFamily = val || "inherit";
+
+  if (isOptional) {
+    var emptyOpt = document.createElement("option");
+    emptyOpt.value = "";
+    emptyOpt.textContent = "Same as Primary";
+    sel.appendChild(emptyOpt);
+  }
+
+  var matched = false;
+  for (var i = 0; i < FONT_FAMILIES.length; i++) {
+    var opt = document.createElement("option");
+    opt.value = FONT_FAMILIES[i].value;
+    opt.textContent = FONT_FAMILIES[i].label;
+    opt.style.fontFamily = FONT_FAMILIES[i].value;
+    if (val === FONT_FAMILIES[i].value) { opt.selected = true; matched = true; }
+    sel.appendChild(opt);
+  }
+  // If current value doesn't match any preset, add it as an option
+  if (val && !matched) {
+    var custom = document.createElement("option");
+    custom.value = val;
+    custom.textContent = val;
+    custom.selected = true;
+    sel.appendChild(custom);
+  }
+
+  sel.addEventListener("change", function() {
+    wfFonts[key] = sel.value;
+    sel.style.fontFamily = sel.value || "inherit";
+  });
+
+  slot.appendChild(sel);
+  return slot;
+}
+
 function renderStep2(container) {
-  // Remove previous step 2 if re-rendering
   var prev = document.getElementById("wf-step-2");
   if (prev) prev.remove();
 
   var locked = wfStep1Color === "red";
   var tokens = wfTokensData;
 
-  var REQUIRED_TOKENS = [
-    { key:"colors",       icon:"🎨", name:"Color Variables",   desc:"Fills, strokes, backgrounds",         critical:true },
-    { key:"textStyles",   icon:"✏️", name:"Text Styles",        desc:"Typography presets for all text",      critical:true },
-    { key:"spacing",      icon:"📐", name:"Spacing Variables",  desc:"Padding, gap, margins",               critical:true },
-    { key:"radius",       icon:"◻️", name:"Radius Variables",   desc:"Corner radius tokens",                critical:false },
-    { key:"effectStyles", icon:"✨", name:"Effect Styles",      desc:"Shadows, blurs as reusable styles",   critical:false },
-  ];
+  // Check if enabled tokens have been generated
+  var enabledWithCounts = TOKEN_DEFS.filter(function(d) { return wfTokenEnabled[d.key] && d.countKey; });
+  var allHaveTokens = enabledWithCounts.every(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
+  var someHaveTokens = enabledWithCounts.some(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
+  var indicatorColor = locked ? "red" : (allHaveTokens ? "green" : (someHaveTokens ? "yellow" : "red"));
 
-  // Determine status for each token type
-  var results = REQUIRED_TOKENS.map(function(req) {
-    var count = tokens ? (tokens[req.key] || 0) : 0;
-    var status = count === 0 ? "missing" : "ok";
-    return { req: req, count: count, status: status };
-  });
-
-  var missingTokens = results.filter(function(r) { return r.status === "missing"; });
-  var hasCriticalMissing = missingTokens.some(function(r) { return r.req.critical; });
-  var allGood = missingTokens.length === 0;
-  var indicatorColor = locked ? "red" : (allGood ? "green" : (hasCriticalMissing ? "red" : "yellow"));
-
-  // Auto-collapse when all good
-  if (allGood && !locked) wfFormState.step2Open = false;
-
+  if (allHaveTokens && !locked) wfFormState.step2Open = false;
   var stepOpen = locked ? false : wfFormState.step2Open;
 
   var step = document.createElement("div");
   step.id = "wf-step-2";
-  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allGood && !locked ? " complete" : "");
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allHaveTokens && !locked ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
@@ -675,17 +967,15 @@ function renderStep2(container) {
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
       "<div class='wf-step-num'>Step 2</div>" +
-      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allGood ? " — All set" : "")) + "</div>" +
+      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allHaveTokens ? " — All set" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete file structure first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Variables and styles needed before designing. Import them in the Import tab.</div>" : "")) +
+       (stepOpen ? "<div class='wf-step-desc'>Pick your brand colors, then generate or import tokens.</div>" : "")) +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step2Open = !wfFormState.step2Open;
-      step.classList.toggle("collapsed", !wfFormState.step2Open);
-      // Re-render to update description visibility
       var prev2 = document.getElementById("wf-step-2");
       if (prev2) prev2.remove();
       renderStep2(container);
@@ -702,43 +992,155 @@ function renderStep2(container) {
     var list = document.createElement("div");
     list.className = "wf-token-list";
 
-    results.forEach(function(r) {
-      var row = document.createElement("div");
-      row.className = "wf-token-row " + r.status;
-      row.innerHTML =
-        "<span class='wf-token-icon'>" + r.req.icon + "</span>" +
-        "<div class='wf-token-info'>" +
-          "<div class='wf-token-name'>" + esc(r.req.name) + "</div>" +
-          "<div class='wf-token-desc'>" + esc(r.req.desc) + "</div>" +
-        "</div>" +
-        "<span class='wf-token-count'>" + (r.count > 0 ? r.count + " found" : "None") + "</span>";
+    TOKEN_DEFS.forEach(function(def) {
+      var count = tokens && def.countKey ? (tokens[def.countKey] || 0) : 0;
+      var isEnabled = wfTokenEnabled[def.key];
+      var isOpen = wfTokenOpen[def.key];
 
-      if (r.status === "missing") {
-        var btn = document.createElement("button");
-        btn.className = "wf-import-link";
-        btn.textContent = "Import →";
-        btn.addEventListener("click", function() {
-          // Switch to Import tab
-          document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
-          document.querySelectorAll(".pane").forEach(function(p) { p.classList.remove("active"); });
-          var importTab = document.querySelector("[data-tab='import']");
-          if (importTab) importTab.classList.add("active");
-          document.getElementById("pane-import").classList.add("active");
-        });
-        row.appendChild(btn);
+      var acc = document.createElement("div");
+      acc.className = "wf-token-acc" + (isEnabled ? " enabled" : " disabled") + (isOpen ? " open" : "") + (count > 0 ? " has-tokens" : "");
+
+      // ── Header row ──
+      var hdr = document.createElement("div");
+      hdr.className = "wf-token-header";
+
+      var chk = document.createElement("input");
+      chk.type = "checkbox";
+      chk.className = "wf-token-chk";
+      chk.checked = isEnabled;
+      chk.addEventListener("click", function(e) { e.stopPropagation(); });
+      chk.addEventListener("change", function(e) {
+        e.stopPropagation();
+        wfTokenEnabled[def.key] = chk.checked;
+        acc.classList.toggle("enabled", chk.checked);
+        acc.classList.toggle("disabled", !chk.checked);
+        if (!chk.checked) { wfTokenOpen[def.key] = false; acc.classList.remove("open"); }
+      });
+      hdr.appendChild(chk);
+
+      var iconSpan = document.createElement("span");
+      iconSpan.className = "wf-token-icon";
+      iconSpan.textContent = def.icon;
+      hdr.appendChild(iconSpan);
+
+      var infoDiv = document.createElement("div");
+      infoDiv.className = "wf-token-info";
+      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(def.name) + "</div><div class='wf-token-desc'>" + esc(def.desc) + "</div>";
+      hdr.appendChild(infoDiv);
+
+      var countSpan = document.createElement("span");
+      countSpan.className = "wf-token-count";
+      countSpan.textContent = count > 0 ? count + " found" : "";
+      hdr.appendChild(countSpan);
+
+      if (def.hasConfig) {
+        var chevron = document.createElement("span");
+        chevron.className = "wf-token-chevron";
+        chevron.textContent = "▼";
+        hdr.appendChild(chevron);
+        hdr.style.cursor = "pointer";
       }
 
-      list.appendChild(row);
+      hdr.addEventListener("click", function(e) {
+        if (e.target.classList.contains("wf-token-chk")) return;
+        if (!def.hasConfig || !wfTokenEnabled[def.key]) return;
+        wfTokenOpen[def.key] = !wfTokenOpen[def.key];
+        acc.classList.toggle("open", wfTokenOpen[def.key]);
+      });
+      acc.appendChild(hdr);
+
+      // ── Config panel ──
+      if (def.hasConfig) {
+        var panel = document.createElement("div");
+        panel.className = "wf-token-panel";
+
+        if (def.hasConfig === "colors") {
+          // Color pickers inside panel
+          var colorGrid = document.createElement("div");
+          colorGrid.className = "wf-color-grid";
+          colorGrid.appendChild(buildColorSlot("primary", "Primary", false));
+          colorGrid.appendChild(buildColorSlot("secondary", "Secondary", true));
+          colorGrid.appendChild(buildColorSlot("tertiary", "Tertiary", true));
+
+          var rebuildCustomColors = (function(grid) {
+            return function rebuild() {
+              grid.querySelectorAll(".wf-custom-color, .wf-add-color-btn").forEach(function(el) { el.remove(); });
+              for (var ci = 0; ci < wfCustomColors.length; ci++) {
+                var cSlot = buildCustomColorSlot(ci, function() { rebuild(); });
+                cSlot.classList.add("wf-custom-color");
+                grid.appendChild(cSlot);
+              }
+              var addSlot = document.createElement("div");
+              addSlot.className = "wf-color-slot wf-add-color-btn";
+              addSlot.innerHTML = "<div class='wf-color-label-row' style='opacity:0'>.</div><div class='wf-color-pick' style='justify-content:center;'><button style='width:28px;height:28px;border-radius:6px;border:2px dashed #45475a;background:transparent;color:#6c7086;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color 0.15s,color 0.15s;' title='Add custom color'>+</button></div>";
+              addSlot.querySelector("button").addEventListener("click", function() {
+                wfCustomColors.push({ name: "", hex: "" });
+                rebuild();
+              });
+              grid.appendChild(addSlot);
+            };
+          })(colorGrid);
+          rebuildCustomColors();
+
+          var autoNote = document.createElement("div");
+          autoNote.style.cssText = "font-size:9px;color:#585b70;margin-top:6px;";
+          autoNote.textContent = "Black, white, gray, focus & error colors are auto-included.";
+
+          panel.appendChild(colorGrid);
+          panel.appendChild(autoNote);
+        }
+
+        if (def.hasConfig === "fonts") {
+          // Font family dropdowns inside panel
+          var fontGrid = document.createElement("div");
+          fontGrid.className = "wf-font-grid";
+          fontGrid.appendChild(buildFontSlot("primary", "Primary", false));
+          fontGrid.appendChild(buildFontSlot("secondary", "Secondary", true));
+          fontGrid.appendChild(buildFontSlot("tertiary", "Tertiary", true));
+          panel.appendChild(fontGrid);
+        }
+
+        acc.appendChild(panel);
+      }
+
+      list.appendChild(acc);
     });
 
-    // Collections summary
-    if (tokens.collections && tokens.collections.length > 0) {
-      var colSummary = document.createElement("div");
-      colSummary.style.cssText = "padding: 6px 8px; font-size: 10px; color: #585b70; border-top: 1px solid #313244; margin-top: 4px;";
-      var colText = tokens.collections.map(function(c) { return c.name + " (" + c.count + ")"; }).join("  ·  ");
-      colSummary.textContent = "Collections: " + colText;
-      list.appendChild(colSummary);
-    }
+    // ── Generate all button ──
+    var genAllWrap = document.createElement("div");
+    genAllWrap.style.cssText = "padding: 8px 10px;";
+    var genAllBtn = document.createElement("button");
+    genAllBtn.className = "wf-gen-btn";
+    genAllBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+    genAllBtn.textContent = "Generate Enabled Tokens";
+    genAllBtn.addEventListener("click", function() {
+      if (wfGenerating) return;
+      wfGenerating = true;
+      genAllBtn.disabled = true; genAllBtn.textContent = "Generating…";
+      var colors = getWfColors();
+      var fonts = getWfFonts();
+      var customCols = wfCustomColors.filter(function(c) { return c.name && /^#[0-9A-Fa-f]{6}$/.test(c.hex); });
+      // Collect all enabled categories
+      var enabledCats = [];
+      TOKEN_DEFS.forEach(function(d) {
+        if (wfTokenEnabled[d.key]) {
+          for (var i = 0; i < d.cats.length; i++) enabledCats.push(d.cats[i]);
+        }
+      });
+      parent.postMessage({ pluginMessage: {
+        type: "generate-tokens",
+        brandColor: colors.primary,
+        secondaryColor: colors.secondary,
+        tertiaryColor: colors.tertiary,
+        customColors: customCols,
+        fontPrimary: fonts.primary,
+        fontSecondary: fonts.secondary,
+        fontTertiary: fonts.tertiary,
+        enabledCategories: enabledCats
+      } }, "*");
+    });
+    genAllWrap.appendChild(genAllBtn);
+    list.appendChild(genAllWrap);
 
     body.appendChild(list);
   }
@@ -884,6 +1286,13 @@ window.onmessage=function(event){
     wfTokensData = msg.tokens || null;
     var c = document.getElementById("wf-container");
     if (c) renderStep2(c);
+  }
+  if(msg.type==="generate-result"){
+    // Individual category done — nothing to do here, wait for generate-complete
+  }
+  if(msg.type==="generate-complete"){
+    wfGenerating = false;
+    // tokens-data is sent right after, which triggers a full re-render of step 2
   }
   if(msg.type==="cover-generated"){
     wfFormState.generated = true;

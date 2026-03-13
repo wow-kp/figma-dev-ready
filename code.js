@@ -1,4 +1,4 @@
-figma.showUI(__html__, { width: 460, height: 680, title: "Is it ready for dev?" });
+figma.showUI(__html__, { width: 920, height: 680, title: "Is it ready for dev?" });
 
 figma.on("selectionchange", function() { pushDebugData(); });
 
@@ -155,6 +155,43 @@ figma.ui.onmessage = async function(msg) {
     } catch(e) {
       figma.ui.postMessage({ type: "tokens-data", tokens: null, error: String(e) });
     }
+  }
+  // ── Generate tokens ───────────────────────────────────────────────────────
+  if (msg.type === "generate-tokens") {
+    var brandHex = msg.brandColor || "#3B82F6";
+    var secondaryHex = msg.secondaryColor || "";
+    var tertiaryHex = msg.tertiaryColor || "";
+    var colorOpts = {
+      primary: brandHex, secondary: secondaryHex, tertiary: tertiaryHex,
+      custom: msg.customColors || []
+    };
+    var fontOpts = { primary: msg.fontPrimary || "Inter, sans-serif", secondary: msg.fontSecondary || "", tertiary: msg.fontTertiary || "" };
+    var enabledCats = msg.enabledCategories || null;
+    var GEN_ORDER = ["colors","colors-light","colors-dark","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
+
+    // Filter to only enabled categories if provided
+    var catsToRun = enabledCats ? GEN_ORDER.filter(function(c) { return enabledCats.indexOf(c) !== -1; }) : GEN_ORDER;
+
+    for (var gi = 0; gi < catsToRun.length; gi++) {
+      try {
+        var gd = generateTokenData(catsToRun[gi], colorOpts, fontOpts);
+        var gr = await importTokens(gd.filename, gd.data);
+        figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:true, message:gr });
+      } catch(e) {
+        figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:false, message:String(e) });
+      }
+    }
+    figma.ui.postMessage({ type:"generate-complete" });
+    // Refresh token counts for workflow step 2
+    try {
+      var allVars2 = figma.variables.getLocalVariables();
+      var cols2 = figma.variables.getLocalVariableCollections();
+      var ts2 = figma.getLocalTextStyles();
+      var es2 = figma.getLocalEffectStyles();
+      var cv2=0,sv2=0,rv2=0,ov2=0;
+      for(var vi2=0;vi2<allVars2.length;vi2++){var v2=allVars2[vi2];var cn2="";for(var ci2=0;ci2<cols2.length;ci2++){if(cols2[ci2].id===v2.variableCollectionId){cn2=cols2[ci2].name.toLowerCase();break;}}if(v2.resolvedType==="COLOR")cv2++;else if(v2.resolvedType==="FLOAT"&&(cn2.indexOf("spacing")!==-1||cn2.indexOf("gap")!==-1))sv2++;else if(v2.resolvedType==="FLOAT"&&(cn2.indexOf("radius")!==-1||cn2.indexOf("corner")!==-1))rv2++;else ov2++;}
+      figma.ui.postMessage({type:"tokens-data",tokens:{colors:cv2,spacing:sv2,radius:rv2,other:ov2,textStyles:ts2.length,effectStyles:es2.length,collections:cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};})}});
+    } catch(e){}
   }
 };
 
@@ -735,3 +772,368 @@ function importColors(data,modeName){var col=findOrCreateCollection("Colors"),mo
 function importFlat(data,colName,prefix,isDim){var col=findOrCreateCollection(colName),modeId=col.modes[0].modeId;col.renameMode(modeId,"Value");var map=buildVarMap(col),count=0;Object.keys(data).forEach(function(key){var t=data[key];if(!t||t["$value"]===undefined)return;try{var raw=t["$value"],num=isDim&&typeof raw==="object"?raw.value:parseFloat(raw)||0;var v=getOrCreateVar(prefix+"/"+key,col,"FLOAT",map);v.setValueForMode(modeId,num);count++;}catch(e){}});return"Imported "+count+" variables";}
 function importShadows(data){var col=findOrCreateCollection("Shadows"),modeId=col.modes[0].modeId;col.renameMode(modeId,"Value");var map=buildVarMap(col),count=0;Object.keys(data).forEach(function(key){var t=data[key];if(!t||t["$value"]===undefined)return;try{var v=getOrCreateVar("shadow/"+key,col,"STRING",map);v.setValueForMode(modeId,String(t["$value"]));count++;}catch(e){}});return"Imported "+count+" variables";}
 function importTypography(data){var col=findOrCreateCollection("Typography"),modeId=col.modes[0].modeId;col.renameMode(modeId,"Value");var map=buildVarMap(col),count=0;Object.keys(data).forEach(function(gk){var g=data[gk];if(!g||typeof g!=="object")return;Object.keys(g).forEach(function(key){var t=g[key];if(!t||t["$value"]===undefined)return;try{var vn=gk+"/"+key,val=t["$value"];if(t["$type"]==="fontFamily"){var v=getOrCreateVar(vn,col,"STRING",map);v.setValueForMode(modeId,String(val));count++;}else if(t["$type"]==="dimension"){var num=typeof val==="object"?val.value:parseFloat(val)||0;var v=getOrCreateVar(vn,col,"FLOAT",map);v.setValueForMode(modeId,num);count++;}else if(t["$type"]==="number"){var v=getOrCreateVar(vn,col,"FLOAT",map);v.setValueForMode(modeId,parseFloat(val)||0);count++;}}catch(e){}});});return"Imported "+count+" variables";}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Token Generator ──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Color math (ES5) ─────────────────────────────────────────────────────────
+function hexToRgb255(hex) {
+  var h = hex.replace("#", "");
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return {
+    r: parseInt(h.slice(0,2), 16),
+    g: parseInt(h.slice(2,4), 16),
+    b: parseInt(h.slice(4,6), 16)
+  };
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  var max = Math.max(r, g, b), min = Math.min(r, g, b);
+  var h = 0, s = 0, l = (max + min) / 2;
+  if (max !== min) {
+    var d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+function hslToRgb01(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  var r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    var p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [r, g, b];
+}
+
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1/6) return p + (q - p) * 6 * t;
+  if (t < 1/2) return q;
+  if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+  return p;
+}
+
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+// Generate 10-shade palette from a base hue/saturation
+// Lightness curve: 50=97, 100=93, 200=86, 300=75, 400=62, 500=50, 600=42, 700=33, 800=24, 900=15
+function generateShadeScale(h, s, baseL) {
+  var SHADES = ["50","100","200","300","400","500","600","700","800","900"];
+  var TARGET_L = [97, 93, 86, 75, 62, 50, 42, 33, 24, 15];
+  // Shift curve so input lightness lands at shade 500
+  var delta = baseL - 50;
+  var SAT_CURVE = [0.3, 0.4, 0.55, 0.7, 0.85, 1.0, 0.95, 0.9, 0.85, 0.8];
+  var result = {};
+  for (var i = 0; i < SHADES.length; i++) {
+    var tl = clamp(TARGET_L[i] + delta * (1 - Math.abs(i - 5) / 5), 3, 98);
+    var ts = clamp(s * SAT_CURVE[i], 0, 100);
+    var rgb = hslToRgb01(h, ts, tl);
+    result[SHADES[i]] = { "$type": "color", "$value": { colorSpace: "srgb", components: [rgb[0], rgb[1], rgb[2]], alpha: 1 } };
+  }
+  return result;
+}
+
+// ── Default palettes (Tailwind-inspired) ─────────────────────────────────────
+var DEFAULT_PALETTES = {
+  purple: { h: 271, s: 81, l: 56 },
+  green:  { h: 142, s: 71, l: 45 },
+  red:    { h: 0,   s: 84, l: 60 },
+  amber:  { h: 38,  s: 92, l: 50 },
+  gray:   { h: 220, s: 9,  l: 46 }
+};
+
+function hexToHsl(hex) {
+  var rgb = hexToRgb255(hex);
+  return rgbToHsl(rgb.r, rgb.g, rgb.b);
+}
+
+function generateColorTokens(colorOpts) {
+  var data = {};
+
+  // User-defined brand colors (raw hex, no shades)
+  data.primary = makeColorHex(colorOpts.primary);
+  if (colorOpts.secondary) data.secondary = makeColorHex(colorOpts.secondary);
+  if (colorOpts.tertiary) data.tertiary = makeColorHex(colorOpts.tertiary);
+
+  // Custom user-defined colors
+  if (colorOpts.custom && colorOpts.custom.length) {
+    for (var ci = 0; ci < colorOpts.custom.length; ci++) {
+      var cc = colorOpts.custom[ci];
+      if (cc.name && cc.hex) {
+        var safeKey = cc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        if (safeKey) data[safeKey] = makeColorHex(cc.hex);
+      }
+    }
+  }
+
+  // Auto-include defaults if not already defined by user
+  var hasCustom = function(name) {
+    if (!colorOpts.custom) return false;
+    for (var i = 0; i < colorOpts.custom.length; i++) {
+      var k = colorOpts.custom[i].name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (k === name) return true;
+    }
+    return false;
+  };
+
+  // Black, white, gray — auto-included unless user defined them
+  if (!hasCustom("black")) data.black = makeColorHex("#000000");
+  if (!hasCustom("white")) data.white = makeColorHex("#FFFFFF");
+  if (!hasCustom("gray"))  data.gray  = makeColorHex("#E3E3E3");
+
+  // Focus & error tokens — auto-included unless user defined them
+  data.focus = {
+    border: makeColorHex("#000000"),
+    color:  makeColorHex("#79797B")
+  };
+  data.error = {
+    border: makeColorHex("#E32E22"),
+    color:  makeColorHex("#E32E22")
+  };
+
+  return data;
+}
+
+function makeColor(r, g, b) {
+  return { "$type": "color", "$value": { colorSpace: "srgb", components: [r, g, b], alpha: 1 } };
+}
+
+function makeColorHex(hex) {
+  var c = hexToRgb255(hex);
+  return makeColor(c.r / 255, c.g / 255, c.b / 255);
+}
+
+function makeColorHSL(h, s, l) {
+  var rgb = hslToRgb01(h, s, l);
+  return { "$type": "color", "$value": { colorSpace: "srgb", components: rgb, alpha: 1 } };
+}
+
+function generateSemanticColors(colorOpts, mode) {
+  var pri = hexToHsl(colorOpts.primary);
+  var h = pri.h, s = pri.s;
+
+  // Secondary: from picker or auto-derived
+  var secH, secS;
+  if (colorOpts.secondary) {
+    var sec = hexToHsl(colorOpts.secondary);
+    secH = sec.h; secS = sec.s;
+  } else {
+    secH = (h + 60) % 360; secS = clamp(s - 10, 20, 90);
+  }
+
+  // Tertiary: from picker or auto-derived
+  var terH, terS;
+  if (colorOpts.tertiary) {
+    var ter = hexToHsl(colorOpts.tertiary);
+    terH = ter.h; terS = ter.s;
+  } else {
+    terH = (h + 150) % 360; terS = clamp(s - 15, 20, 85);
+  }
+
+  if (mode === "light") {
+    return {
+      brand: {
+        primary:   makeColorHSL(h, s, 50),
+        secondary: makeColorHSL(secH, secS, 55),
+        accent:    makeColorHSL(terH, terS, 50)
+      },
+      surface: {
+        base:    makeColor(1, 1, 1),
+        raised:  makeColorHSL(h, 5, 97),
+        overlay: makeColorHSL(h, 5, 95)
+      },
+      text: {
+        primary:   makeColorHSL(h, 10, 10),
+        secondary: makeColorHSL(h, 8, 40),
+        disabled:  makeColorHSL(h, 5, 65),
+        inverse:   makeColor(1, 1, 1)
+      },
+      border: {
+        "default": makeColorHSL(h, 8, 85),
+        strong:    makeColorHSL(h, 10, 70),
+        subtle:    makeColorHSL(h, 5, 92)
+      },
+      feedback: {
+        success: makeColorHSL(142, 71, 45),
+        warning: makeColorHSL(38, 92, 50),
+        error:   makeColorHSL(0, 84, 60),
+        info:    makeColorHSL(h, s, 50)
+      },
+      overlay: {
+        scrim: { "$type": "color", "$value": { colorSpace: "srgb", components: [0, 0, 0], alpha: 0.5 } }
+      }
+    };
+  } else {
+    return {
+      brand: {
+        primary:   makeColorHSL(h, clamp(s - 5, 0, 100), 60),
+        secondary: makeColorHSL(secH, clamp(secS - 5, 0, 100), 60),
+        accent:    makeColorHSL(terH, clamp(terS - 5, 0, 100), 58)
+      },
+      surface: {
+        base:    makeColorHSL(h, 10, 8),
+        raised:  makeColorHSL(h, 10, 12),
+        overlay: makeColorHSL(h, 10, 16)
+      },
+      text: {
+        primary:   makeColorHSL(h, 5, 93),
+        secondary: makeColorHSL(h, 5, 65),
+        disabled:  makeColorHSL(h, 5, 40),
+        inverse:   makeColorHSL(h, 10, 10)
+      },
+      border: {
+        "default": makeColorHSL(h, 8, 22),
+        strong:    makeColorHSL(h, 8, 35),
+        subtle:    makeColorHSL(h, 5, 15)
+      },
+      feedback: {
+        success: makeColorHSL(142, 60, 55),
+        warning: makeColorHSL(38, 80, 55),
+        error:   makeColorHSL(0, 72, 60),
+        info:    makeColorHSL(h, clamp(s - 5, 0, 100), 60)
+      },
+      overlay: {
+        scrim: { "$type": "color", "$value": { colorSpace: "srgb", components: [0, 0, 0], alpha: 0.7 } }
+      }
+    };
+  }
+}
+
+function generateSpacingData() {
+  var tokens = {};
+  var scale = [
+    ["2xs", 2], ["xs", 4], ["sm", 8], ["md", 12], ["base", 16],
+    ["lg", 20], ["xl", 24], ["2xl", 32], ["3xl", 40], ["4xl", 48],
+    ["5xl", 64], ["6xl", 96]
+  ];
+  for (var i = 0; i < scale.length; i++) {
+    tokens[scale[i][0]] = { "$type": "dimension", "$value": { value: scale[i][1], unit: "px" } };
+  }
+  return tokens;
+}
+
+function generateRadiusData() {
+  return {
+    none: { "$type": "dimension", "$value": { value: 0, unit: "px" } },
+    sm:   { "$type": "dimension", "$value": { value: 4, unit: "px" } },
+    md:   { "$type": "dimension", "$value": { value: 8, unit: "px" } },
+    lg:   { "$type": "dimension", "$value": { value: 16, unit: "px" } },
+    xl:   { "$type": "dimension", "$value": { value: 24, unit: "px" } },
+    full: { "$type": "dimension", "$value": { value: 9999, unit: "px" } }
+  };
+}
+
+function generateBorderData() {
+  return {
+    thin:    { "$type": "dimension", "$value": { value: 1, unit: "px" } },
+    "default": { "$type": "dimension", "$value": { value: 1.5, unit: "px" } },
+    thick:   { "$type": "dimension", "$value": { value: 2, unit: "px" } },
+    heavy:   { "$type": "dimension", "$value": { value: 4, unit: "px" } }
+  };
+}
+
+function generateShadowsData() {
+  return {
+    sm:  { "$type": "string", "$value": "0 1px 2px rgba(0,0,0,0.05)" },
+    md:  { "$type": "string", "$value": "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)" },
+    lg:  { "$type": "string", "$value": "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)" },
+    xl:  { "$type": "string", "$value": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)" },
+    "2xl": { "$type": "string", "$value": "0 25px 50px -12px rgba(0,0,0,0.25)" },
+    inner: { "$type": "string", "$value": "inset 0 2px 4px rgba(0,0,0,0.06)" }
+  };
+}
+
+function generateZIndexData() {
+  return {
+    hide:     { "$type": "number", "$value": -1 },
+    base:     { "$type": "number", "$value": 0 },
+    dropdown: { "$type": "number", "$value": 1000 },
+    sticky:   { "$type": "number", "$value": 1100 },
+    overlay:  { "$type": "number", "$value": 1300 },
+    modal:    { "$type": "number", "$value": 1400 },
+    toast:    { "$type": "number", "$value": 1700 }
+  };
+}
+
+function generateBreakpointsData() {
+  return {
+    sm:   { "$type": "number", "$value": 640 },
+    md:   { "$type": "number", "$value": 768 },
+    lg:   { "$type": "number", "$value": 1024 },
+    xl:   { "$type": "number", "$value": 1280 },
+    "2xl": { "$type": "number", "$value": 1536 }
+  };
+}
+
+function generateTextStylesData(fontOpts) {
+  var primary = (fontOpts && fontOpts.primary) || "Inter, sans-serif";
+  var secondary = (fontOpts && fontOpts.secondary) || primary;
+  var tertiary = (fontOpts && fontOpts.tertiary) || primary;
+
+  function ts(family, size, weight, lh, ls) {
+    return {
+      "$type": "textStyle",
+      "$value": {
+        fontFamily: family,
+        fontSize: size,
+        fontWeight: weight,
+        lineHeight: { unit: "PIXELS", value: lh },
+        letterSpacing: { value: ls || 0 }
+      }
+    };
+  }
+  return {
+    heading: {
+      h1: ts(primary, 48, 700, 56, -0.5),
+      h2: ts(primary, 36, 700, 44, -0.3),
+      h3: ts(primary, 28, 600, 36, 0),
+      h4: ts(primary, 22, 600, 28, 0),
+      h5: ts(primary, 18, 600, 24, 0)
+    },
+    body: {
+      lg: ts(secondary, 18, 400, 28, 0),
+      md: ts(secondary, 16, 400, 24, 0),
+      sm: ts(secondary, 14, 400, 20, 0)
+    },
+    caption: {
+      md: ts(tertiary, 12, 400, 16, 0.2),
+      sm: ts(tertiary, 10, 400, 14, 0.3)
+    },
+    label: {
+      lg: ts(tertiary, 14, 600, 20, 0.2),
+      md: ts(tertiary, 12, 600, 16, 0.3),
+      sm: ts(tertiary, 10, 600, 14, 0.4)
+    }
+  };
+}
+
+// ── Router ───────────────────────────────────────────────────────────────────
+function generateTokenData(category, colorOpts, fontOpts) {
+  // Normalize: if a plain string is passed, wrap it
+  if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
+  switch (category) {
+    case "colors":       return { filename: "colors.json",       data: generateColorTokens(colorOpts) };
+    case "colors-light": return { filename: "colors-light.json", data: generateSemanticColors(colorOpts, "light") };
+    case "colors-dark":  return { filename: "colors-dark.json",  data: generateSemanticColors(colorOpts, "dark") };
+    case "spacing":      return { filename: "spacing.json",      data: generateSpacingData() };
+    case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(fontOpts) };
+    case "radius":       return { filename: "radius.json",       data: generateRadiusData() };
+    case "border":       return { filename: "border.json",       data: generateBorderData() };
+    case "shadows":      return { filename: "shadows.json",      data: generateShadowsData() };
+    case "zindex":       return { filename: "z-index.json",      data: generateZIndexData() };
+    case "breakpoints":  return { filename: "breakpoints.json",  data: generateBreakpointsData() };
+    default: throw new Error("Unknown generator category: " + category);
+  }
+}

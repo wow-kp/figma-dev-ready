@@ -133,7 +133,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-step { background: #181825; border: 1px solid #313244; border-radius: 10px; overflow: hidden; }
 .wf-step-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; cursor: pointer; user-select: none; transition: background 0.12s; }
 .wf-step:not(.complete) .wf-step-header:hover { background: #1e1e2e; }
-.wf-step.complete .wf-step-header { cursor: default; }
+.wf-step.complete .wf-step-header { cursor: pointer; }
 .wf-step.collapsed .wf-step-header { border-bottom: none; }
 .wf-step:not(.collapsed) .wf-step-header { border-bottom: 1px solid #313244; }
 .wf-step-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
@@ -172,6 +172,8 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-gen-btn { padding: 3px 10px; border-radius: 5px; border: 1px solid #a6e3a140; background: transparent; color: #a6e3a1; font-size: 10px; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; white-space: nowrap; }
 .wf-gen-btn:hover { background: #a6e3a118; }
 .wf-gen-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.wf-reset-btn { width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #f38ba840; background: transparent; color: #f38ba8; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.12s; }
+.wf-reset-btn:hover { background: #f38ba818; }
 /* Color pickers */
 .wf-color-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .wf-color-slot { flex: 0 0 15%; max-width: 15%; display: flex; flex-direction: column; gap: 4px; }
@@ -714,25 +716,26 @@ function renderWorkflow(data) {
 
 // Accordion token definitions: key matches generator category, countKey maps to tokens-data counts
 var TOKEN_DEFS = [
-  { key: "colors",       cats: ["colors","colors-light","colors-dark"], countKey: "colors",       icon: "🎨", name: "Color Variables",  desc: "Fills, strokes, backgrounds",       hasConfig: "colors" },
+  { key: "colors",       cats: ["colors","colors-light"], countKey: "colors",       icon: "🎨", name: "Color Variables",  desc: "Fills, strokes, backgrounds",       hasConfig: "colors" },
   { key: "text-styles",  cats: ["text-styles"],                         countKey: "textStyles",   icon: "✏️",  name: "Text Styles",      desc: "Typography presets for all text",   hasConfig: "fonts" },
-  { key: "typography",   cats: ["typography"],                          countKey: null,           icon: "🔤", name: "Typography",        desc: "Font sizes, weights & line heights", hasConfig: "typography" },
+  { key: "typography",   cats: ["typography"],                          countKey: "typography",   icon: "🔤", name: "Typography",        desc: "Font sizes, weights & line heights", hasConfig: "typography" },
   { key: "radius",       cats: ["radius"],                              countKey: "radius",       icon: "◻️",  name: "Radius",            desc: "Corner radius tokens",              hasConfig: "radius" },
-  { key: "shadows",      cats: ["shadows"],                             countKey: "effectStyles", icon: "✨", name: "Shadows",           desc: "Shadows as reusable effect styles",  hasConfig: "shadows" },
-  { key: "border",       cats: ["border"],                              countKey: null,           icon: "▭",  name: "Border",            desc: "Border width tokens",               hasConfig: "border" },
-  { key: "zindex",       cats: ["zindex"],                              countKey: null,           icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens",             hasConfig: "zindex" },
+  { key: "shadows",      cats: ["shadows"],                             countKey: "shadows",      icon: "✨", name: "Shadows",           desc: "Shadow tokens",                      hasConfig: "shadows" },
+  { key: "border",       cats: ["border"],                              countKey: "border",       icon: "▭",  name: "Border",            desc: "Border width tokens",               hasConfig: "border" },
+  { key: "zindex",       cats: ["zindex"],                              countKey: "zindex",       icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens",             hasConfig: "zindex" },
   { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins",             hasConfig: "spacing", noCheckbox: true },
-  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: null,           icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints",            hasConfig: "breakpoints", noCheckbox: true }
+  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: "breakpoints",  icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints",            hasConfig: "breakpoints", noCheckbox: true }
 ];
 
 // Track which tokens are enabled and which panels are open
 var wfTokenEnabled = {};
 var wfTokenOpen = {};
 (function() { TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; }); })();
-var wfColors = { primary: "#3B82F6", secondary: "", tertiary: "" };
+var wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
 var wfCustomColors = []; // { name: "Success", hex: "#22C55E" }
 var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
 var wfGenerating = false;
+var wfGenerated = false;
 
 var TS_GROUPS = ["heading","body","links","buttons","input","label"];
 var wfTextStyles = [
@@ -811,6 +814,52 @@ var wfZIndex = [
 ];
 var wfZiNextId = 8;
 
+// ── Settings persistence ──────────────────────────────────────────────────
+function collectSettings() {
+  return {
+    colors: JSON.parse(JSON.stringify(wfColors)),
+    customColors: JSON.parse(JSON.stringify(wfCustomColors)),
+    fonts: JSON.parse(JSON.stringify(wfFonts)),
+    textStyles: JSON.parse(JSON.stringify(wfTextStyles)),
+    tsNextId: wfTsNextId,
+    typography: JSON.parse(JSON.stringify(wfTypography)),
+    spacing: JSON.parse(JSON.stringify(wfSpacing)),
+    radius: JSON.parse(JSON.stringify(wfRadius)),
+    shadows: JSON.parse(JSON.stringify(wfShadows)),
+    borders: JSON.parse(JSON.stringify(wfBorders)),
+    bdNextId: wfBdNextId,
+    zindex: JSON.parse(JSON.stringify(wfZIndex)),
+    ziNextId: wfZiNextId,
+    tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled))
+  };
+}
+
+var _saveTimer = null;
+function saveSettings() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(function() {
+    parent.postMessage({ pluginMessage: { type: "save-settings", settings: collectSettings() } }, "*");
+  }, 400);
+}
+
+function applyLoadedSettings(s) {
+  if (!s) return;
+  if (s.colors) { wfColors.primary = s.colors.primary || wfColors.primary; wfColors.secondary = s.colors.secondary || ""; wfColors.tertiary = s.colors.tertiary || ""; wfColors.textColor = s.colors.textColor || wfColors.textColor; }
+  if (s.customColors) wfCustomColors = s.customColors;
+  if (s.fonts) { wfFonts.primary = s.fonts.primary || wfFonts.primary; wfFonts.secondary = s.fonts.secondary || ""; wfFonts.tertiary = s.fonts.tertiary || ""; }
+  if (s.textStyles) wfTextStyles = s.textStyles;
+  if (s.tsNextId) wfTsNextId = s.tsNextId;
+  if (s.typography) wfTypography = s.typography;
+  if (s.spacing) wfSpacing = s.spacing;
+  if (s.radius) wfRadius = s.radius;
+  if (s.shadows) wfShadows = s.shadows;
+  if (s.borders) wfBorders = s.borders;
+  if (s.bdNextId) wfBdNextId = s.bdNextId;
+  if (s.zindex) wfZIndex = s.zindex;
+  if (s.ziNextId) wfZiNextId = s.ziNextId;
+  if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
+}
+
 function getWfColors() {
   return {
     primary:   wfColors.primary || "#3B82F6",
@@ -865,6 +914,7 @@ function buildColorSlot(key, label, isOptional) {
       swatch.style.background = "";
       swatch.classList.add("empty");
       clearBtn.remove();
+      saveSettings();
     });
     pick.appendChild(clearBtn);
   }
@@ -1034,6 +1084,7 @@ function buildFontFamilyPicker(key, label, isOptional) {
     var emptyOpt = document.createElement("option");
     emptyOpt.value = "";
     emptyOpt.textContent = "Same as Primary";
+    if (!val) emptyOpt.selected = true;
     sel.appendChild(emptyOpt);
   }
   var matched = false;
@@ -1052,9 +1103,14 @@ function buildFontFamilyPicker(key, label, isOptional) {
     custom.selected = true;
     sel.appendChild(custom);
   }
+  // Ensure the select element's value matches the state
+  if (matched || (isOptional && !val)) {
+    sel.value = val;
+  }
   sel.addEventListener("change", function() {
     wfFonts[key] = sel.value;
     sel.style.fontFamily = sel.value || "inherit";
+    saveSettings();
   });
   slot.appendChild(sel);
   return slot;
@@ -1167,7 +1223,7 @@ function buildTextStylesPanel(panel) {
       delBtn.title = "Remove style";
       delBtn.addEventListener("click", function() {
         wfTextStyles = wfTextStyles.filter(function(x) { return x.id !== s.id; });
-        buildTextStylesPanel(panel);
+        buildTextStylesPanel(panel); saveSettings();
       });
       row.appendChild(delBtn);
 
@@ -1180,7 +1236,7 @@ function buildTextStylesPanel(panel) {
     addBtn.textContent = "+ Add style to " + group;
     addBtn.addEventListener("click", function() {
       wfTextStyles.push({ id: wfTsNextId++, group: group, name: "new", fontRole: "primary", fontSize: "16", fontWeight: "400", lineHeight: "1.5", letterSpacing: "0", paragraphSpacing: "0" });
-      buildTextStylesPanel(panel);
+      buildTextStylesPanel(panel); saveSettings();
     });
     panel.appendChild(addBtn);
   });
@@ -1320,7 +1376,7 @@ function buildRadiusPanel(panel, acc, chk) {
     delBtn.addEventListener("click", function() {
       wfRadius = wfRadius.filter(function(x) { return x !== r; });
       if (wfRadius.length === 0) syncTokenEnabled("radius", acc, chk, false);
-      buildRadiusPanel(panel, acc, chk);
+      buildRadiusPanel(panel, acc, chk); saveSettings();
     });
     card.appendChild(delBtn);
 
@@ -1336,7 +1392,7 @@ function buildRadiusPanel(panel, acc, chk) {
     var wasEmpty = wfRadius.length === 0;
     wfRadius.push({ id: wfRadNextId++, name: "new", value: "8" });
     if (wasEmpty) syncTokenEnabled("radius", acc, chk, true);
-    buildRadiusPanel(panel, acc, chk);
+    buildRadiusPanel(panel, acc, chk); saveSettings();
   });
   panel.appendChild(addBtn);
 }
@@ -1514,7 +1570,7 @@ function buildShadowsPanel(panel, acc, chk) {
     delBtn.addEventListener("click", function() {
       wfShadows = wfShadows.filter(function(x) { return x !== s; });
       if (wfShadows.length === 0) syncTokenEnabled("shadows", acc, chk, false);
-      buildShadowsPanel(panel, acc, chk);
+      buildShadowsPanel(panel, acc, chk); saveSettings();
     });
     row.appendChild(delBtn);
 
@@ -1529,7 +1585,7 @@ function buildShadowsPanel(panel, acc, chk) {
     var wasEmpty = wfShadows.length === 0;
     wfShadows.push({ name: "new", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" });
     if (wasEmpty) syncTokenEnabled("shadows", acc, chk, true);
-    buildShadowsPanel(panel, acc, chk);
+    buildShadowsPanel(panel, acc, chk); saveSettings();
   });
   panel.appendChild(addBtn);
 }
@@ -1572,7 +1628,7 @@ function buildBorderPanel(panel, acc, chk) {
     delBtn.addEventListener("click", function() {
       wfBorders = wfBorders.filter(function(x) { return x !== b; });
       if (wfBorders.length === 0) syncTokenEnabled("border", acc, chk, false);
-      buildBorderPanel(panel, acc, chk);
+      buildBorderPanel(panel, acc, chk); saveSettings();
     });
     row.appendChild(delBtn);
 
@@ -1586,7 +1642,7 @@ function buildBorderPanel(panel, acc, chk) {
     var wasEmpty = wfBorders.length === 0;
     wfBorders.push({ id: wfBdNextId++, name: "new", value: "1" });
     if (wasEmpty) syncTokenEnabled("border", acc, chk, true);
-    buildBorderPanel(panel, acc, chk);
+    buildBorderPanel(panel, acc, chk); saveSettings();
   });
   panel.appendChild(addBtn);
 }
@@ -1621,7 +1677,7 @@ function buildZIndexPanel(panel, acc, chk) {
     delBtn.addEventListener("click", function() {
       wfZIndex = wfZIndex.filter(function(x) { return x !== z; });
       if (wfZIndex.length === 0) syncTokenEnabled("zindex", acc, chk, false);
-      buildZIndexPanel(panel, acc, chk);
+      buildZIndexPanel(panel, acc, chk); saveSettings();
     });
     row.appendChild(delBtn);
 
@@ -1635,7 +1691,7 @@ function buildZIndexPanel(panel, acc, chk) {
     var wasEmpty = wfZIndex.length === 0;
     wfZIndex.push({ id: wfZiNextId++, name: "new", value: "0" });
     if (wasEmpty) syncTokenEnabled("zindex", acc, chk, true);
-    buildZIndexPanel(panel, acc, chk);
+    buildZIndexPanel(panel, acc, chk); saveSettings();
   });
   panel.appendChild(addBtn);
 }
@@ -1663,7 +1719,6 @@ function renderStep2(container) {
   var someHaveTokens = enabledWithCounts.some(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
   var indicatorColor = locked ? "red" : (allHaveTokens ? "green" : (someHaveTokens ? "yellow" : "red"));
 
-  if (allHaveTokens && !locked) wfFormState.step2Open = false;
   var stepOpen = locked ? false : wfFormState.step2Open;
 
   var step = document.createElement("div");
@@ -1728,6 +1783,7 @@ function renderStep2(container) {
           acc.classList.toggle("enabled", chk.checked);
           acc.classList.toggle("disabled", !chk.checked);
           if (!chk.checked) { wfTokenOpen[def.key] = false; acc.classList.remove("open"); }
+          saveSettings();
         });
       }
       hdr.appendChild(chk);
@@ -1775,6 +1831,7 @@ function renderStep2(container) {
           colorGrid.appendChild(buildColorSlot("primary", "Primary", false));
           colorGrid.appendChild(buildColorSlot("secondary", "Secondary", true));
           colorGrid.appendChild(buildColorSlot("tertiary", "Tertiary", true));
+          colorGrid.appendChild(buildColorSlot("textColor", "Text Color", false));
 
           var rebuildCustomColors = (function(grid) {
             return function rebuild() {
@@ -1789,7 +1846,7 @@ function renderStep2(container) {
               addSlot.innerHTML = "<div class='wf-color-label-row' style='opacity:0'>.</div><div class='wf-color-pick' style='justify-content:center;'><button style='width:28px;height:28px;border-radius:6px;border:2px dashed #45475a;background:transparent;color:#6c7086;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color 0.15s,color 0.15s;' title='Add custom color'>+</button></div>";
               addSlot.querySelector("button").addEventListener("click", function() {
                 wfCustomColors.push({ name: "", hex: "" });
-                rebuild();
+                rebuild(); saveSettings();
               });
               grid.appendChild(addSlot);
             };
@@ -1798,7 +1855,7 @@ function renderStep2(container) {
 
           var autoNote = document.createElement("div");
           autoNote.style.cssText = "font-size:9px;color:#585b70;margin-top:6px;";
-          autoNote.textContent = "Black, white, gray, focus & error colors are auto-included.";
+          autoNote.textContent = "Black, white, gray, focus & error colors are auto-included. Semantic brand, text, border & overlay tokens are generated automatically.";
 
           panel.appendChild(colorGrid);
           panel.appendChild(autoNote);
@@ -1842,52 +1899,68 @@ function renderStep2(container) {
       list.appendChild(acc);
     });
 
-    // ── Generate all button ──
-    var genAllWrap = document.createElement("div");
-    genAllWrap.style.cssText = "padding: 8px 10px;";
-    var genAllBtn = document.createElement("button");
-    genAllBtn.className = "wf-gen-btn";
-    genAllBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
-    genAllBtn.textContent = "Generate Enabled Tokens";
-    genAllBtn.addEventListener("click", function() {
-      if (wfGenerating) return;
-      wfGenerating = true;
-      genAllBtn.disabled = true; genAllBtn.textContent = "Generating…";
-      var colors = getWfColors();
-      var customCols = wfCustomColors.filter(function(c) { return c.name && /^#[0-9A-Fa-f]{6}$/.test(c.hex); });
-      // Collect all enabled categories
-      var enabledCats = [];
-      TOKEN_DEFS.forEach(function(d) {
-        if (wfTokenEnabled[d.key]) {
-          for (var i = 0; i < d.cats.length; i++) enabledCats.push(d.cats[i]);
-        }
+    // ── Generate / Reset buttons ──
+    var btnWrap = document.createElement("div");
+    btnWrap.style.cssText = "padding: 8px 10px;";
+
+    if (wfGenerated || allHaveTokens) {
+      var resetBtn = document.createElement("button");
+      resetBtn.className = "wf-reset-btn";
+      resetBtn.textContent = "Reset Variables & Text Styles";
+      resetBtn.addEventListener("click", function() {
+        resetBtn.disabled = true; resetBtn.textContent = "Resetting…";
+        parent.postMessage({ pluginMessage: { type: "reset-tokens" } }, "*");
       });
-      parent.postMessage({ pluginMessage: {
-        type: "generate-tokens",
-        brandColor: colors.primary,
-        secondaryColor: colors.secondary,
-        tertiaryColor: colors.tertiary,
-        customColors: customCols,
-        textStyles: wfTextStyles,
-        fontFamilies: {
-          primary: wfFonts.primary || "Inter, sans-serif",
-          secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
-          tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
-        },
-        typography: wfTypography,
-        spacing: wfSpacing,
-        radius: wfRadius,
-        shadows: wfShadows,
-        borders: wfBorders,
-        zindex: wfZIndex,
-        enabledCategories: enabledCats
-      } }, "*");
-    });
-    genAllWrap.appendChild(genAllBtn);
-    list.appendChild(genAllWrap);
+      btnWrap.appendChild(resetBtn);
+    } else {
+      var genAllBtn = document.createElement("button");
+      genAllBtn.className = "wf-gen-btn";
+      genAllBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+      genAllBtn.textContent = "Generate Enabled Tokens";
+      genAllBtn.addEventListener("click", function() {
+        if (wfGenerating) return;
+        wfGenerating = true;
+        genAllBtn.disabled = true; genAllBtn.textContent = "Generating…";
+        var colors = getWfColors();
+        var customCols = wfCustomColors.filter(function(c) { return c.name && /^#[0-9A-Fa-f]{6}$/.test(c.hex); });
+        var enabledCats = [];
+        TOKEN_DEFS.forEach(function(d) {
+          if (wfTokenEnabled[d.key]) {
+            for (var i = 0; i < d.cats.length; i++) enabledCats.push(d.cats[i]);
+          }
+        });
+        parent.postMessage({ pluginMessage: {
+          type: "generate-tokens",
+          brandColor: colors.primary,
+          secondaryColor: colors.secondary,
+          tertiaryColor: colors.tertiary,
+          textColor: wfColors.textColor || "#1A1A1A",
+          customColors: customCols,
+          textStyles: wfTextStyles,
+          fontFamilies: {
+            primary: wfFonts.primary || "Inter, sans-serif",
+            secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
+            tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
+          },
+          typography: wfTypography,
+          spacing: wfSpacing,
+          radius: wfRadius,
+          shadows: wfShadows,
+          borders: wfBorders,
+          zindex: wfZIndex,
+          enabledCategories: enabledCats
+        } }, "*");
+      });
+      btnWrap.appendChild(genAllBtn);
+    }
+    list.appendChild(btnWrap);
 
     body.appendChild(list);
   }
+
+  // Auto-save settings on any input/change within step 2
+  body.addEventListener("input", function() { saveSettings(); });
+  body.addEventListener("change", function() { saveSettings(); });
 
   step.appendChild(body);
   container.appendChild(step);
@@ -2021,6 +2094,11 @@ function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].st
 // ── Message handler ────────────────────────────────────────────────────────
 window.onmessage=function(event){
   var msg=event.data.pluginMessage; if(!msg)return;
+  if(msg.type==="load-settings"){
+    applyLoadedSettings(msg.settings);
+    // Re-render workflow if it's visible
+    var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
+  }
   if(msg.type==="audit-results"){renderAudit(msg.results);}
   if(msg.type==="pages-data"){
     try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
@@ -2036,7 +2114,14 @@ window.onmessage=function(event){
   }
   if(msg.type==="generate-complete"){
     wfGenerating = false;
+    wfGenerated = true;
     // tokens-data is sent right after, which triggers a full re-render of step 2
+  }
+  if(msg.type==="reset-complete"){
+    wfGenerated = false;
+    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+    var rc = document.getElementById("wf-container");
+    if (rc) renderStep2(rc);
   }
   if(msg.type==="cover-generated"){
     wfFormState.generated = true;

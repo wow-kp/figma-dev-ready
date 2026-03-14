@@ -1,5 +1,15 @@
 figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for Designers by wowbrands" });
 
+// Load saved settings and send to UI
+(async function() {
+  try {
+    var saved = await figma.clientStorage.getAsync("wf-settings");
+    if (saved) {
+      figma.ui.postMessage({ type: "load-settings", settings: saved });
+    }
+  } catch(e) {}
+})();
+
 figma.on("selectionchange", function() { pushDebugData(); });
 
 function pushDebugData() {
@@ -130,7 +140,7 @@ figma.ui.onmessage = async function(msg) {
       var textStyles = figma.getLocalTextStyles();
       var effectStyles = figma.getLocalEffectStyles();
 
-      var colorVars = 0, spacingVars = 0, radiusVars = 0, otherVars = 0;
+      var colorVars = 0, spacingVars = 0, radiusVars = 0, typographyVars = 0, shadowVars = 0, borderVars = 0, zindexVars = 0, breakpointVars = 0, otherVars = 0;
       for (var vi = 0; vi < allVars.length; vi++) {
         var v = allVars[vi];
         var colName = "";
@@ -138,8 +148,13 @@ figma.ui.onmessage = async function(msg) {
           if (collections[ci].id === v.variableCollectionId) { colName = collections[ci].name.toLowerCase(); break; }
         }
         if (v.resolvedType === "COLOR") colorVars++;
-        else if (v.resolvedType === "FLOAT" && (colName.indexOf("spacing") !== -1 || colName.indexOf("gap") !== -1)) spacingVars++;
-        else if (v.resolvedType === "FLOAT" && (colName.indexOf("radius") !== -1 || colName.indexOf("corner") !== -1)) radiusVars++;
+        else if (colName.indexOf("spacing") !== -1 || colName.indexOf("gap") !== -1) spacingVars++;
+        else if (colName.indexOf("radius") !== -1 || colName.indexOf("corner") !== -1) radiusVars++;
+        else if (colName.indexOf("typography") !== -1 || colName.indexOf("font") !== -1) typographyVars++;
+        else if (colName.indexOf("shadow") !== -1) shadowVars++;
+        else if (colName.indexOf("border") !== -1) borderVars++;
+        else if (colName.indexOf("z-index") !== -1 || colName.indexOf("zindex") !== -1) zindexVars++;
+        else if (colName.indexOf("breakpoint") !== -1) breakpointVars++;
         else otherVars++;
       }
 
@@ -147,6 +162,11 @@ figma.ui.onmessage = async function(msg) {
         colors: colorVars,
         spacing: spacingVars,
         radius: radiusVars,
+        typography: typographyVars,
+        shadows: shadowVars,
+        border: borderVars,
+        zindex: zindexVars,
+        breakpoints: breakpointVars,
         other: otherVars,
         textStyles: textStyles.length,
         effectStyles: effectStyles.length,
@@ -163,6 +183,7 @@ figma.ui.onmessage = async function(msg) {
     var tertiaryHex = msg.tertiaryColor || "";
     var colorOpts = {
       primary: brandHex, secondary: secondaryHex, tertiary: tertiaryHex,
+      textColor: msg.textColor || "#1A1A1A",
       custom: msg.customColors || []
     };
     var fontFamilies = msg.fontFamilies || { primary: "Inter, sans-serif", secondary: "Inter, sans-serif", tertiary: "Inter, sans-serif" };
@@ -179,7 +200,7 @@ figma.ui.onmessage = async function(msg) {
     var zindexData = msg.zindex || [];
     var typographyData = msg.typography || { sizes: [], weights: [], lineHeights: [] };
     var enabledCats = msg.enabledCategories || null;
-    var GEN_ORDER = ["colors","colors-light","colors-dark","typography","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
+    var GEN_ORDER = ["colors","colors-light","typography","spacing","text-styles","radius","border","shadows","zindex","breakpoints"];
 
     // Filter to only enabled categories if provided
     var catsToRun = enabledCats ? GEN_ORDER.filter(function(c) { return enabledCats.indexOf(c) !== -1; }) : GEN_ORDER;
@@ -193,6 +214,26 @@ figma.ui.onmessage = async function(msg) {
         figma.ui.postMessage({ type:"generate-result", category:catsToRun[gi], success:false, message:String(e) });
       }
     }
+    // Generate specimen pages (Foundations & Components)
+    try {
+      var specimenMsg = {
+        colorOpts: colorOpts,
+        fontFamilies: fontFamilies,
+        textStylesData: textStylesData,
+        spacing: spacingData,
+        radius: radiusData,
+        shadows: shadowsData,
+        borders: bordersData,
+        zindex: zindexData,
+        brandColor: brandHex,
+        typography: typographyData
+      };
+      await generateFoundationsPage(specimenMsg);
+      await generateComponentsPage(specimenMsg);
+    } catch(e) {
+      figma.ui.postMessage({ type:"generate-result", category:"specimens", success:false, message:"Specimen pages: " + String(e) });
+    }
+
     figma.ui.postMessage({ type:"generate-complete" });
     // Refresh token counts for workflow step 2
     try {
@@ -200,10 +241,51 @@ figma.ui.onmessage = async function(msg) {
       var cols2 = figma.variables.getLocalVariableCollections();
       var ts2 = figma.getLocalTextStyles();
       var es2 = figma.getLocalEffectStyles();
-      var cv2=0,sv2=0,rv2=0,ov2=0;
-      for(var vi2=0;vi2<allVars2.length;vi2++){var v2=allVars2[vi2];var cn2="";for(var ci2=0;ci2<cols2.length;ci2++){if(cols2[ci2].id===v2.variableCollectionId){cn2=cols2[ci2].name.toLowerCase();break;}}if(v2.resolvedType==="COLOR")cv2++;else if(v2.resolvedType==="FLOAT"&&(cn2.indexOf("spacing")!==-1||cn2.indexOf("gap")!==-1))sv2++;else if(v2.resolvedType==="FLOAT"&&(cn2.indexOf("radius")!==-1||cn2.indexOf("corner")!==-1))rv2++;else ov2++;}
-      figma.ui.postMessage({type:"tokens-data",tokens:{colors:cv2,spacing:sv2,radius:rv2,other:ov2,textStyles:ts2.length,effectStyles:es2.length,collections:cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};})}});
+      var cv2=0,sv2=0,rv2=0,tv2=0,shv2=0,bv2=0,zv2=0,bpv2=0,ov2=0;
+      for(var vi2=0;vi2<allVars2.length;vi2++){var v2=allVars2[vi2];var cn2="";for(var ci2=0;ci2<cols2.length;ci2++){if(cols2[ci2].id===v2.variableCollectionId){cn2=cols2[ci2].name.toLowerCase();break;}}if(v2.resolvedType==="COLOR")cv2++;else if(cn2.indexOf("spacing")!==-1||cn2.indexOf("gap")!==-1)sv2++;else if(cn2.indexOf("radius")!==-1||cn2.indexOf("corner")!==-1)rv2++;else if(cn2.indexOf("typography")!==-1||cn2.indexOf("font")!==-1)tv2++;else if(cn2.indexOf("shadow")!==-1)shv2++;else if(cn2.indexOf("border")!==-1)bv2++;else if(cn2.indexOf("z-index")!==-1||cn2.indexOf("zindex")!==-1)zv2++;else if(cn2.indexOf("breakpoint")!==-1)bpv2++;else ov2++;}
+      figma.ui.postMessage({type:"tokens-data",tokens:{colors:cv2,spacing:sv2,radius:rv2,typography:tv2,shadows:shv2,border:bv2,zindex:zv2,breakpoints:bpv2,other:ov2,textStyles:ts2.length,effectStyles:es2.length,collections:cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};})}});
     } catch(e){}
+  }
+
+  if (msg.type === "save-settings") {
+    try {
+      await figma.clientStorage.setAsync("wf-settings", msg.settings);
+    } catch(e) {}
+  }
+
+  if (msg.type === "reset-tokens") {
+    try {
+      // Remove all local text styles
+      var localTS = figma.getLocalTextStyles();
+      for (var ti = 0; ti < localTS.length; ti++) {
+        localTS[ti].remove();
+      }
+      // Remove all local variables and their collections
+      var localVars = figma.variables.getLocalVariables();
+      for (var vi = 0; vi < localVars.length; vi++) {
+        localVars[vi].remove();
+      }
+      var localCols = figma.variables.getLocalVariableCollections();
+      for (var ci = 0; ci < localCols.length; ci++) {
+        localCols[ci].remove();
+      }
+      // Remove specimen frames from Foundations and Components pages
+      var specimenHints = ["foundations", "components"];
+      for (var spi = 0; spi < specimenHints.length; spi++) {
+        for (var pi = 0; pi < figma.root.children.length; pi++) {
+          if (figma.root.children[pi].name.toLowerCase().replace(/[^a-z]/g, "").indexOf(specimenHints[spi]) !== -1) {
+            var spChildren = figma.root.children[pi].children.slice();
+            for (var sci = 0; sci < spChildren.length; sci++) {
+              try { spChildren[sci].remove(); } catch(e) {}
+            }
+            break;
+          }
+        }
+      }
+      figma.ui.postMessage({ type: "reset-complete" });
+    } catch(e) {
+      figma.ui.postMessage({ type: "reset-complete" });
+    }
   }
 };
 
@@ -728,6 +810,1097 @@ async function generateCover(info) {
   figma.viewport.scrollAndZoomIntoView([frame]);
 }
 
+// ── Placeholder image helper ────────────────────────────────────────────────
+// Generates a minimal single-color PNG and returns a Figma image hash
+function createPlaceholderImageHash(r, g, b) {
+  // CRC32 table
+  var crcT = [];
+  for (var n = 0; n < 256; n++) {
+    var c = n;
+    for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    crcT[n] = c;
+  }
+  function crc32(buf) {
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < buf.length; i++) crc = crcT[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  function chunk(type, data) {
+    var tb = [type.charCodeAt(0), type.charCodeAt(1), type.charCodeAt(2), type.charCodeAt(3)];
+    var crcIn = tb.concat(data);
+    var cv = crc32(crcIn);
+    var len = data.length;
+    return [(len >>> 24) & 0xFF, (len >>> 16) & 0xFF, (len >>> 8) & 0xFF, len & 0xFF]
+      .concat(tb).concat(data)
+      .concat([(cv >>> 24) & 0xFF, (cv >>> 16) & 0xFF, (cv >>> 8) & 0xFF, cv & 0xFF]);
+  }
+  // IHDR: 1x1, 8-bit RGB
+  var ihdr = chunk("IHDR", [0,0,0,1, 0,0,0,1, 8, 2, 0, 0, 0]);
+  // IDAT: zlib stored block wrapping filter-byte + RGB
+  var raw = [0x00, r, g, b];
+  var s1 = 1, s2 = 1;
+  for (var ai = 0; ai < raw.length; ai++) { s1 = (s1 + raw[ai]) % 65521; s2 = (s2 + s1) % 65521; }
+  var adler = ((s2 << 16) | s1) >>> 0;
+  var lenLo = raw.length & 0xFF, lenHi = (raw.length >> 8) & 0xFF;
+  var idat = chunk("IDAT", [0x78, 0x01, 0x01, lenLo, lenHi, lenLo ^ 0xFF, lenHi ^ 0xFF]
+    .concat(raw)
+    .concat([(adler >>> 24) & 0xFF, (adler >>> 16) & 0xFF, (adler >>> 8) & 0xFF, adler & 0xFF]));
+  var iend = chunk("IEND", []);
+  var sig = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+  var all = sig.concat(ihdr).concat(idat).concat(iend);
+  var img = figma.createImage(new Uint8Array(all));
+  return img.hash;
+}
+
+// ── Specimen helpers ─────────────────────────────────────────────────────────
+function findPageByHint(hint) {
+  for (var i = 0; i < figma.root.children.length; i++) {
+    if (figma.root.children[i].name.toLowerCase().replace(/[^a-z]/g, "").indexOf(hint) !== -1) {
+      return figma.root.children[i];
+    }
+  }
+  // Auto-create the page if not found
+  var pageName = hint.charAt(0).toUpperCase() + hint.slice(1);
+  var newPage = figma.createPage();
+  newPage.name = pageName;
+  return newPage;
+}
+
+function hexToFigma(hex) {
+  var h = hex.replace("#", "");
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return { r: parseInt(h.slice(0,2),16)/255, g: parseInt(h.slice(2,4),16)/255, b: parseInt(h.slice(4,6),16)/255 };
+}
+
+function createSpecText(parent, text, x, y, size, style, color, opacity) {
+  var t = figma.createText();
+  var s = style || "Regular";
+  // Try exact style, then common variants
+  var variants = [s];
+  if (s === "SemiBold") variants.push("Semi Bold", "Semibold");
+  else if (s === "Semi Bold") variants.push("SemiBold", "Semibold");
+  else if (s === "ExtraBold") variants.push("Extra Bold", "Extrabold");
+  else if (s === "ExtraLight") variants.push("Extra Light", "Extralight");
+  variants.push("Regular"); // last resort
+  for (var vi = 0; vi < variants.length; vi++) {
+    try { t.fontName = { family: "Inter", style: variants[vi] }; break; } catch(e) {}
+  }
+  t.fontSize = size || 14;
+  t.characters = text;
+  t.fills = [{ type: "SOLID", color: color || { r:0.2, g:0.2, b:0.2 }, opacity: opacity !== undefined ? opacity : 1 }];
+  t.x = x; t.y = y;
+  parent.appendChild(t);
+  return t;
+}
+
+function parseCssShadow(str) {
+  if (!str) return null;
+  var inset = /\binset\b/.test(str);
+  if (inset) return null; // skip inset for specimens
+  var clean = str.replace(/\binset\b/, "").trim();
+  var colorMatch = clean.match(/rgba?\([^)]+\)/) || clean.match(/#[0-9a-fA-F]{3,8}/);
+  var color = colorMatch ? colorMatch[0] : "rgba(0,0,0,0.2)";
+  var nums = clean.replace(color, "").trim().split(/\s+/).map(function(v) { return parseFloat(v) || 0; });
+  // Parse rgba color
+  var figColor = { r: 0, g: 0, b: 0 };
+  var alpha = 1;
+  var rgbaMatch = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\)/);
+  if (rgbaMatch) {
+    figColor = { r: parseFloat(rgbaMatch[1])/255, g: parseFloat(rgbaMatch[2])/255, b: parseFloat(rgbaMatch[3])/255 };
+    alpha = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
+  } else if (color.charAt(0) === "#") {
+    figColor = hexToFigma(color);
+  }
+  return {
+    type: "DROP_SHADOW", visible: true, blendMode: "NORMAL",
+    color: { r: figColor.r, g: figColor.g, b: figColor.b, a: alpha },
+    offset: { x: nums[0] || 0, y: nums[1] || 0 },
+    radius: nums[2] || 0,
+    spread: nums[3] || 0
+  };
+}
+
+// ── Foundations page ─────────────────────────────────────────────────────────
+async function generateFoundationsPage(msg) {
+  var page = findPageByHint("foundations");
+  if (!page) return;
+
+  // Load all Inter + user font weights using fallback-aware loader
+  var stdWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+  for (var iw = 0; iw < stdWeights.length; iw++) {
+    await loadFontWithFallback("Inter", stdWeights[iw]);
+  }
+
+  var fontFamilies = msg.fontFamilies || {};
+  var userFonts = [fontFamilies.primary, fontFamilies.secondary, fontFamilies.tertiary].filter(Boolean);
+  var loadedFamilies = {};
+  for (var fi = 0; fi < userFonts.length; fi++) {
+    var fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
+    if (loadedFamilies[fam] || fam === "Inter") continue;
+    loadedFamilies[fam] = true;
+    for (var fw = 0; fw < stdWeights.length; fw++) {
+      await loadFontWithFallback(fam, stdWeights[fw]);
+    }
+  }
+
+  // Remove existing specimens
+  var existing = page.children.filter(function(n) { return n.name === "Foundations"; });
+  existing.forEach(function(n) { try { n.remove(); } catch(e) {} });
+
+  var W = 1440, PAD = 80, SECTION_GAP = 60;
+  var frame = figma.createFrame();
+  frame.name = "Foundations";
+  frame.clipsContent = false;
+  frame.resize(W, 20000);
+  frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
+  page.appendChild(frame);
+
+  var y = PAD;
+
+  // ── Section title helper ──
+  function sectionTitle(title) {
+    var t = createSpecText(frame, title, PAD, y, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
+    y += t.height + 8;
+    var div = figma.createRectangle();
+    div.resize(W - PAD * 2, 1);
+    div.x = PAD; div.y = y;
+    div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
+    frame.appendChild(div);
+    y += 24;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // COLORS
+  // ══════════════════════════════════════════════════════════════════════════
+  var colorOpts = msg.colorOpts || {};
+  var allColors = [];
+  if (colorOpts.primary) allColors.push({ name: "primary", hex: colorOpts.primary });
+  if (colorOpts.secondary) allColors.push({ name: "secondary", hex: colorOpts.secondary });
+  if (colorOpts.tertiary) allColors.push({ name: "tertiary", hex: colorOpts.tertiary });
+  if (colorOpts.textColor) allColors.push({ name: "text", hex: colorOpts.textColor });
+  var customs = colorOpts.custom || [];
+  for (var ci = 0; ci < customs.length; ci++) {
+    if (customs[ci].name && customs[ci].hex) allColors.push(customs[ci]);
+  }
+  // Auto colors
+  var autoColors = [
+    { name: "black", hex: "#000000" }, { name: "white", hex: "#FFFFFF" }, { name: "gray", hex: "#E3E3E3" },
+    { name: "focus-border", hex: "#000000" }, { name: "focus-color", hex: "#79797B" },
+    { name: "error-border", hex: "#E32E22" }, { name: "error-color", hex: "#E32E22" }
+  ];
+  for (var ai = 0; ai < autoColors.length; ai++) {
+    var hasIt = allColors.some(function(c) { return c.name === autoColors[ai].name; });
+    if (!hasIt) allColors.push(autoColors[ai]);
+  }
+
+  if (allColors.length > 0) {
+    sectionTitle("Colors");
+    var SWATCH_W = 120, SWATCH_H = 80, SWATCH_GAP = 16, COLS = Math.min(8, Math.floor((W - PAD * 2 + SWATCH_GAP) / (SWATCH_W + SWATCH_GAP)));
+    for (var si = 0; si < allColors.length; si++) {
+      var col = si % COLS;
+      var row = Math.floor(si / COLS);
+      var sx = PAD + col * (SWATCH_W + SWATCH_GAP);
+      var sy = y + row * (SWATCH_H + 36);
+
+      var rect = figma.createRectangle();
+      rect.name = "color/" + allColors[si].name;
+      rect.resize(SWATCH_W, SWATCH_H);
+      rect.x = sx; rect.y = sy;
+      rect.cornerRadius = 8;
+      rect.fills = [{ type: "SOLID", color: hexToFigma(allColors[si].hex) }];
+      rect.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
+      rect.strokeWeight = 1;
+      frame.appendChild(rect);
+
+      createSpecText(frame, allColors[si].name, sx, sy + SWATCH_H + 4, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
+      createSpecText(frame, allColors[si].hex.toUpperCase(), sx, sy + SWATCH_H + 18, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
+    }
+    var colorRows = Math.ceil(allColors.length / COLS);
+    y += colorRows * (SWATCH_H + 36) + SECTION_GAP;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FONT FAMILIES
+  // ══════════════════════════════════════════════════════════════════════════
+  try {
+    var ff = msg.fontFamilies || {};
+    var ffEntries = [];
+    if (ff.primary) ffEntries.push({ role: "Primary", family: ff.primary });
+    if (ff.secondary && ff.secondary !== ff.primary) ffEntries.push({ role: "Secondary", family: ff.secondary });
+    if (ff.tertiary && ff.tertiary !== ff.primary) ffEntries.push({ role: "Tertiary", family: ff.tertiary });
+
+    if (ffEntries.length > 0) {
+      sectionTitle("Font Families");
+      var FF_CARD_W = 380, FF_CARD_H = 160, FF_GAP = 24;
+      var ffCols = Math.min(ffEntries.length, Math.floor((W - PAD * 2 + FF_GAP) / (FF_CARD_W + FF_GAP)));
+
+      for (var ffi = 0; ffi < ffEntries.length; ffi++) {
+        var ffe = ffEntries[ffi];
+        var ffCol = ffi % ffCols;
+        var ffRow = Math.floor(ffi / ffCols);
+        var ffX = PAD + ffCol * (FF_CARD_W + FF_GAP);
+        var ffY = y + ffRow * (FF_CARD_H + FF_GAP);
+        var ffFam = ffe.family.split(",")[0].trim().replace(/['"]/g, "");
+
+        // Card background
+        var ffCard = figma.createFrame();
+        ffCard.name = "font/" + ffe.role.toLowerCase();
+        ffCard.resize(FF_CARD_W, FF_CARD_H);
+        ffCard.x = ffX; ffCard.y = ffY;
+        ffCard.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+        ffCard.cornerRadius = 12;
+        ffCard.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
+        ffCard.strokeWeight = 1;
+        ffCard.clipsContent = true;
+        frame.appendChild(ffCard);
+
+        // Role label
+        var ffRoleLabel = figma.createText();
+        ffRoleLabel.fontName = { family: "Inter", style: "Regular" };
+        ffRoleLabel.fontSize = 10;
+        ffRoleLabel.characters = ffe.role.toUpperCase();
+        ffRoleLabel.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 } }];
+        ffRoleLabel.letterSpacing = { value: 1.5, unit: "PIXELS" };
+        ffRoleLabel.x = 24; ffRoleLabel.y = 20;
+        ffCard.appendChild(ffRoleLabel);
+
+        // Font family name in its own font
+        var ffNameStyle = await loadFontWithFallback(ffFam, 700);
+        var ffNameNode = figma.createText();
+        ffNameNode.fontName = { family: ffFam, style: ffNameStyle };
+        ffNameNode.fontSize = 28;
+        ffNameNode.characters = ffFam;
+        ffNameNode.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+        ffNameNode.x = 24; ffNameNode.y = 42;
+        ffCard.appendChild(ffNameNode);
+
+        // Sample alphabet in Regular
+        var ffSampleStyle = await loadFontWithFallback(ffFam, 400);
+        var ffSampleNode = figma.createText();
+        ffSampleNode.fontName = { family: ffFam, style: ffSampleStyle };
+        ffSampleNode.fontSize = 14;
+        ffSampleNode.characters = "AaBbCcDdEeFfGgHhIiJjKkLl";
+        ffSampleNode.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
+        ffSampleNode.x = 24; ffSampleNode.y = 86;
+        ffCard.appendChild(ffSampleNode);
+
+        // Full family value as subtitle
+        var ffValueNode = figma.createText();
+        ffValueNode.fontName = { family: "Inter", style: "Regular" };
+        ffValueNode.fontSize = 11;
+        ffValueNode.characters = ffe.family;
+        ffValueNode.fills = [{ type: "SOLID", color: { r: 0.55, g: 0.55, b: 0.55 } }];
+        ffValueNode.x = 24; ffValueNode.y = 118;
+        ffCard.appendChild(ffValueNode);
+
+        // Weight samples row
+        var ffWeightSamples = [
+          { w: 300, label: "Light" },
+          { w: 400, label: "Regular" },
+          { w: 600, label: "SemiBold" },
+          { w: 700, label: "Bold" }
+        ];
+        var ffwX = 24;
+        for (var ffwi = 0; ffwi < ffWeightSamples.length; ffwi++) {
+          var ffw = ffWeightSamples[ffwi];
+          var ffwStyle = await loadFontWithFallback(ffFam, ffw.w);
+          var ffwNode = figma.createText();
+          ffwNode.fontName = { family: ffFam, style: ffwStyle };
+          ffwNode.fontSize = 11;
+          ffwNode.characters = ffw.label;
+          ffwNode.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+          ffwNode.x = ffwX; ffwNode.y = 138;
+          ffCard.appendChild(ffwNode);
+          ffwX += ffwNode.width + 16;
+        }
+      }
+
+      var ffRows = Math.ceil(ffEntries.length / ffCols);
+      y += ffRows * (FF_CARD_H + FF_GAP) + SECTION_GAP;
+    }
+  } catch(ffErr) { console.log("[Foundations] Font Families error: " + ffErr); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TEXT STYLES
+  // ══════════════════════════════════════════════════════════════════════════
+  var textStylesData = msg.textStylesData || [];
+  if (textStylesData.length > 0) {
+    try {
+    // Helper: find style by group + optional name
+    function findTS(group, name) {
+      for (var i = 0; i < textStylesData.length; i++) {
+        if (textStylesData[i].group === group && (!name || textStylesData[i].name === name)) return textStylesData[i];
+      }
+      return null;
+    }
+    function filterTS(group) {
+      var r = [];
+      for (var i = 0; i < textStylesData.length; i++) {
+        if (textStylesData[i].group === group) r.push(textStylesData[i]);
+      }
+      return r;
+    }
+    // Helper: create a styled text node from a text style entry
+    async function makeStyledText(tsEntry, text, x, yPos) {
+      var fam = (tsEntry.fontFamily || "Inter").split(",")[0].trim().replace(/['"]/g, "");
+      var weight = tsEntry.fontWeight || 400;
+      await loadFontWithFallback(fam, weight);
+      var node = figma.createText();
+      setFontName(node, fam, weight);
+      node.fontSize = parseFloat(tsEntry.fontSize) || 16;
+      if (tsEntry.lineHeight) node.lineHeight = { value: parseFloat(tsEntry.lineHeight) * 100, unit: "PERCENT" };
+      if (tsEntry.letterSpacing && parseFloat(tsEntry.letterSpacing) !== 0) node.letterSpacing = { value: parseFloat(tsEntry.letterSpacing), unit: "PIXELS" };
+      node.characters = text;
+      node.fills = [{ type: "SOLID", color: colorOpts.textColor ? hexToFigma(colorOpts.textColor) : { r: 0.1, g: 0.1, b: 0.1 } }];
+      node.x = x; node.y = yPos;
+      frame.appendChild(node);
+      return node;
+    }
+
+    var brandHexSpec = msg.brandColor || "#3B82F6";
+
+    // ── Headings ──
+    var headings = filterTS("heading");
+    if (headings.length > 0) {
+      sectionTitle("Headings");
+      for (var hi = 0; hi < headings.length; hi++) {
+        var hd = headings[hi];
+        var hNode = await makeStyledText(hd, hd.name.toUpperCase() + " — The quick brown fox jumps over the lazy dog", PAD, y);
+        var hMeta = hd.name + " · " + hd.fontSize + "px / " + hd.fontWeight + " / " + hd.lineHeight;
+        createSpecText(frame, hMeta, PAD, y + Math.max(hNode.height, 20) + 2, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
+        y += Math.max(hNode.height, 24) + 26;
+      }
+      y += SECTION_GAP;
+    }
+
+    // ── Body / Paragraphs ──
+    var bodies = filterTS("body");
+    if (bodies.length > 0) {
+      sectionTitle("Paragraphs");
+      var paraText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+      for (var bdi = 0; bdi < bodies.length; bdi++) {
+        var bd = bodies[bdi];
+        createSpecText(frame, "body/" + bd.name + " · " + bd.fontSize + "px / " + bd.fontWeight + " / lh:" + bd.lineHeight, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
+        y += 16;
+        var bNode = await makeStyledText(bd, paraText, PAD, y);
+        bNode.resize(W - PAD * 2, bNode.height);
+        bNode.textAutoResize = "HEIGHT";
+        y += bNode.height + 24;
+      }
+      y += SECTION_GAP;
+    }
+
+    // ── Lists ──
+    var bodyDefault = findTS("body", "default") || findTS("body", "lg") || (bodies && bodies[0] ? bodies[0] : null);
+    if (bodyDefault) {
+      sectionTitle("Lists");
+      var COL_W = Math.floor((W - PAD * 2 - 40) / 2);
+
+      createSpecText(frame, "Unordered List", PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
+      createSpecText(frame, "Ordered List", PAD + COL_W + 40, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
+      y += 18;
+
+      var ulItems = ["First item in the list", "Second item with more text", "Third item to show rhythm", "Fourth and final item"];
+      var olItems = ["Prepare the design tokens", "Configure typography settings", "Review color palette choices", "Export and hand off to dev"];
+
+      var ulStartY = y;
+      for (var uli = 0; uli < ulItems.length; uli++) {
+        var bullet = await makeStyledText(bodyDefault, "•   " + ulItems[uli], PAD, y);
+        y += Math.max(bullet.height, 20) + 6;
+      }
+      var ulEndY = y;
+
+      var olY = ulStartY;
+      for (var oli = 0; oli < olItems.length; oli++) {
+        var olNode = await makeStyledText(bodyDefault, (oli + 1) + ".  " + olItems[oli], PAD + COL_W + 40, olY);
+        olY += Math.max(olNode.height, 20) + 6;
+      }
+      y = Math.max(ulEndY, olY);
+      y += SECTION_GAP;
+    }
+
+    // ── Links ──
+    var links = filterTS("links");
+    if (links.length > 0) {
+      sectionTitle("Links");
+      var linkColor = hexToFigma(brandHexSpec);
+      for (var lki = 0; lki < links.length; lki++) {
+        var lk = links[lki];
+        var lkFam = (lk.fontFamily || "Inter").split(",")[0].trim().replace(/['"]/g, "");
+        var lkWt = lk.fontWeight || 500;
+        await loadFontWithFallback(lkFam, lkWt);
+
+        createSpecText(frame, "links/" + lk.name + " · " + lk.fontSize + "px / " + lk.fontWeight, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
+        y += 16;
+
+        var lkNode = figma.createText();
+        setFontName(lkNode, lkFam, lkWt);
+        lkNode.fontSize = parseFloat(lk.fontSize) || 16;
+        if (lk.lineHeight) lkNode.lineHeight = { value: parseFloat(lk.lineHeight) * 100, unit: "PERCENT" };
+        lkNode.characters = "This is a link example — click here to learn more";
+        lkNode.fills = [{ type: "SOLID", color: linkColor }];
+        lkNode.textDecoration = "UNDERLINE";
+        lkNode.x = PAD; lkNode.y = y;
+        frame.appendChild(lkNode);
+        y += Math.max(lkNode.height, 20) + 20;
+      }
+      y += SECTION_GAP;
+    }
+
+    // ── Buttons / Input / Label text styles (compact reference) ──
+    var otherGroups = ["buttons", "input", "label"];
+    var otherStyles = [];
+    for (var ogi = 0; ogi < otherGroups.length; ogi++) {
+      var gs = filterTS(otherGroups[ogi]);
+      for (var gsi = 0; gsi < gs.length; gsi++) otherStyles.push(gs[gsi]);
+    }
+    if (otherStyles.length > 0) {
+      sectionTitle("UI Text Styles");
+      for (var usi = 0; usi < otherStyles.length; usi++) {
+        var us = otherStyles[usi];
+        var usLabel = us.group + "/" + us.name;
+        createSpecText(frame, usLabel + " · " + us.fontSize + "px / " + us.fontWeight, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
+        y += 16;
+        var usNode = await makeStyledText(us, usLabel + " — Sample text preview", PAD, y);
+        y += Math.max(usNode.height, 20) + 16;
+      }
+      y += SECTION_GAP;
+    }
+    } catch(tsErr) { console.log("[Foundations] Text Styles section error: " + tsErr); }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TYPOGRAPHY VARIABLES (sizes, weights, line-heights)
+  // ══════════════════════════════════════════════════════════════════════════
+  var typo = msg.typography || { sizes: [], weights: [], lineHeights: [] };
+  var hasSizes = typo.sizes && typo.sizes.length > 0;
+  var hasWeights = typo.weights && typo.weights.length > 0;
+  var hasLH = typo.lineHeights && typo.lineHeights.length > 0;
+
+  if (hasSizes || hasWeights || hasLH) {
+    sectionTitle("Typography Scale");
+    console.log("[Foundations] Typography Scale: sizes=" + (typo.sizes ? typo.sizes.length : 0) + " weights=" + (typo.weights ? typo.weights.length : 0) + " lh=" + (typo.lineHeights ? typo.lineHeights.length : 0));
+
+    // ── Font Sizes ──
+    if (hasSizes) {
+      try {
+        createSpecText(frame, "Font Sizes", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 });
+        y += 24;
+        for (var fsi = 0; fsi < typo.sizes.length; fsi++) {
+          var sz = typo.sizes[fsi];
+          var pxVal = parseFloat(sz.value) || 16;
+          var sizeText = figma.createText();
+          sizeText.fontName = { family: "Inter", style: "Regular" };
+          sizeText.fontSize = Math.min(pxVal, 60);
+          sizeText.characters = sz.name + " — " + sz.value + "px";
+          sizeText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
+          sizeText.x = PAD; sizeText.y = y;
+          frame.appendChild(sizeText);
+          y += Math.max(sizeText.height, 20) + 8;
+        }
+        y += 24;
+      } catch(e) { console.log("[Foundations] Font Sizes error: " + e); }
+    }
+
+    // ── Font Weights ──
+    if (hasWeights) {
+      try {
+        createSpecText(frame, "Font Weights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 });
+        y += 24;
+        var wx = PAD;
+        for (var fwi = 0; fwi < typo.weights.length; fwi++) {
+          var wt = typo.weights[fwi];
+          await loadFontWithFallback("Inter", wt.value);
+          var wtText = figma.createText();
+          setFontName(wtText, "Inter", wt.value);
+          wtText.fontSize = 16;
+          wtText.characters = wt.name + " (" + wt.value + ")";
+          wtText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
+          wtText.x = wx; wtText.y = y;
+          frame.appendChild(wtText);
+          wx += 140;
+          if (wx + 140 > W - PAD) { wx = PAD; y += 32; }
+        }
+        y += 40;
+      } catch(e) { console.log("[Foundations] Font Weights error: " + e); }
+    }
+
+    // ── Line Heights ──
+    if (hasLH) {
+      try {
+        createSpecText(frame, "Line Heights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 });
+        y += 24;
+        for (var lhi = 0; lhi < typo.lineHeights.length; lhi++) {
+          var lh = typo.lineHeights[lhi];
+          createSpecText(frame, lh.name + ": " + lh.value, PAD, y, 12, "Regular", { r: 0.3, g: 0.3, b: 0.3 });
+          y += 20;
+        }
+        y += 16;
+      } catch(e) { console.log("[Foundations] Line Heights error: " + e); }
+    }
+    y += SECTION_GAP;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SPACING
+  // ══════════════════════════════════════════════════════════════════════════
+  var spacingData = msg.spacing || [];
+  if (spacingData.length > 0) {
+    sectionTitle("Spacing");
+    for (var spi = 0; spi < spacingData.length; spi++) {
+      var sp = spacingData[spi];
+      var spVal = parseFloat(sp.value) || 0;
+      createSpecText(frame, sp.name, PAD, y + 2, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
+      createSpecText(frame, spVal + "px", PAD + 60, y + 2, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
+
+      if (spVal > 0) {
+        var bar = figma.createRectangle();
+        bar.name = "spacing/" + sp.name;
+        bar.resize(Math.min(spVal * 3, W - PAD * 2 - 120), 12);
+        bar.x = PAD + 110; bar.y = y + 1;
+        bar.cornerRadius = 2;
+        bar.fills = [{ type: "SOLID", color: hexToFigma(msg.brandColor || "#3B82F6"), opacity: 0.25 }];
+        frame.appendChild(bar);
+      }
+      y += 22;
+    }
+    y += SECTION_GAP;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // RADIUS
+  // ══════════════════════════════════════════════════════════════════════════
+  var radiusData = msg.radius || [];
+  if (radiusData.length > 0) {
+    sectionTitle("Radius");
+    var rx = PAD;
+    for (var ri = 0; ri < radiusData.length; ri++) {
+      var rad = radiusData[ri];
+      var rv = parseFloat(rad.value) || 0;
+      var rRect = figma.createRectangle();
+      rRect.name = "radius/" + rad.name;
+      rRect.resize(80, 80);
+      rRect.x = rx; rRect.y = y;
+      rRect.cornerRadius = Math.min(rv, 40);
+      rRect.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+      rRect.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.12 }];
+      rRect.strokeWeight = 1.5;
+      frame.appendChild(rRect);
+
+      createSpecText(frame, rad.name, rx, y + 86, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
+      createSpecText(frame, rv + "px", rx, y + 100, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
+      rx += 112;
+      if (rx + 112 > W - PAD) { rx = PAD; y += 120; }
+    }
+    y += 120 + SECTION_GAP;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHADOWS
+  // ══════════════════════════════════════════════════════════════════════════
+  var shadowsData = msg.shadows || [];
+  if (shadowsData.length > 0) {
+    sectionTitle("Shadows");
+    var shx = PAD;
+    for (var shi = 0; shi < shadowsData.length; shi++) {
+      var sh = shadowsData[shi];
+      var effect = parseCssShadow(sh.value);
+      var shRect = figma.createRectangle();
+      shRect.name = "shadow/" + sh.name;
+      shRect.resize(120, 80);
+      shRect.x = shx; shRect.y = y;
+      shRect.cornerRadius = 8;
+      shRect.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+      if (effect) shRect.effects = [effect];
+      frame.appendChild(shRect);
+
+      createSpecText(frame, sh.name, shx, y + 86, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
+      createSpecText(frame, sh.value, shx, y + 100, 9, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
+      shx += 152;
+      if (shx + 152 > W - PAD) { shx = PAD; y += 130; }
+    }
+    y += 120 + SECTION_GAP;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BORDERS
+  // ══════════════════════════════════════════════════════════════════════════
+  var bordersData = msg.borders || [];
+  if (bordersData.length > 0) {
+    sectionTitle("Borders");
+    var bx = PAD;
+    for (var bi = 0; bi < bordersData.length; bi++) {
+      var bd = bordersData[bi];
+      var bv = parseFloat(bd.value) || 1;
+      var bRect = figma.createRectangle();
+      bRect.name = "border/" + bd.name;
+      bRect.resize(100, 60);
+      bRect.x = bx; bRect.y = y;
+      bRect.cornerRadius = 4;
+      bRect.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+      bRect.strokes = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+      bRect.strokeWeight = bv;
+      frame.appendChild(bRect);
+
+      createSpecText(frame, bd.name, bx, y + 66, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
+      createSpecText(frame, bv + "px", bx, y + 80, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
+      bx += 132;
+      if (bx + 132 > W - PAD) { bx = PAD; y += 100; }
+    }
+    y += 100 + SECTION_GAP;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Z-INDEX
+  // ══════════════════════════════════════════════════════════════════════════
+  var zindexData = msg.zindex || [];
+  if (zindexData.length > 0) {
+    sectionTitle("Z-Index");
+    // Render as a visual stacking diagram
+    var maxZ = 1;
+    for (var zi = 0; zi < zindexData.length; zi++) {
+      var zVal = Math.abs(parseFloat(zindexData[zi].value) || 0);
+      if (zVal > maxZ) maxZ = zVal;
+    }
+    for (var zi2 = 0; zi2 < zindexData.length; zi2++) {
+      var zItem = zindexData[zi2];
+      var zv = parseFloat(zItem.value) || 0;
+      var barW = Math.max(20, Math.round((Math.abs(zv) / maxZ) * (W - PAD * 2 - 160)));
+      createSpecText(frame, zItem.name, PAD, y + 2, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
+      createSpecText(frame, String(zv), PAD + 80, y + 2, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
+      var zBar = figma.createRectangle();
+      zBar.name = "zindex/" + zItem.name;
+      zBar.resize(barW, 14);
+      zBar.x = PAD + 130; zBar.y = y;
+      zBar.cornerRadius = 3;
+      zBar.fills = [{ type: "SOLID", color: hexToFigma(msg.brandColor || "#3B82F6"), opacity: 0.15 + 0.6 * (Math.abs(zv) / maxZ) }];
+      frame.appendChild(zBar);
+      y += 24;
+    }
+    y += SECTION_GAP;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BREAKPOINTS
+  // ══════════════════════════════════════════════════════════════════════════
+  var breakpoints = [
+    { name: "xs", value: 0 }, { name: "sm", value: 567 },
+    { name: "md", value: 767 }, { name: "lg", value: 991 }
+  ];
+  sectionTitle("Breakpoints");
+  var bpMaxW = W - PAD * 2;
+  var bpScale = bpMaxW / 1200;
+  for (var bpi = 0; bpi < breakpoints.length; bpi++) {
+    var bp = breakpoints[bpi];
+    var bpBarW = Math.max(40, Math.round(Math.max(bp.value, 50) * bpScale));
+    createSpecText(frame, bp.name + " ≥ " + bp.value + "px", PAD, y + 2, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
+    var bpBar = figma.createRectangle();
+    bpBar.name = "breakpoint/" + bp.name;
+    bpBar.resize(bpBarW, 16);
+    bpBar.x = PAD + 130; bpBar.y = y;
+    bpBar.cornerRadius = 3;
+    bpBar.fills = [{ type: "SOLID", color: hexToFigma(msg.brandColor || "#3B82F6"), opacity: 0.12 + bpi * 0.15 }];
+    frame.appendChild(bpBar);
+    y += 28;
+  }
+  y += PAD;
+
+  // Resize frame to fit all content — measure actual children
+  var maxBottom = y;
+  for (var mi = 0; mi < frame.children.length; mi++) {
+    var child = frame.children[mi];
+    var childBottom = child.y + child.height;
+    if (childBottom > maxBottom) maxBottom = childBottom;
+  }
+  var finalH = maxBottom + PAD;
+  frame.resize(W, Math.max(finalH, 400));
+  frame.clipsContent = true;
+  console.log("[Foundations] frame resized to " + W + "x" + Math.max(finalH, 400) + ", children: " + frame.children.length + ", y=" + y);
+}
+
+// ── Components page ─────────────────────────────────────────────────────────
+async function generateComponentsPage(msg) {
+  var page = findPageByHint("components");
+  if (!page) return;
+
+  var compWeights = [400, 500, 600, 700];
+  for (var cw = 0; cw < compWeights.length; cw++) {
+    await loadFontWithFallback("Inter", compWeights[cw]);
+  }
+
+  var fontFamilies = msg.fontFamilies || {};
+  var userFonts = [fontFamilies.primary, fontFamilies.secondary, fontFamilies.tertiary].filter(Boolean);
+  for (var fi = 0; fi < userFonts.length; fi++) {
+    var fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
+    if (fam === "Inter") continue;
+    for (var cwi = 0; cwi < compWeights.length; cwi++) {
+      await loadFontWithFallback(fam, compWeights[cwi]);
+    }
+  }
+
+  // Remove existing specimens
+  var existing = page.children.filter(function(n) { return n.name === "Components"; });
+  existing.forEach(function(n) { try { n.remove(); } catch(e) {} });
+
+  var W = 1440, PAD = 80, SECTION_GAP = 80;
+  var frame = figma.createFrame();
+  frame.name = "Components";
+  frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
+  page.appendChild(frame);
+
+  var y = PAD;
+  var brandColor = hexToFigma(msg.brandColor || "#3B82F6");
+
+  function sectionTitle(title) {
+    var t = createSpecText(frame, title, PAD, y, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
+    y += t.height + 8;
+    var div = figma.createRectangle();
+    div.resize(W - PAD * 2, 1);
+    div.x = PAD; div.y = y;
+    div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
+    frame.appendChild(div);
+    y += 24;
+  }
+
+  // Find text styles by group/name
+  var localStyles = figma.getLocalTextStyles();
+  function findStyle(group, name) {
+    var styleName = group + "/" + name;
+    for (var i = 0; i < localStyles.length; i++) {
+      if (localStyles[i].name === styleName) return localStyles[i];
+    }
+    return null;
+  }
+
+  // Get radius value
+  var radiusData = msg.radius || [];
+  var defaultRadius = 8;
+  for (var ri = 0; ri < radiusData.length; ri++) {
+    if (radiusData[ri].name === "md" || radiusData[ri].name === "default") {
+      defaultRadius = parseFloat(radiusData[ri].value) || 8;
+      break;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BUTTONS (component set with Variant + Size properties)
+  // ══════════════════════════════════════════════════════════════════════════
+  sectionTitle("Buttons");
+  var btnSizes = [
+    { label: "Large",   style: "lg" },
+    { label: "Default", style: "default" },
+    { label: "Small",   style: "sm" }
+  ];
+  var btnVariants = [
+    { label: "Primary",   filled: true },
+    { label: "Secondary", filled: false },
+  ];
+
+  var allBtnComps = [];
+  for (var bvi = 0; bvi < btnVariants.length; bvi++) {
+    var variant = btnVariants[bvi];
+    for (var bsi = 0; bsi < btnSizes.length; bsi++) {
+      var bs = btnSizes[bsi];
+      var ts = findStyle("buttons", bs.style);
+      var padH = bs.style === "lg" ? 16 : (bs.style === "sm" ? 8 : 12);
+      var padW = bs.style === "lg" ? 32 : (bs.style === "sm" ? 16 : 24);
+
+      var btnComp = figma.createComponent();
+      btnComp.name = "Variant=" + variant.label + ", Size=" + bs.label;
+      btnComp.cornerRadius = defaultRadius;
+
+      if (variant.filled) {
+        btnComp.fills = [{ type: "SOLID", color: brandColor }];
+      } else {
+        btnComp.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+        btnComp.strokes = [{ type: "SOLID", color: brandColor }];
+        btnComp.strokeWeight = 1.5;
+      }
+
+      var btnText = figma.createText();
+      if (ts) {
+        btnText.textStyleId = ts.id;
+      } else {
+        btnText.fontName = { family: "Inter", style: "Semi Bold" };
+        btnText.fontSize = bs.style === "lg" ? 18 : (bs.style === "sm" ? 14 : 16);
+      }
+      btnText.characters = "Button";
+      btnText.fills = [{ type: "SOLID", color: variant.filled ? { r: 1, g: 1, b: 1 } : brandColor }];
+
+      btnComp.layoutMode = "HORIZONTAL";
+      btnComp.primaryAxisAlignItems = "CENTER";
+      btnComp.counterAxisAlignItems = "CENTER";
+      btnComp.paddingTop = padH; btnComp.paddingBottom = padH;
+      btnComp.paddingLeft = padW; btnComp.paddingRight = padW;
+      btnComp.primaryAxisSizingMode = "AUTO";
+      btnComp.counterAxisSizingMode = "AUTO";
+      btnComp.appendChild(btnText);
+
+      allBtnComps.push(btnComp);
+    }
+  }
+
+  var btnSet = figma.combineAsVariants(allBtnComps, frame);
+  btnSet.name = "Button";
+  btnSet.x = PAD; btnSet.y = y;
+  btnSet.layoutMode = "HORIZONTAL";
+  btnSet.layoutWrap = "WRAP";
+  btnSet.itemSpacing = 16;
+  btnSet.counterAxisSpacing = 16;
+  btnSet.paddingTop = 24; btnSet.paddingBottom = 24;
+  btnSet.paddingLeft = 24; btnSet.paddingRight = 24;
+  btnSet.primaryAxisSizingMode = "AUTO";
+  btnSet.counterAxisSizingMode = "AUTO";
+  btnSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+  btnSet.cornerRadius = 12;
+  btnSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
+  btnSet.strokeWeight = 1;
+  y += btnSet.height + SECTION_GAP;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // INPUTS (component set with State property)
+  // ══════════════════════════════════════════════════════════════════════════
+  sectionTitle("Inputs");
+  var inputStyle = findStyle("input", "default");
+  var labelStyle = findStyle("label", "default");
+  var inputStates = [
+    { label: "Default",  borderColor: { r: 0.8, g: 0.8, b: 0.8 }, strokeW: 1.5 },
+    { label: "Focused",  borderColor: hexToFigma("#000000"), strokeW: 2 },
+    { label: "Error",    borderColor: hexToFigma("#E32E22"), strokeW: 1.5 },
+    { label: "Disabled", borderColor: { r: 0.88, g: 0.88, b: 0.88 }, strokeW: 1 },
+  ];
+
+  var allInputComps = [];
+  for (var isi = 0; isi < inputStates.length; isi++) {
+    var ist = inputStates[isi];
+
+    var inputComp = figma.createComponent();
+    inputComp.name = "State=" + ist.label;
+    inputComp.layoutMode = "VERTICAL";
+    inputComp.primaryAxisSizingMode = "AUTO";
+    inputComp.counterAxisSizingMode = "AUTO";
+    inputComp.itemSpacing = 6;
+    inputComp.fills = [];
+
+    // Label
+    var lbl = figma.createText();
+    if (labelStyle) {
+      lbl.textStyleId = labelStyle.id;
+    } else {
+      lbl.fontName = { family: "Inter", style: "Medium" };
+      lbl.fontSize = 12;
+    }
+    lbl.characters = ist.label === "Error" ? "Error Label" : "Label";
+    lbl.fills = [{ type: "SOLID", color: ist.label === "Error" ? hexToFigma("#E32E22") : { r: 0.2, g: 0.2, b: 0.2 } }];
+    if (ist.label === "Disabled") lbl.opacity = 0.5;
+    inputComp.appendChild(lbl);
+
+    // Input field
+    var inputField = figma.createFrame();
+    inputField.name = "field";
+    inputField.resize(260, 44);
+    inputField.cornerRadius = defaultRadius;
+    inputField.fills = [{ type: "SOLID", color: ist.label === "Disabled" ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
+    inputField.strokes = [{ type: "SOLID", color: ist.borderColor }];
+    inputField.strokeWeight = ist.strokeW;
+
+    inputField.layoutMode = "HORIZONTAL";
+    inputField.counterAxisAlignItems = "CENTER";
+    inputField.paddingLeft = 14; inputField.paddingRight = 14;
+    inputField.paddingTop = 10; inputField.paddingBottom = 10;
+    inputField.primaryAxisSizingMode = "FIXED";
+    inputField.counterAxisSizingMode = "FIXED";
+
+    var inputText = figma.createText();
+    if (inputStyle) {
+      inputText.textStyleId = inputStyle.id;
+    } else {
+      inputText.fontName = { family: "Inter", style: "Regular" };
+      inputText.fontSize = 14;
+    }
+    inputText.characters = ist.label === "Disabled" ? "Disabled" : "Placeholder text";
+    inputText.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
+    if (ist.label === "Disabled") inputText.opacity = 0.5;
+    inputField.appendChild(inputText);
+    inputComp.appendChild(inputField);
+
+    allInputComps.push(inputComp);
+  }
+
+  var inputSet = figma.combineAsVariants(allInputComps, frame);
+  inputSet.name = "Input";
+  inputSet.x = PAD; inputSet.y = y;
+  inputSet.layoutMode = "HORIZONTAL";
+  inputSet.itemSpacing = 24;
+  inputSet.paddingTop = 24; inputSet.paddingBottom = 24;
+  inputSet.paddingLeft = 24; inputSet.paddingRight = 24;
+  inputSet.primaryAxisSizingMode = "AUTO";
+  inputSet.counterAxisSizingMode = "AUTO";
+  inputSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+  inputSet.cornerRadius = 12;
+  inputSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
+  inputSet.strokeWeight = 1;
+  y += inputSet.height + SECTION_GAP;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LABELS (component set with State property)
+  // ══════════════════════════════════════════════════════════════════════════
+  sectionTitle("Labels");
+  if (labelStyle) {
+    var lblStates = [
+      { label: "Default",  color: { r: 0.2, g: 0.2, b: 0.2 }, text: "Label" },
+      { label: "Required", color: { r: 0.2, g: 0.2, b: 0.2 }, text: "Label *" },
+      { label: "Disabled", color: { r: 0.6, g: 0.6, b: 0.6 }, text: "Label" },
+    ];
+    var allLblComps = [];
+    for (var li = 0; li < lblStates.length; li++) {
+      var ls = lblStates[li];
+      var lblComp = figma.createComponent();
+      lblComp.name = "State=" + ls.label;
+      lblComp.layoutMode = "HORIZONTAL";
+      lblComp.primaryAxisSizingMode = "AUTO";
+      lblComp.counterAxisSizingMode = "AUTO";
+      lblComp.fills = [];
+
+      var lblNode = figma.createText();
+      lblNode.textStyleId = labelStyle.id;
+      lblNode.characters = ls.text;
+      lblNode.fills = [{ type: "SOLID", color: ls.color }];
+      lblComp.appendChild(lblNode);
+
+      allLblComps.push(lblComp);
+    }
+
+    var lblSet = figma.combineAsVariants(allLblComps, frame);
+    lblSet.name = "Label";
+    lblSet.x = PAD; lblSet.y = y;
+    lblSet.layoutMode = "HORIZONTAL";
+    lblSet.itemSpacing = 24;
+    lblSet.paddingTop = 24; lblSet.paddingBottom = 24;
+    lblSet.paddingLeft = 24; lblSet.paddingRight = 24;
+    lblSet.primaryAxisSizingMode = "AUTO";
+    lblSet.counterAxisSizingMode = "AUTO";
+    lblSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    lblSet.cornerRadius = 12;
+    lblSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
+    lblSet.strokeWeight = 1;
+    y += lblSet.height + 30;
+  }
+  y += SECTION_GAP;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // IMAGE WRAPPERS (component set with Radius property)
+  // ══════════════════════════════════════════════════════════════════════════
+  sectionTitle("Images");
+
+  // Look up the Radius variable collection and build a name→variable map
+  var radiusCols = figma.variables.getLocalVariableCollections().filter(function(c) {
+    return c.name.toLowerCase().indexOf("radius") !== -1;
+  });
+  var radiusVarMap = {};
+  if (radiusCols.length > 0) {
+    var radiusCol = radiusCols[0];
+    var allRadiusVars = figma.variables.getLocalVariables().filter(function(v) {
+      return v.variableCollectionId === radiusCol.id && v.resolvedType === "FLOAT";
+    });
+    for (var rvi = 0; rvi < allRadiusVars.length; rvi++) {
+      var rv = allRadiusVars[rvi];
+      // Use the last segment of the variable name as key (e.g. "radius/sm" → "sm")
+      var rvName = rv.name.split("/").pop();
+      radiusVarMap[rvName] = rv;
+    }
+  }
+
+  // Build radius entries from the variable map, falling back to radiusData config
+  var imgRadii = [];
+  var usedRadiusNames = {};
+  // Prefer variables (they carry the binding)
+  for (var rvk in radiusVarMap) {
+    if (radiusVarMap.hasOwnProperty(rvk)) {
+      var rvVal = 0;
+      try {
+        var modeId = radiusCols[0].modes[0].modeId;
+        rvVal = parseFloat(radiusVarMap[rvk].valuesByMode[modeId]) || 0;
+      } catch(e) {}
+      imgRadii.push({ label: rvk, value: rvVal, variable: radiusVarMap[rvk] });
+      usedRadiusNames[rvk] = true;
+    }
+  }
+  // Fill in any from config that aren't already covered
+  if (imgRadii.length === 0) {
+    for (var iri = 0; iri < radiusData.length; iri++) {
+      if (!usedRadiusNames[radiusData[iri].name]) {
+        imgRadii.push({ label: radiusData[iri].name, value: parseFloat(radiusData[iri].value) || 0, variable: null });
+      }
+    }
+  }
+  // Always add a "full" (circle) variant
+  imgRadii.push({ label: "full", value: 9999, variable: null });
+
+  var placeholderHash = createPlaceholderImageHash(0xE8, 0xEB, 0xED);
+  var IMG_W = 240, IMG_H = 160;
+
+  var allImgComps = [];
+  for (var imri = 0; imri < imgRadii.length; imri++) {
+    var imgR = imgRadii[imri];
+
+    var isFull = imgR.label === "full";
+    var compW = isFull ? IMG_H : IMG_W; // square for "full" so it's a perfect circle
+    var compH = IMG_H;
+
+    var imgComp = figma.createComponent();
+    imgComp.name = "Radius=" + imgR.label;
+    imgComp.resize(compW, compH);
+    imgComp.clipsContent = true;
+    imgComp.fills = [];
+
+    var appliedR = isFull ? compH / 2 : imgR.value;
+    imgComp.cornerRadius = appliedR;
+
+    // Bind corner radius to the Figma variable if available
+    if (imgR.variable) {
+      try {
+        imgComp.setBoundVariable("topLeftRadius", imgR.variable);
+        imgComp.setBoundVariable("topRightRadius", imgR.variable);
+        imgComp.setBoundVariable("bottomLeftRadius", imgR.variable);
+        imgComp.setBoundVariable("bottomRightRadius", imgR.variable);
+      } catch(e) {}
+    }
+
+    // Child rectangle with placeholder image — user replaces the image fill
+    var imgRect = figma.createRectangle();
+    imgRect.name = "image";
+    imgRect.resize(compW, compH);
+    imgRect.x = 0; imgRect.y = 0;
+    imgRect.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
+    imgRect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+    imgComp.appendChild(imgRect);
+
+    allImgComps.push(imgComp);
+  }
+
+  if (allImgComps.length > 0) {
+    var imgSet = figma.combineAsVariants(allImgComps, frame);
+    imgSet.name = "Image";
+    imgSet.x = PAD; imgSet.y = y;
+    imgSet.layoutMode = "HORIZONTAL";
+    imgSet.itemSpacing = 24;
+    imgSet.paddingTop = 24; imgSet.paddingBottom = 24;
+    imgSet.paddingLeft = 24; imgSet.paddingRight = 24;
+    imgSet.primaryAxisSizingMode = "AUTO";
+    imgSet.counterAxisSizingMode = "AUTO";
+    imgSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    imgSet.cornerRadius = 12;
+    imgSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
+    imgSet.strokeWeight = 1;
+    y += imgSet.height + SECTION_GAP;
+  }
+
+  y += PAD;
+
+  frame.resize(W, y);
+}
+
 // ── Import ────────────────────────────────────────────────────────────────────
 function findOrCreateCollection(name){var cols=figma.variables.getLocalVariableCollections();for(var i=0;i<cols.length;i++){if(cols[i].name===name)return cols[i];}return figma.variables.createVariableCollection(name);}
 function buildVarMap(col){var map={},all=figma.variables.getLocalVariables();for(var i=0;i<all.length;i++){if(all[i].variableCollectionId===col.id)map[all[i].name]=all[i];}return map;}
@@ -767,15 +1940,62 @@ async function importTokens(filename,data){
   throw new Error('Cannot detect type from "'+filename+'". Keep original filenames.');
 }
 
-function weightToStyle(w){var n=parseInt(w)||400;if(n<=100)return"Thin";if(n<=200)return"ExtraLight";if(n<=300)return"Light";if(n<=400)return"Regular";if(n<=500)return"Medium";if(n<=600)return"SemiBold";if(n<=700)return"Bold";if(n<=800)return"ExtraBold";return"Black";}
+// Returns an array of style name candidates to try (Figma font naming varies between fonts)
+function weightToStyleCandidates(w) {
+  var n = parseInt(w) || 400;
+  if (n <= 100) return ["Thin"];
+  if (n <= 200) return ["ExtraLight", "Extra Light", "UltraLight", "Ultra Light"];
+  if (n <= 300) return ["Light"];
+  if (n <= 400) return ["Regular"];
+  if (n <= 500) return ["Medium"];
+  if (n <= 600) return ["SemiBold", "Semi Bold", "DemiBold", "Demi Bold"];
+  if (n <= 700) return ["Bold"];
+  if (n <= 800) return ["ExtraBold", "Extra Bold", "UltraBold", "Ultra Bold"];
+  return ["Black", "Heavy"];
+}
+function weightToStyle(w) { return weightToStyleCandidates(w)[0]; }
+
+// Load a font trying all style name candidates
+async function loadFontWithFallback(family, weight) {
+  var candidates = weightToStyleCandidates(weight);
+  for (var i = 0; i < candidates.length; i++) {
+    try {
+      await figma.loadFontAsync({ family: family, style: candidates[i] });
+      return candidates[i]; // return the style that worked
+    } catch(e) {}
+  }
+  // Last resort: try Regular
+  try { await figma.loadFontAsync({ family: family, style: "Regular" }); } catch(e) {}
+  return "Regular";
+}
+
+// Set fontName trying all style candidates
+function setFontName(node, family, weight) {
+  var candidates = weightToStyleCandidates(weight);
+  for (var i = 0; i < candidates.length; i++) {
+    try {
+      node.fontName = { family: family, style: candidates[i] };
+      return candidates[i];
+    } catch(e) {}
+  }
+  try { node.fontName = { family: "Inter", style: "Regular" }; } catch(e) {}
+  return "Regular";
+}
 
 async function importTextStyles(data){
-  var fontsNeeded=[],seen={};
-  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var style=weightToStyle(val.fontWeight||400);var k=family+":"+style;if(!seen[k]){seen[k]=true;fontsNeeded.push({family:family,style:style});}});});
-  await Promise.all(fontsNeeded.map(function(f){return figma.loadFontAsync({family:f.family,style:f.style}).catch(function(){});}));
+  // Pre-load all needed fonts with fallback
+  var fontsToLoad=[],seen={};
+  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var weight=val.fontWeight||400;var k=family+":"+weight;if(!seen[k]){seen[k]=true;fontsToLoad.push({family:family,weight:weight});}});});
+  // Resolve actual style names per family+weight
+  var resolvedStyles={};
+  for(var fi=0;fi<fontsToLoad.length;fi++){
+    var f=fontsToLoad[fi];
+    var actualStyle=await loadFontWithFallback(f.family,f.weight);
+    resolvedStyles[f.family+":"+f.weight]=actualStyle;
+  }
   var existingStyles=figma.getLocalTextStyles(),styleMap={};existingStyles.forEach(function(s){styleMap[s.name]=s;});
   var count=0,skipped=0;
-  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var styleName=groupKey+"/"+key;try{var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var fontStyle=weightToStyle(val.fontWeight||400);var style=styleMap[styleName]||figma.createTextStyle();style.name=styleName;style.fontName={family:family,style:fontStyle};var fs=val.fontSize;style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);var lh=val.lineHeight;if(lh){if(typeof lh==="object"){if(lh.unit==="PIXELS")style.lineHeight={unit:"PIXELS",value:lh.value||24};else if(lh.unit==="MULTIPLIER"){var lhPx=(lh.value||1.5)*style.fontSize;style.lineHeight={unit:"PIXELS",value:lhPx};}else style.lineHeight={unit:"PERCENT",value:(lh.value||1.5)*100};}else style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};}var ls=val.letterSpacing;if(ls!==undefined){var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);style.letterSpacing={unit:"PIXELS",value:lsVal};}var ps=val.paragraphSpacing;if(ps!==undefined)style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);var td=val.textDecoration;style.textDecoration=(td&&td!=="NONE")?td:"NONE";if(token["$description"])style.description=token["$description"];styleMap[styleName]=style;count++;}catch(e){skipped++;}});});
+  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var styleName=groupKey+"/"+key;try{var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var weight=val.fontWeight||400;var fontStyle=resolvedStyles[family+":"+weight]||"Regular";var style=styleMap[styleName]||figma.createTextStyle();style.name=styleName;style.fontName={family:family,style:fontStyle};var fs=val.fontSize;style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);var lh=val.lineHeight;if(lh){if(typeof lh==="object"){if(lh.unit==="PIXELS")style.lineHeight={unit:"PIXELS",value:lh.value||24};else if(lh.unit==="MULTIPLIER"){var lhPx=(lh.value||1.5)*style.fontSize;style.lineHeight={unit:"PIXELS",value:lhPx};}else style.lineHeight={unit:"PERCENT",value:(lh.value||1.5)*100};}else style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};}var ls=val.letterSpacing;if(ls!==undefined){var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);style.letterSpacing={unit:"PIXELS",value:lsVal};}var ps=val.paragraphSpacing;if(ps!==undefined)style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);var td=val.textDecoration;style.textDecoration=(td&&td!=="NONE")?td:"NONE";if(token["$description"])style.description=token["$description"];styleMap[styleName]=style;count++;}catch(e){skipped++;}});});
   var msg="Created/updated "+count+" text style"+(count!==1?"s":"");if(skipped>0)msg+=" ("+skipped+" skipped — font not installed)";return msg;
 }
 
@@ -932,95 +2152,36 @@ function makeColorHSL(h, s, l) {
   return { "$type": "color", "$value": { colorSpace: "srgb", components: rgb, alpha: 1 } };
 }
 
-function generateSemanticColors(colorOpts, mode) {
+function generateSemanticColors(colorOpts) {
   var pri = hexToHsl(colorOpts.primary);
   var h = pri.h, s = pri.s;
 
-  // Secondary: from picker or auto-derived
-  var secH, secS;
+  var result = {
+    brand: {
+      primary: makeColorHSL(h, s, 50)
+    },
+    text: {
+      primary: colorOpts.textColor ? makeColorHex(colorOpts.textColor) : makeColorHSL(h, 10, 10)
+    },
+    border: {
+      "default": makeColorHex("#E3E3E3")
+    },
+    overlay: {
+      scrim: { "$type": "color", "$value": { colorSpace: "srgb", components: [0, 0, 0], alpha: 0.85 } }
+    }
+  };
+
+  // Only include secondary/tertiary brand colors if user explicitly set them
   if (colorOpts.secondary) {
     var sec = hexToHsl(colorOpts.secondary);
-    secH = sec.h; secS = sec.s;
-  } else {
-    secH = (h + 60) % 360; secS = clamp(s - 10, 20, 90);
+    result.brand.secondary = makeColorHSL(sec.h, sec.s, 55);
   }
-
-  // Tertiary: from picker or auto-derived
-  var terH, terS;
   if (colorOpts.tertiary) {
     var ter = hexToHsl(colorOpts.tertiary);
-    terH = ter.h; terS = ter.s;
-  } else {
-    terH = (h + 150) % 360; terS = clamp(s - 15, 20, 85);
+    result.brand.accent = makeColorHSL(ter.h, ter.s, 50);
   }
 
-  if (mode === "light") {
-    return {
-      brand: {
-        primary:   makeColorHSL(h, s, 50),
-        secondary: makeColorHSL(secH, secS, 55),
-        accent:    makeColorHSL(terH, terS, 50)
-      },
-      surface: {
-        base:    makeColor(1, 1, 1),
-        raised:  makeColorHSL(h, 5, 97),
-        overlay: makeColorHSL(h, 5, 95)
-      },
-      text: {
-        primary:   makeColorHSL(h, 10, 10),
-        secondary: makeColorHSL(h, 8, 40),
-        disabled:  makeColorHSL(h, 5, 65),
-        inverse:   makeColor(1, 1, 1)
-      },
-      border: {
-        "default": makeColorHSL(h, 8, 85),
-        strong:    makeColorHSL(h, 10, 70),
-        subtle:    makeColorHSL(h, 5, 92)
-      },
-      feedback: {
-        success: makeColorHSL(142, 71, 45),
-        warning: makeColorHSL(38, 92, 50),
-        error:   makeColorHSL(0, 84, 60),
-        info:    makeColorHSL(h, s, 50)
-      },
-      overlay: {
-        scrim: { "$type": "color", "$value": { colorSpace: "srgb", components: [0, 0, 0], alpha: 0.5 } }
-      }
-    };
-  } else {
-    return {
-      brand: {
-        primary:   makeColorHSL(h, clamp(s - 5, 0, 100), 60),
-        secondary: makeColorHSL(secH, clamp(secS - 5, 0, 100), 60),
-        accent:    makeColorHSL(terH, clamp(terS - 5, 0, 100), 58)
-      },
-      surface: {
-        base:    makeColorHSL(h, 10, 8),
-        raised:  makeColorHSL(h, 10, 12),
-        overlay: makeColorHSL(h, 10, 16)
-      },
-      text: {
-        primary:   makeColorHSL(h, 5, 93),
-        secondary: makeColorHSL(h, 5, 65),
-        disabled:  makeColorHSL(h, 5, 40),
-        inverse:   makeColorHSL(h, 10, 10)
-      },
-      border: {
-        "default": makeColorHSL(h, 8, 22),
-        strong:    makeColorHSL(h, 8, 35),
-        subtle:    makeColorHSL(h, 5, 15)
-      },
-      feedback: {
-        success: makeColorHSL(142, 60, 55),
-        warning: makeColorHSL(38, 80, 55),
-        error:   makeColorHSL(0, 72, 60),
-        info:    makeColorHSL(h, clamp(s - 5, 0, 100), 60)
-      },
-      overlay: {
-        scrim: { "$type": "color", "$value": { colorSpace: "srgb", components: [0, 0, 0], alpha: 0.7 } }
-      }
-    };
-  }
+  return result;
 }
 
 function generateSpacingData(spacingList) {
@@ -1138,8 +2299,7 @@ function generateTokenData(category, colorOpts, textStylesData, spacingData, rad
   if (typeof colorOpts === "string") colorOpts = { primary: colorOpts, secondary: "", tertiary: "" };
   switch (category) {
     case "colors":       return { filename: "colors.json",       data: generateColorTokens(colorOpts) };
-    case "colors-light": return { filename: "colors-light.json", data: generateSemanticColors(colorOpts, "light") };
-    case "colors-dark":  return { filename: "colors-dark.json",  data: generateSemanticColors(colorOpts, "dark") };
+    case "colors-light": return { filename: "colors-light.json", data: generateSemanticColors(colorOpts) };
     case "typography":   return { filename: "typography.json",   data: generateTypographyData(typographyData, fontFamilies) };
     case "spacing":      return { filename: "spacing.json",      data: generateSpacingData(spacingData) };
     case "text-styles":  return { filename: "text-styles.json",  data: generateTextStylesData(textStylesData) };

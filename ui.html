@@ -815,6 +815,12 @@ function equalSpans(n) { var s = []; var base = Math.floor(12 / n); var rem = 12
 function ensureColSpans(row) { if (!row.colSpans || row.colSpans.length !== row.cols) row.colSpans = equalSpans(row.cols); }
 var wfPromoGenerating = false;
 var wfPromoGenerated = false;
+var wfPageType = "promo"; // "promo" | "landing" | "fullsite"
+var PAGE_TYPES = [
+  { key: "promo",    label: "Promo" },
+  { key: "landing",  label: "Landing Page" },
+  { key: "fullsite", label: "Full Site Build" }
+];
 
 var TS_GROUPS = ["heading","body","links","buttons","input","label"];
 var wfTextStyles = [
@@ -912,6 +918,7 @@ function collectSettings() {
     zindex: JSON.parse(JSON.stringify(wfZIndex)),
     ziNextId: wfZiNextId,
     tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled)),
+    pageType: wfPageType,
     promoSections: JSON.parse(JSON.stringify(wfPromoSections)),
     promoPopupIncludeForm: wfPromoPopupIncludeForm,
     promoFormFields: JSON.parse(JSON.stringify(wfPromoFormFields)),
@@ -945,6 +952,7 @@ function applyLoadedSettings(s) {
   if (s.zindex) wfZIndex = s.zindex;
   if (s.ziNextId) wfZiNextId = s.ziNextId;
   if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
+  if (s.pageType) wfPageType = s.pageType;
   if (s.promoSections) { for (var pk in s.promoSections) { wfPromoSections[pk] = s.promoSections[pk]; } }
   if (s.promoPopupIncludeForm !== undefined) wfPromoPopupIncludeForm = s.promoPopupIncludeForm;
   if (s.promoFormFields) {
@@ -2247,7 +2255,7 @@ function renderStep3(container) {
       "<div class='wf-step-num'>Step 3</div>" +
       "<div class='wf-step-title'>Page Structures" + (locked ? "" : (wfPromoGenerated ? " — Generated" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Select sections for your promo, then generate desktop & mobile wireframes.</div>" : "")) +
+       (stepOpen ? "<div class='wf-step-desc'>Choose a page type, configure sections, then generate desktop & mobile wireframes.</div>" : "")) +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
@@ -2268,16 +2276,29 @@ function renderStep3(container) {
     var list = document.createElement("div");
     list.className = "wf-token-list";
 
-    // Section type selector (future: landing page, full site)
+    // Page type tabs
     var typeBar = document.createElement("div");
-    typeBar.style.cssText = "padding:8px 10px 4px;display:flex;gap:6px;";
-    var typeBtn = document.createElement("button");
-    typeBtn.className = "wf-gen-btn";
-    typeBtn.style.cssText = "padding:4px 12px;font-size:10px;opacity:1;cursor:default;";
-    typeBtn.textContent = "Promo";
-    typeBar.appendChild(typeBtn);
+    typeBar.style.cssText = "padding:8px 10px 4px;display:flex;gap:4px;";
+    PAGE_TYPES.forEach(function(pt) {
+      var tb = document.createElement("button");
+      tb.className = "wf-gen-btn";
+      var isActive = wfPageType === pt.key;
+      tb.style.cssText = "padding:4px 12px;font-size:10px;border-radius:4px;cursor:pointer;" +
+        (isActive ? "opacity:1;background:#89b4fa;color:#1e1e2e;" : "opacity:0.5;background:transparent;border:1px solid #45475a;color:#a6adc8;");
+      tb.textContent = pt.label;
+      tb.addEventListener("click", function() {
+        if (wfPageType === pt.key) return;
+        wfPageType = pt.key;
+        saveSettings();
+        var prev3 = document.getElementById("wf-step-3");
+        if (prev3) prev3.remove();
+        renderStep3(container);
+      });
+      typeBar.appendChild(tb);
+    });
     list.appendChild(typeBar);
 
+    if (wfPageType === "promo") {
     // Section checkboxes
     PROMO_SECTIONS.forEach(function(sec) {
       var row = document.createElement("div");
@@ -2811,6 +2832,24 @@ function renderStep3(container) {
     btnWrap.appendChild(delBtn);
 
     list.appendChild(btnWrap);
+    } else {
+      // Landing Page / Full Site Build — coming soon
+      var csPanel = document.createElement("div");
+      csPanel.style.cssText = "padding:24px 16px;text-align:center;";
+      var csIcon = document.createElement("div");
+      csIcon.style.cssText = "font-size:28px;margin-bottom:8px;opacity:0.5;";
+      csIcon.textContent = wfPageType === "landing" ? "🚀" : "🌐";
+      csPanel.appendChild(csIcon);
+      var csTitle = document.createElement("div");
+      csTitle.style.cssText = "font-size:12px;font-weight:600;color:#cdd6f4;margin-bottom:4px;";
+      csTitle.textContent = wfPageType === "landing" ? "Landing Page" : "Full Site Build";
+      csPanel.appendChild(csTitle);
+      var csDesc = document.createElement("div");
+      csDesc.style.cssText = "font-size:11px;color:#6c7086;line-height:1.4;";
+      csDesc.textContent = "Coming soon — this page type is under development.";
+      csPanel.appendChild(csDesc);
+      list.appendChild(csPanel);
+    }
 
     body.appendChild(list);
   }
@@ -3061,6 +3100,7 @@ window.onmessage=function(event){
     ];
     wfZiNextId = 8;
     TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
+    wfPageType = "promo";
     wfPromoSections = { hero: true, popup: true, banner: true };
     wfPromoPopupIncludeForm = true;
     wfPromoFormFields = [

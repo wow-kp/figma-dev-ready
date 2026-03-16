@@ -18,6 +18,28 @@ function pushDebugData() {
   else figma.ui.postMessage({ type:"debug-data", data:null, selCount:sel.length });
 }
 
+function countTokensByCategory(allVars, allCols) {
+  var colorVars = 0, spacingVars = 0, radiusVars = 0, typographyVars = 0, shadowVars = 0, borderVars = 0, zindexVars = 0, breakpointVars = 0, gridVars = 0, opacityVars = 0, otherVars = 0;
+  for (var vi = 0; vi < allVars.length; vi++) {
+    var v = allVars[vi];
+    var colName = "";
+    for (var ci = 0; ci < allCols.length; ci++) {
+      if (allCols[ci].id === v.variableCollectionId) { colName = allCols[ci].name.toLowerCase(); break; }
+    }
+    if (v.resolvedType === "COLOR") colorVars++;
+    else if (colName === "grid") gridVars++;
+    else if (colName.indexOf("spacing") !== -1 || colName.indexOf("gap") !== -1) spacingVars++;
+    else if (colName.indexOf("radius") !== -1 || colName.indexOf("corner") !== -1) radiusVars++;
+    else if (colName.indexOf("typography") !== -1 || colName.indexOf("font") !== -1) typographyVars++;
+    else if (colName.indexOf("border") !== -1) borderVars++;
+    else if (colName.indexOf("opacity") !== -1) opacityVars++;
+    else if (colName.indexOf("z-index") !== -1 || colName.indexOf("zindex") !== -1) zindexVars++;
+    else if (colName.indexOf("breakpoint") !== -1) breakpointVars++;
+    else otherVars++;
+  }
+  return { colors: colorVars, spacing: spacingVars, radius: radiusVars, typography: typographyVars, shadows: shadowVars, border: borderVars, opacity: opacityVars, zindex: zindexVars, breakpoints: breakpointVars, grid: gridVars, other: otherVars };
+}
+
 figma.ui.onmessage = async function(msg) {
   if (msg.type === "run-audit") {
     figma.ui.postMessage({ type:"audit-results", results:runAudit() });
@@ -88,10 +110,12 @@ figma.ui.onmessage = async function(msg) {
       var cols2 = figma.variables.getLocalVariableCollections();
       var ts2 = figma.getLocalTextStyles();
       var es2 = figma.getLocalEffectStyles();
-      var cv2=0,sv2=0,rv2=0,tv2=0,shv2=0,bv2=0,zv2=0,bpv2=0,gv2=0,opv2=0,ov2=0;
-      for(var vi2=0;vi2<allVars2.length;vi2++){var v2=allVars2[vi2];var cn2="";for(var ci2=0;ci2<cols2.length;ci2++){if(cols2[ci2].id===v2.variableCollectionId){cn2=cols2[ci2].name.toLowerCase();break;}}if(v2.resolvedType==="COLOR")cv2++;else if(cn2==="grid")gv2++;else if(cn2.indexOf("spacing")!==-1||cn2.indexOf("gap")!==-1)sv2++;else if(cn2.indexOf("radius")!==-1||cn2.indexOf("corner")!==-1)rv2++;else if(cn2.indexOf("typography")!==-1||cn2.indexOf("font")!==-1)tv2++;else if(cn2.indexOf("border")!==-1)bv2++;else if(cn2.indexOf("opacity")!==-1)opv2++;else if(cn2.indexOf("z-index")!==-1||cn2.indexOf("zindex")!==-1)zv2++;else if(cn2.indexOf("breakpoint")!==-1)bpv2++;else ov2++;}
-      for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)shv2++;}
-      figma.ui.postMessage({type:"tokens-data",tokens:{colors:cv2,spacing:sv2,radius:rv2,typography:tv2,shadows:shv2,border:bv2,opacity:opv2,zindex:zv2,breakpoints:bpv2,grid:gv2,other:ov2,textStyles:ts2.length,effectStyles:es2.length,collections:cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};})}});
+      var counts2 = countTokensByCategory(allVars2, cols2);
+      for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)counts2.shadows++;}
+      counts2.textStyles = ts2.length;
+      counts2.effectStyles = es2.length;
+      counts2.collections = cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};});
+      figma.ui.postMessage({type:"tokens-data",tokens:counts2});
     } catch(e){}
   }
   if (msg.type === "request-debug") { pushDebugData(); }
@@ -163,45 +187,16 @@ figma.ui.onmessage = async function(msg) {
       var textStyles = figma.getLocalTextStyles();
       var effectStyles = figma.getLocalEffectStyles();
 
-      var colorVars = 0, spacingVars = 0, radiusVars = 0, typographyVars = 0, shadowVars = 0, borderVars = 0, zindexVars = 0, breakpointVars = 0, gridVars = 0, opacityVars = 0, otherVars = 0;
-      for (var vi = 0; vi < allVars.length; vi++) {
-        var v = allVars[vi];
-        var colName = "";
-        for (var ci = 0; ci < collections.length; ci++) {
-          if (collections[ci].id === v.variableCollectionId) { colName = collections[ci].name.toLowerCase(); break; }
-        }
-        if (v.resolvedType === "COLOR") colorVars++;
-        else if (colName === "grid") gridVars++;
-        else if (colName.indexOf("spacing") !== -1 || colName.indexOf("gap") !== -1) spacingVars++;
-        else if (colName.indexOf("radius") !== -1 || colName.indexOf("corner") !== -1) radiusVars++;
-        else if (colName.indexOf("typography") !== -1 || colName.indexOf("font") !== -1) typographyVars++;
-        else if (colName.indexOf("border") !== -1) borderVars++;
-        else if (colName.indexOf("opacity") !== -1) opacityVars++;
-        else if (colName.indexOf("z-index") !== -1 || colName.indexOf("zindex") !== -1) zindexVars++;
-        else if (colName.indexOf("breakpoint") !== -1) breakpointVars++;
-        else otherVars++;
-      }
+      var counts = countTokensByCategory(allVars, collections);
       // Count shadow effect styles (shadows are Effect Styles, not variables)
       for (var esi = 0; esi < effectStyles.length; esi++) {
-        if (effectStyles[esi].name.toLowerCase().indexOf("shadow") !== -1) shadowVars++;
+        if (effectStyles[esi].name.toLowerCase().indexOf("shadow") !== -1) counts.shadows++;
       }
 
-      figma.ui.postMessage({ type: "tokens-data", tokens: {
-        colors: colorVars,
-        spacing: spacingVars,
-        radius: radiusVars,
-        typography: typographyVars,
-        shadows: shadowVars,
-        border: borderVars,
-        opacity: opacityVars,
-        zindex: zindexVars,
-        breakpoints: breakpointVars,
-        grid: gridVars,
-        other: otherVars,
-        textStyles: textStyles.length,
-        effectStyles: effectStyles.length,
-        collections: collections.map(function(c) { return { name: c.name, count: allVars.filter(function(v) { return v.variableCollectionId === c.id; }).length }; })
-      }});
+      counts.textStyles = textStyles.length;
+      counts.effectStyles = effectStyles.length;
+      counts.collections = collections.map(function(c) { return { name: c.name, count: allVars.filter(function(v) { return v.variableCollectionId === c.id; }).length }; });
+      figma.ui.postMessage({ type: "tokens-data", tokens: counts });
     } catch(e) {
       figma.ui.postMessage({ type: "tokens-data", tokens: null, error: String(e) });
     }
@@ -271,10 +266,12 @@ figma.ui.onmessage = async function(msg) {
       var cols2 = figma.variables.getLocalVariableCollections();
       var ts2 = figma.getLocalTextStyles();
       var es2 = figma.getLocalEffectStyles();
-      var cv2=0,sv2=0,rv2=0,tv2=0,shv2=0,bv2=0,zv2=0,bpv2=0,gv2=0,opv2=0,ov2=0;
-      for(var vi2=0;vi2<allVars2.length;vi2++){var v2=allVars2[vi2];var cn2="";for(var ci2=0;ci2<cols2.length;ci2++){if(cols2[ci2].id===v2.variableCollectionId){cn2=cols2[ci2].name.toLowerCase();break;}}if(v2.resolvedType==="COLOR")cv2++;else if(cn2==="grid")gv2++;else if(cn2.indexOf("spacing")!==-1||cn2.indexOf("gap")!==-1)sv2++;else if(cn2.indexOf("radius")!==-1||cn2.indexOf("corner")!==-1)rv2++;else if(cn2.indexOf("typography")!==-1||cn2.indexOf("font")!==-1)tv2++;else if(cn2.indexOf("border")!==-1)bv2++;else if(cn2.indexOf("opacity")!==-1)opv2++;else if(cn2.indexOf("z-index")!==-1||cn2.indexOf("zindex")!==-1)zv2++;else if(cn2.indexOf("breakpoint")!==-1)bpv2++;else ov2++;}
-      for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)shv2++;}
-      figma.ui.postMessage({type:"tokens-data",tokens:{colors:cv2,spacing:sv2,radius:rv2,typography:tv2,shadows:shv2,border:bv2,opacity:opv2,zindex:zv2,breakpoints:bpv2,grid:gv2,other:ov2,textStyles:ts2.length,effectStyles:es2.length,collections:cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};})}});
+      var counts2 = countTokensByCategory(allVars2, cols2);
+      for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)counts2.shadows++;}
+      counts2.textStyles = ts2.length;
+      counts2.effectStyles = es2.length;
+      counts2.collections = cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};});
+      figma.ui.postMessage({type:"tokens-data",tokens:counts2});
     } catch(e){}
   }
 
@@ -1163,7 +1160,7 @@ async function generatePromoStructure(msg) {
       spacingVarMap[shortName] = fv;
     } else if (collName.indexOf("opacity") !== -1) {
       var opModeId2 = null;
-      for (var oci = 0; oci < allColls.length; oci++) { if (allColls[oci].id === fv.variableCollectionId) { opModeId2 = allColls[oci].modes[0].modeId; break; } }
+      for (var oci = 0; oci < allColls.length; oci++) { if (allColls[oci].id === fv.variableCollectionId) { if (allColls[oci].modes && allColls[oci].modes.length) { opModeId2 = allColls[oci].modes[0].modeId; } break; } }
       if (opModeId2) { try { var opVal2 = cxResolveVar(fv, opModeId2, allColls); if (typeof opVal2 === "number") opacityVarMap[Math.round(opVal2 * 100)] = fv; } catch(e) {} }
     } else if (collName.indexOf("radius") !== -1 || collName.indexOf("corner") !== -1) {
       radiusVarMap[shortName] = fv;
@@ -1175,7 +1172,7 @@ async function generatePromoStructure(msg) {
     var best = null, bestDiff = Infinity;
     var spCol = null;
     for (var sci = 0; sci < allColls.length; sci++) { if (allColls[sci].name.toLowerCase().indexOf("spacing") !== -1) { spCol = allColls[sci]; break; } }
-    if (!spCol) return null;
+    if (!spCol || !spCol.modes || !spCol.modes.length) return null;
     var spModeId = spCol.modes[0].modeId;
     for (var sk in spacingVarMap) {
       if (!spacingVarMap.hasOwnProperty(sk)) continue;
@@ -3543,7 +3540,7 @@ async function generateComponentsPage(msg) {
     var dst = dropdownStates[dsi];
     var dIsError = dst.label === "Error";
     var dIsDisabled = dst.label === "Disabled";
-    var dIsDefault = dst.label === "Default";
+
 
     var dropComp = figma.createComponent();
     dropComp.name = "State=" + dst.label;
@@ -3775,6 +3772,7 @@ function cxResolveVar(v, modeId, allCols) {
       var ac = null;
       for (var i = 0; i < allCols.length; i++) { if (allCols[i].id === aliased.variableCollectionId) { ac = allCols[i]; break; } }
       if (!ac) break;
+      if (!ac.modes || !ac.modes.length) break;
       val = aliased.valuesByMode[ac.modes[0].modeId];
     } catch(e) { break; }
   }
@@ -3789,7 +3787,7 @@ function cxFindCol(allCols, pattern) {
   return null;
 }
 function cxGetFloats(col, allVars, allCols) {
-  if (!col) return [];
+  if (!col || !col.modes || !col.modes.length) return [];
   var mid = col.modes[0].modeId;
   var out = [];
   for (var i = 0; i < allVars.length; i++) {
@@ -5162,7 +5160,7 @@ async function generateComponentsPageComplex() {
     var dst = dropdownStates[dsi];
     var dIsError = dst.label === "Error";
     var dIsDisabled = dst.label === "Disabled";
-    var dIsDefault = dst.label === "Default";
+
 
     var dropComp = figma.createComponent();
     dropComp.name = "State=" + dst.label;

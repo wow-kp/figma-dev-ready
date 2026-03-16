@@ -1022,20 +1022,23 @@ function buildColorSlot(key, label, isOptional) {
   hexInp.spellcheck = false;
   pick.appendChild(hexInp);
 
-  if (isOptional && hasVal) {
-    var clearBtn = document.createElement("button");
-    clearBtn.className = "wf-color-clear";
-    clearBtn.textContent = "×";
-    clearBtn.title = "Clear";
-    clearBtn.addEventListener("click", function() {
+  function ensureClearButton() {
+    if (!isOptional || pick.querySelector(".wf-color-clear")) return;
+    var cb = document.createElement("button");
+    cb.className = "wf-color-clear"; cb.textContent = "×"; cb.title = "Clear";
+    cb.addEventListener("click", function() {
       wfColors[key] = "";
       hexInp.value = "";
       swatch.style.background = "";
       swatch.classList.add("empty");
-      clearBtn.remove();
+      cb.remove();
       saveSettings();
     });
-    pick.appendChild(clearBtn);
+    pick.appendChild(cb);
+  }
+
+  if (isOptional && hasVal) {
+    ensureClearButton();
   }
 
   // Sync picker → hex → state
@@ -1044,13 +1047,7 @@ function buildColorSlot(key, label, isOptional) {
     hexInp.value = colorInput.value;
     swatch.style.background = colorInput.value;
     swatch.classList.remove("empty");
-    // Add clear button if optional and not already there
-    if (isOptional && !pick.querySelector(".wf-color-clear")) {
-      var cb = document.createElement("button");
-      cb.className = "wf-color-clear"; cb.textContent = "×"; cb.title = "Clear";
-      cb.addEventListener("click", function() { wfColors[key]=""; hexInp.value=""; swatch.style.background=""; swatch.classList.add("empty"); cb.remove(); });
-      pick.appendChild(cb);
-    }
+    ensureClearButton();
   });
   hexInp.addEventListener("input", function() {
     var v = hexInp.value.trim();
@@ -1059,12 +1056,7 @@ function buildColorSlot(key, label, isOptional) {
       colorInput.value = v;
       swatch.style.background = v;
       swatch.classList.remove("empty");
-      if (isOptional && !pick.querySelector(".wf-color-clear")) {
-        var cb = document.createElement("button");
-        cb.className = "wf-color-clear"; cb.textContent = "×"; cb.title = "Clear";
-        cb.addEventListener("click", function() { wfColors[key]=""; hexInp.value=""; swatch.style.background=""; swatch.classList.add("empty"); cb.remove(); });
-        pick.appendChild(cb);
-      }
+      ensureClearButton();
     }
   });
 
@@ -1073,6 +1065,10 @@ function buildColorSlot(key, label, isOptional) {
 }
 
 function buildCustomColorSlot(idx, onRemove, onUpdate) {
+  if (!wfCustomColors[idx]) {
+    var empty = document.createElement("div");
+    return empty;
+  }
   var entry = wfCustomColors[idx];
   var hasVal = /^#[0-9A-Fa-f]{6}$/.test(entry.hex);
   var slot = document.createElement("div");
@@ -2187,7 +2183,7 @@ function renderStep2(container) {
       });
       czQueue.querySelectorAll(".file-remove").forEach(function(b) {
         b.addEventListener("click", function() {
-          fileQueue.splice(parseInt(b.dataset.idx), 1);
+          fileQueue.splice(parseInt(b.dataset.idx, 10), 1);
           renderCzQueue();
           renderQueue(); // sync the import tab too
         });
@@ -2341,6 +2337,7 @@ function renderStep3(container) {
         fieldsPanel.style.cssText = "padding:4px 10px 8px 56px;display:" + (wfPromoSections.popup && wfPromoPopupIncludeForm ? "block" : "none") + ";";
 
         var _selectedField = null; // click-to-place state
+        var _clearSelHandler = null;
 
         function getPlacedFieldIndices() {
           var placed = {};
@@ -2497,7 +2494,7 @@ function renderStep3(container) {
             for (var c = 1; c <= 4; c++) { var o = document.createElement("option"); o.value = c; o.textContent = c + "col"; if (c === gRow.cols) o.selected = true; colSel.appendChild(o); }
             (function(r, sel) {
               sel.addEventListener("change", function() {
-                var newCols = parseInt(sel.value);
+                var newCols = parseInt(sel.value, 10);
                 while (r.fields.length < newCols) r.fields.push(null);
                 while (r.fields.length > newCols) r.fields.pop();
                 r.cols = newCols;
@@ -2628,7 +2625,7 @@ function renderStep3(container) {
               (function(r, c) {
                 cell.addEventListener("drop", function(e) {
                   e.preventDefault(); cell.classList.remove("drag-over");
-                  var dragIdx = parseInt(e.dataTransfer.getData("text/plain"));
+                  var dragIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
                   if (isNaN(dragIdx)) return;
                   var existingFi = wfPromoFormGrid[r].fields[c];
                   wfPromoFormGrid.forEach(function(gr) {
@@ -2695,7 +2692,7 @@ function renderStep3(container) {
           pool.addEventListener("dragleave", function() { pool.classList.remove("drag-over"); });
           pool.addEventListener("drop", function(e) {
             e.preventDefault(); pool.classList.remove("drag-over");
-            var dragIdx = parseInt(e.dataTransfer.getData("text/plain"));
+            var dragIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
             if (isNaN(dragIdx)) return;
             wfPromoFormGrid.forEach(function(gr) {
               var idx = gr.fields.indexOf(dragIdx);
@@ -2750,10 +2747,11 @@ function renderStep3(container) {
           fieldsPanel.appendChild(poolWrap);
 
           // Clear selection on click outside
-          document.addEventListener("click", function clearSel() {
+          if (_clearSelHandler) { document.removeEventListener("click", _clearSelHandler); }
+          _clearSelHandler = function() {
             if (_selectedField !== null) { _selectedField = null; buildFieldsPanel(); }
-            document.removeEventListener("click", clearSel);
-          });
+          };
+          document.addEventListener("click", _clearSelHandler);
         }
 
         buildFieldsPanel();
@@ -2967,7 +2965,7 @@ function renderDebug(data){
 var fileQueue=[],importIdx=0,wfGenerateSpecimensAfterImport=false;
 var TYPE_LABELS={"primitives":"🎨 Primitives","colors-light":"🌤 Colors (Light)","colors-dark":"🌙 Colors (Dark)","spacing":"📐 Spacing","typography":"✏️ Typography tokens","radius":"⬜ Radius","border":"─ Border Width","shadows":"🌑 Shadows","zindex":"📦 Z-Index","breakpoints":"📱 Breakpoints","text-styles":"🔤 Text Styles","unknown":"❓ Unknown"};
 function detectTypeUI(fn){fn=fn.toLowerCase();if(fn.indexOf("text-style")!==-1||fn.indexOf("textstyle")!==-1)return"text-styles";if(fn.indexOf("primitive")!==-1)return"primitives";if(fn.indexOf("dark")!==-1)return"colors-dark";if(fn.indexOf("light")!==-1)return"colors-light";if(fn.indexOf("color")!==-1||fn.indexOf("colour")!==-1)return"colors-light";if(fn.indexOf("spacing")!==-1)return"spacing";if(fn.indexOf("typography")!==-1)return"typography";if(fn.indexOf("radius")!==-1)return"radius";if(fn.indexOf("border")!==-1)return"border";if(fn.indexOf("shadow")!==-1)return"shadows";if(fn.indexOf("z-index")!==-1)return"zindex";if(fn.indexOf("breakpoint")!==-1)return"breakpoints";return"unknown";}
-function renderQueue(){var q=document.getElementById("file-queue"),btn=document.getElementById("import-btn"),cnt=document.getElementById("file-count");q.innerHTML="";fileQueue.forEach(function(item,idx){var row=document.createElement("div");row.className="file-row"+(item.status==="ok"?" success":item.status==="error"?" error":"");row.innerHTML="<span style='font-size:14px;flex-shrink:0'>📄</span><div class='file-info'><div class='file-name'>"+esc(item.name)+"</div><div class='file-type'>"+(TYPE_LABELS[item.detectedType]||"Unknown")+"</div></div>"+(item.status==="ok"?"<span class='file-status ok'>✓ "+esc(item.message)+"</span>":"")+(item.status==="error"?"<span class='file-status err'>✗ Failed</span>":"")+(!item.status?"<button class='file-remove' data-idx='"+idx+"'>×</button>":"");q.appendChild(row);});q.querySelectorAll(".file-remove").forEach(function(b){b.addEventListener("click",function(){fileQueue.splice(parseInt(b.dataset.idx),1);renderQueue();});});var pending=fileQueue.filter(function(f){return !f.status;});cnt.textContent=pending.length+" file"+(pending.length!==1?"s":"")+" queued";btn.disabled=!pending.length;}
+function renderQueue(){var q=document.getElementById("file-queue"),btn=document.getElementById("import-btn"),cnt=document.getElementById("file-count");q.innerHTML="";fileQueue.forEach(function(item,idx){var row=document.createElement("div");row.className="file-row"+(item.status==="ok"?" success":item.status==="error"?" error":"");row.innerHTML="<span style='font-size:14px;flex-shrink:0'>📄</span><div class='file-info'><div class='file-name'>"+esc(item.name)+"</div><div class='file-type'>"+(TYPE_LABELS[item.detectedType]||"Unknown")+"</div></div>"+(item.status==="ok"?"<span class='file-status ok'>✓ "+esc(item.message)+"</span>":"")+(item.status==="error"?"<span class='file-status err'>✗ Failed</span>":"")+(!item.status?"<button class='file-remove' data-idx='"+idx+"'>×</button>":"");q.appendChild(row);});q.querySelectorAll(".file-remove").forEach(function(b){b.addEventListener("click",function(){fileQueue.splice(parseInt(b.dataset.idx, 10),1);renderQueue();});});var pending=fileQueue.filter(function(f){return !f.status;});cnt.textContent=pending.length+" file"+(pending.length!==1?"s":"")+" queued";btn.disabled=!pending.length;}
 function addFiles(list){for(var i=0;i<list.length;i++){var f=list[i];if(!fileQueue.some(function(x){return x.name===f.name;}))fileQueue.push({file:f,name:f.name,detectedType:detectTypeUI(f.name),status:null,message:""});}renderQueue();if(window._renderCzQueue)window._renderCzQueue();}
 document.getElementById("drop-zone").addEventListener("click",function(){document.getElementById("file-input").click();});
 document.getElementById("file-input").addEventListener("change",function(e){addFiles(e.target.files);e.target.value="";});

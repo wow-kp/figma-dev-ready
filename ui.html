@@ -152,7 +152,17 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-step.locked .wf-step-header { cursor: default; }
 .wf-step-lock-msg { font-size: 10px; color: #585b70; font-style: italic; margin-left: 2px; }
 /* ── Token accordion rows ── */
+.wf-subsection { margin: 4px 10px; border: 1px solid #313244; border-radius: 8px; overflow: hidden; }
+.wf-subsection-header { display: flex; align-items: center; gap: 8px; padding: 9px 10px; cursor: pointer; user-select: none; transition: background 0.12s; }
+.wf-subsection-header:hover { background: #1e1e2e; }
+.wf-subsection-title { font-size: 11px; font-weight: 700; color: #cdd6f4; flex: 1; }
+.wf-subsection-chevron { font-size: 9px; color: #585b70; transition: transform 0.15s; }
+.wf-subsection.collapsed .wf-subsection-body { display: none !important; }
+.wf-subsection.collapsed .wf-subsection-chevron { transform: rotate(-90deg); }
+.wf-subsection:not(.collapsed) .wf-subsection-header { border-bottom: 1px solid #313244; }
+.wf-subsection-body { padding: 0; }
 .wf-token-list { padding: 4px 10px; display: flex; flex-direction: column; gap: 2px; }
+.wf-token-list.in-subsection { padding: 4px 0; }
 .wf-token-acc { border-radius: 7px; border: 1px solid transparent; overflow: hidden; }
 .wf-token-acc.enabled  { border-color: #313244; }
 .wf-token-acc.disabled { opacity: 0.5; }
@@ -298,6 +308,36 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-generate-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #313244; border-radius: 99px; }
+/* Grid builder */
+.grid-builder { display:flex; flex-direction:column; gap:8px; }
+.grid-row-wrap { display:flex; flex-direction:column; gap:4px; }
+.grid-row-controls { display:flex; align-items:center; gap:6px; padding:2px 2px; min-height:24px; }
+.grid-row-controls select { background:#1e1e2e; border:1px solid #45475a; color:#cdd6f4; font-size:11px; padding:3px 4px; border-radius:4px; width:44px; }
+.grid-row-controls .row-label { font-size:11px; color:#585b70; flex:1; }
+.grid-row-controls button { background:none; border:none; color:#585b70; cursor:pointer; font-size:14px; padding:2px 5px; border-radius:3px; }
+.grid-row-controls button:hover { color:#cdd6f4; background:#313244; }
+.grid-cells { display:grid; gap:0; padding:5px; border:1px solid #313244; border-radius:6px; background:#181825; }
+.grid-cell-wrap { display:contents; }
+.col-resize-handle { width:9px; cursor:col-resize; display:flex; align-items:center; justify-content:center; position:relative; z-index:2; }
+.col-resize-handle::after { content:""; display:block; width:3px; height:60%; border-radius:2px; background:#45475a; transition:background .15s, width .15s; }
+.col-resize-handle:hover::after, .col-resize-handle.dragging::after { background:#89b4fa; width:4px; }
+.grid-span-label { font-size:8px; color:#45475a; text-align:center; padding-top:2px; }
+.grid-cell { min-height:34px; border:1px dashed #45475a; border-radius:5px; display:flex; align-items:center; justify-content:center; transition:border-color .15s, background .15s; font-size:9px; color:#45475a; }
+.grid-cell.occupied { border-style:solid; border-color:#313244; background:#1e1e2e; justify-content:flex-start; padding:0 5px; }
+.grid-cell.occupied .field-chip { flex:1; width:100%; }
+.grid-cell.drag-over { border-color:#89b4fa; background:rgba(137,180,250,.06); }
+.grid-cell.selected-target { border-color:#89b4fa; background:rgba(137,180,250,.06); }
+.field-chip { padding:5px 8px; background:#313244; color:#cdd6f4; font-size:11px; border-radius:5px; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; max-width:100%; min-height:26px; }
+.field-chip.dragging { opacity:.4; }
+.field-chip.selected { outline:2px solid #89b4fa; outline-offset:1px; }
+.field-chip .req-star { color:#f38ba8; font-weight:700; font-size:14px; padding:0 2px; min-width:14px; text-align:center; cursor:pointer; }
+.field-chip .dd-tag { font-size:9px; color:#585b70; background:#11111b; padding:2px 5px; border-radius:3px; cursor:pointer; }
+.field-chip .chip-remove { color:#585b70; cursor:pointer; font-size:14px; font-weight:700; margin-left:auto; padding:0 2px; min-width:14px; text-align:center; }
+.field-chip .chip-remove:hover { color:#f38ba8; }
+.field-pool-wrap { margin-top:6px; }
+.field-pool-title { font-size:10px; color:#585b70; padding:0 2px 4px; }
+.field-pool { display:flex; flex-wrap:wrap; gap:5px; padding:7px; min-height:34px; border:1px dashed #45475a; border-radius:6px; transition:border-color .15s; }
+.field-pool.drag-over { border-color:#89b4fa; }
 </style>
 </head>
 <body>
@@ -410,13 +450,13 @@ document.getElementById("run-btn").addEventListener("click",function(){
   parent.postMessage({pluginMessage:{type:"run-audit"}},"*");
 });
 var GROUPS_ORDER=[
-  {label:"Naming & Structure",keys:["naming","namingFormat","duplicates","deepNesting"]},
+  {label:"Naming & Structure",keys:["naming","namingFormat","deepNesting"]},
   {label:"Layout",            keys:["autoLayout"]},
   {label:"Variables & Styles",keys:["colors","spacingVars","radiusVars","opacityVars"]},
   {label:"Typography",        keys:["textStyles","mixedText"]},
   {label:"Hygiene",           keys:["hidden","empty","unsavedStyles"]},
 ];
-var WEIGHTS_UI={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,duplicates:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+var WEIGHTS_UI={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
 function priorityBadge(key){var w=WEIGHTS_UI[key]||1;if(w>=5)return"<span class='priority p-critical'>Critical</span>";if(w>=4)return"<span class='priority p-high'>High</span>";if(w>=3)return"<span class='priority p-medium'>Medium</span>";return"<span class='priority p-low'>Low</span>";}
 
 // Build one issue row with the appropriate inline action for its check type
@@ -484,6 +524,14 @@ function makeIssueRow(key, issue, hasColorVars) {
 
 function renderAudit(data){
   var btn=document.getElementById("run-btn"); btn.disabled=false; btn.textContent="Re-run audit";
+  if(data.noPages){
+    var container=document.getElementById("results"); container.innerHTML=""; container.style.display="block";
+    var msg=document.createElement("div"); msg.style.cssText="text-align:center;color:#a6adc8;padding:24px 12px;font-size:12px;";
+    msg.textContent="No \"Mobile\" or \"Desktop\" pages found. The audit runs only on those pages.";
+    container.appendChild(msg);
+    document.getElementById("score-bar").style.display="none";
+    return;
+  }
   var C=2*Math.PI*20,arc=document.getElementById("arc");
   arc.style.strokeDasharray=C; arc.style.strokeDashoffset=C-(data.score/100)*C;
   var col=data.score>=80?"#a6e3a1":data.score>=50?"#f9e2af":"#f38ba8"; arc.style.stroke=col;
@@ -522,7 +570,7 @@ function renderAudit(data){
 
 // ── Workflow ───────────────────────────────────────────────────────────────
 // Persists cover form values across re-renders
-var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true };
+var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true, step2Toggled:false, step2BasicOpen:false, step2ComplexOpen:false, step3Open:true };
 var wfTokensData = null;
 var wfStep1Color = "red"; // track step 1 status for step 2 gating
 
@@ -723,8 +771,10 @@ var TOKEN_DEFS = [
   { key: "shadows",      cats: ["shadows"],                             countKey: "shadows",      icon: "✨", name: "Shadows",           desc: "Shadow tokens",                      hasConfig: "shadows" },
   { key: "border",       cats: ["border"],                              countKey: "border",       icon: "▭",  name: "Border",            desc: "Border width tokens",               hasConfig: "border" },
   { key: "zindex",       cats: ["zindex"],                              countKey: "zindex",       icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens",             hasConfig: "zindex" },
+  { key: "opacity",      cats: ["opacity"],                             countKey: "opacity",      icon: "👁",  name: "Opacity",           desc: "5%–95% in 5% steps — bind all opacity values", noCheckbox: true },
   { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins",             hasConfig: "spacing", noCheckbox: true },
-  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: "breakpoints",  icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints",            hasConfig: "breakpoints", noCheckbox: true }
+  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: "breakpoints",  icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints",            hasConfig: "breakpoints", noCheckbox: true },
+  { key: "grid",         cats: ["grid"],                                countKey: "grid",         icon: "▦",  name: "Grid",              desc: "12-col grid with 4 breakpoints",    noCheckbox: true }
 ];
 
 // Track which tokens are enabled and which panels are open
@@ -736,6 +786,35 @@ var wfCustomColors = []; // { name: "Success", hex: "#22C55E" }
 var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
 var wfGenerating = false;
 var wfGenerated = false;
+var wfStep2Color = "red";
+
+// Step 3 — Page structures
+var PROMO_SECTIONS = [
+  { key: "hero",      icon: "🖼", name: "Hero Section",    desc: "Full-width hero with bg image, headline, subtext, CTA" },
+  { key: "popup",     icon: "💬", name: "Popup",           desc: "Overlay + content card (optional form, thank-you screen)" },
+  { key: "banner",    icon: "🏷", name: "Banner",          desc: "Full-width banner with background image and CTA" }
+];
+var wfPromoSections = { hero: true, popup: true, banner: true };
+var wfPromoPopupIncludeForm = true;
+var wfPromoFormFields = [
+  { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+  { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+];
+var wfPromoFormFieldNextId = 7;
+var wfPromoFormGrid = [
+  { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+  { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+  { cols: 1, colSpans: [12], fields: [4] }
+];
+
+function equalSpans(n) { var s = []; var base = Math.floor(12 / n); var rem = 12 - base * n; for (var i = 0; i < n; i++) s.push(base + (i < rem ? 1 : 0)); return s; }
+function ensureColSpans(row) { if (!row.colSpans || row.colSpans.length !== row.cols) row.colSpans = equalSpans(row.cols); }
+var wfPromoGenerating = false;
+var wfPromoGenerated = false;
 
 var TS_GROUPS = ["heading","body","links","buttons","input","label"];
 var wfTextStyles = [
@@ -753,9 +832,11 @@ var wfTextStyles = [
   {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
   {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
   {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
-  {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
+  {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+  {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+  {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
 ];
-var wfTsNextId = 16;
+var wfTsNextId = 18;
 
 var wfSpacing = [
   {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
@@ -830,7 +911,13 @@ function collectSettings() {
     bdNextId: wfBdNextId,
     zindex: JSON.parse(JSON.stringify(wfZIndex)),
     ziNextId: wfZiNextId,
-    tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled))
+    tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled)),
+    promoSections: JSON.parse(JSON.stringify(wfPromoSections)),
+    promoPopupIncludeForm: wfPromoPopupIncludeForm,
+    promoFormFields: JSON.parse(JSON.stringify(wfPromoFormFields)),
+    promoFormFieldNextId: wfPromoFormFieldNextId,
+    promoFormGrid: JSON.parse(JSON.stringify(wfPromoFormGrid)),
+    _promoFieldsMigratedV2: true
   };
 }
 
@@ -858,6 +945,38 @@ function applyLoadedSettings(s) {
   if (s.zindex) wfZIndex = s.zindex;
   if (s.ziNextId) wfZiNextId = s.ziNextId;
   if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
+  if (s.promoSections) { for (var pk in s.promoSections) { wfPromoSections[pk] = s.promoSections[pk]; } }
+  if (s.promoPopupIncludeForm !== undefined) wfPromoPopupIncludeForm = s.promoPopupIncludeForm;
+  if (s.promoFormFields) {
+    wfPromoFormFields = s.promoFormFields;
+    // Migrate v2: apply correct required defaults for built-in fields
+    var defaultRequired = { "First name": true, "Last name": true, "Email address": true, "Phone number": true, "Select your store": true };
+    if (!s._promoFieldsMigratedV2) {
+      wfPromoFormFields.forEach(function(f) {
+        if (!f.custom && defaultRequired[f.label] !== undefined) f.required = !!defaultRequired[f.label];
+        if (f.required === undefined) f.required = false;
+      });
+    } else {
+      wfPromoFormFields.forEach(function(f) { if (f.required === undefined) f.required = false; });
+    }
+  }
+  if (s.promoFormFieldNextId) wfPromoFormFieldNextId = s.promoFormFieldNextId;
+  if (s.promoFormGrid) {
+    wfPromoFormGrid = s.promoFormGrid;
+    wfPromoFormGrid.forEach(function(r) { ensureColSpans(r); });
+  } else {
+    // Migration: build grid from old enabled fields, 2 per row
+    wfPromoFormGrid = [];
+    var enabledIdxs = [];
+    wfPromoFormFields.forEach(function(f, i) { if (f.enabled) enabledIdxs.push(i); });
+    for (var gi = 0; gi < enabledIdxs.length; gi += 2) {
+      if (gi + 1 < enabledIdxs.length) {
+        wfPromoFormGrid.push({ cols: 2, colSpans: [6, 6], fields: [enabledIdxs[gi], enabledIdxs[gi + 1]] });
+      } else {
+        wfPromoFormGrid.push({ cols: 1, colSpans: [12], fields: [enabledIdxs[gi]] });
+      }
+    }
+  }
 }
 
 function getWfColors() {
@@ -1719,7 +1838,7 @@ function renderStep2(container) {
   var someHaveTokens = enabledWithCounts.some(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
   var indicatorColor = locked ? "red" : (allHaveTokens ? "green" : (someHaveTokens ? "yellow" : "red"));
 
-  var stepOpen = locked ? false : wfFormState.step2Open;
+  var stepOpen = locked ? false : (allHaveTokens && !wfFormState.step2Toggled ? false : wfFormState.step2Open);
 
   var step = document.createElement("div");
   step.id = "wf-step-2";
@@ -1739,6 +1858,7 @@ function renderStep2(container) {
 
   if (!locked) {
     header.addEventListener("click", function() {
+      wfFormState.step2Toggled = true;
       wfFormState.step2Open = !wfFormState.step2Open;
       var prev2 = document.getElementById("wf-step-2");
       if (prev2) prev2.remove();
@@ -1753,8 +1873,22 @@ function renderStep2(container) {
   if (!tokens) {
     body.innerHTML = "<div class='wf-token-list'><div style='padding:8px;font-size:11px;color:#585b70;text-align:center'>Loading…</div></div>";
   } else {
+    // ── Basic Variables sub-section ──
+    var basicSection = document.createElement("div");
+    basicSection.className = "wf-subsection" + (wfFormState.step2BasicOpen ? "" : " collapsed");
+    var basicHdr = document.createElement("div");
+    basicHdr.className = "wf-subsection-header";
+    basicHdr.innerHTML = "<span class='wf-subsection-title'>Basic Variables</span><span class='wf-subsection-chevron'>▼</span>";
+    basicHdr.addEventListener("click", function() {
+      wfFormState.step2BasicOpen = !wfFormState.step2BasicOpen;
+      basicSection.classList.toggle("collapsed", !wfFormState.step2BasicOpen);
+    });
+    basicSection.appendChild(basicHdr);
+    var basicBody = document.createElement("div");
+    basicBody.className = "wf-subsection-body";
+
     var list = document.createElement("div");
-    list.className = "wf-token-list";
+    list.className = "wf-token-list in-subsection";
 
     TOKEN_DEFS.forEach(function(def) {
       var count = tokens && def.countKey ? (tokens[def.countKey] || 0) : 0;
@@ -1903,7 +2037,7 @@ function renderStep2(container) {
     var btnWrap = document.createElement("div");
     btnWrap.style.cssText = "padding: 8px 10px;";
 
-    if (wfGenerated || allHaveTokens) {
+    if (wfGenerated || someHaveTokens) {
       var resetBtn = document.createElement("button");
       resetBtn.className = "wf-reset-btn";
       resetBtn.textContent = "Reset Variables & Text Styles";
@@ -1953,9 +2087,133 @@ function renderStep2(container) {
       });
       btnWrap.appendChild(genAllBtn);
     }
+    // Restore Token Defaults button
+    var rstDefBtn = document.createElement("button");
+    rstDefBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+    rstDefBtn.textContent = "Restore Token Defaults";
+    rstDefBtn.addEventListener("mouseenter", function() { rstDefBtn.style.borderColor = "#f38ba8"; rstDefBtn.style.color = "#f38ba8"; });
+    rstDefBtn.addEventListener("mouseleave", function() { rstDefBtn.style.borderColor = "#45475a"; rstDefBtn.style.color = "#a6adc8"; });
+    rstDefBtn.addEventListener("click", function() {
+      if (!confirm("Reset all token settings to defaults? This cannot be undone.")) return;
+      rstDefBtn.disabled = true; rstDefBtn.textContent = "Resetting…";
+      parent.postMessage({ pluginMessage: { type: "reset-settings" } }, "*");
+    });
+    btnWrap.appendChild(rstDefBtn);
     list.appendChild(btnWrap);
 
-    body.appendChild(list);
+    basicBody.appendChild(list);
+    basicSection.appendChild(basicBody);
+    body.appendChild(basicSection);
+
+    // ── Complex Variables sub-section ──
+    var complexSection = document.createElement("div");
+    complexSection.className = "wf-subsection" + (wfFormState.step2ComplexOpen ? "" : " collapsed");
+    var complexHdr = document.createElement("div");
+    complexHdr.className = "wf-subsection-header";
+    complexHdr.innerHTML = "<span class='wf-subsection-title'>Complex Variables</span><span class='wf-subsection-chevron'>▼</span>";
+    complexHdr.addEventListener("click", function() {
+      wfFormState.step2ComplexOpen = !wfFormState.step2ComplexOpen;
+      complexSection.classList.toggle("collapsed", !wfFormState.step2ComplexOpen);
+    });
+    complexSection.appendChild(complexHdr);
+    var complexBody = document.createElement("div");
+    complexBody.className = "wf-subsection-body";
+    complexBody.style.cssText = "padding: 10px;display:flex;flex-direction:column;gap:10px;";
+
+    // Link to external generator
+    var extNote = document.createElement("div");
+    extNote.style.cssText = "font-size:11px;color:#6c7086;line-height:1.65;background:#181825;border:1px solid #313244;border-radius:8px;padding:9px 12px;";
+    extNote.innerHTML = "Use the <b style='color:#89b4fa'>Figma Variables Generator</b> to create complex token sets (primitives, semantic colors, dark mode, etc.), then import the JSON files below.";
+    complexBody.appendChild(extNote);
+
+    var extOpenBtn = document.createElement("button");
+    extOpenBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;";
+    extOpenBtn.textContent = "Open Variables Generator \u2197";
+    extOpenBtn.addEventListener("mouseenter", function() { extOpenBtn.style.borderColor = "#89b4fa"; extOpenBtn.style.color = "#89b4fa"; });
+    extOpenBtn.addEventListener("mouseleave", function() { extOpenBtn.style.borderColor = "#45475a"; extOpenBtn.style.color = "#a6adc8"; });
+    extOpenBtn.addEventListener("click", function() {
+      window.open("https://figma-variables-generator.netlify.app/", "_blank");
+    });
+    complexBody.appendChild(extOpenBtn);
+
+    // Inline drop zone for JSON import
+    var czDrop = document.createElement("div");
+    czDrop.style.cssText = "border:2px dashed #313244;border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.15s,background 0.15s;";
+    czDrop.innerHTML = "<input type='file' multiple accept='.json' style='display:none'><div style='font-size:16px;margin-bottom:4px;'>📂</div><div style='font-size:12px;color:#cdd6f4;font-weight:600;'>Click to select JSON files</div><div style='font-size:10px;color:#6c7086;margin-top:2px;'>or drag and drop here</div>";
+    var czFileInput = czDrop.querySelector("input");
+    czDrop.addEventListener("click", function() { czFileInput.click(); });
+    czFileInput.addEventListener("change", function(e) { addFiles(e.target.files); renderCzQueue(); e.target.value = ""; });
+    czDrop.addEventListener("dragover", function(e) { e.preventDefault(); czDrop.style.borderColor = "#89b4fa"; czDrop.style.background = "#89b4fa0a"; });
+    czDrop.addEventListener("dragleave", function() { czDrop.style.borderColor = "#313244"; czDrop.style.background = ""; });
+    czDrop.addEventListener("drop", function(e) { e.preventDefault(); czDrop.style.borderColor = "#313244"; czDrop.style.background = ""; addFiles(e.dataTransfer.files); renderCzQueue(); });
+    complexBody.appendChild(czDrop);
+
+    // Inline file queue
+    var czQueue = document.createElement("div");
+    czQueue.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    complexBody.appendChild(czQueue);
+
+    // Import actions row
+    var czActions = document.createElement("div");
+    czActions.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0 0;border-top:1px solid #313244;";
+    var czCount = document.createElement("span");
+    czCount.style.cssText = "font-size:11px;color:#6c7086;flex:1;";
+    czCount.textContent = "No files queued";
+    czActions.appendChild(czCount);
+    var czImportBtn = document.createElement("button");
+    czImportBtn.className = "primary-btn";
+    czImportBtn.textContent = "Import to Figma";
+    czImportBtn.disabled = true;
+    czImportBtn.addEventListener("click", function() {
+      czImportBtn.disabled = true;
+      wfGenerateSpecimensAfterImport = true;
+      importIdx = 0;
+      processNext();
+    });
+    czActions.appendChild(czImportBtn);
+    complexBody.appendChild(czActions);
+
+    // Render inline queue
+    function renderCzQueue() {
+      czQueue.innerHTML = "";
+      fileQueue.forEach(function(item, idx) {
+        var row = document.createElement("div");
+        row.className = "file-row" + (item.status === "ok" ? " success" : item.status === "error" ? " error" : "");
+        row.innerHTML = "<span style='font-size:14px;flex-shrink:0'>\uD83D\uDCC4</span><div class='file-info'><div class='file-name'>" + esc(item.name) + "</div><div class='file-type'>" + (TYPE_LABELS[item.detectedType] || "Unknown") + "</div></div>" +
+          (item.status === "ok" ? "<span class='file-status ok'>\u2713 " + esc(item.message) + "</span>" : "") +
+          (item.status === "error" ? "<span class='file-status err'>\u2717 Failed</span>" : "") +
+          (!item.status ? "<button class='file-remove' data-idx='" + idx + "'>\u00D7</button>" : "");
+        czQueue.appendChild(row);
+      });
+      czQueue.querySelectorAll(".file-remove").forEach(function(b) {
+        b.addEventListener("click", function() {
+          fileQueue.splice(parseInt(b.dataset.idx), 1);
+          renderCzQueue();
+          renderQueue(); // sync the import tab too
+        });
+      });
+      var pending = fileQueue.filter(function(f) { return !f.status; });
+      czCount.textContent = pending.length + " file" + (pending.length !== 1 ? "s" : "") + " queued";
+      czImportBtn.disabled = !pending.length;
+    }
+    // Expose so the import-result handler can refresh it
+    window._renderCzQueue = renderCzQueue;
+
+    // Reset button in complex section
+    if (wfGenerated || someHaveTokens) {
+      var czResetBtn = document.createElement("button");
+      czResetBtn.className = "wf-reset-btn";
+      czResetBtn.style.cssText += "margin-top:4px;";
+      czResetBtn.textContent = "Reset Variables & Text Styles";
+      czResetBtn.addEventListener("click", function() {
+        czResetBtn.disabled = true; czResetBtn.textContent = "Resetting…";
+        parent.postMessage({ pluginMessage: { type: "reset-tokens" } }, "*");
+      });
+      complexBody.appendChild(czResetBtn);
+    }
+
+    complexSection.appendChild(complexBody);
+    body.appendChild(complexSection);
   }
 
   // Auto-save settings on any input/change within step 2
@@ -1964,6 +2222,635 @@ function renderStep2(container) {
 
   step.appendChild(body);
   container.appendChild(step);
+
+  // Track step 2 status for gating step 3
+  wfStep2Color = indicatorColor;
+  renderStep3(container);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 3 — Page Structures
+// ══════════════════════════════════════════════════════════════════════════════
+function renderStep3(container) {
+  var prev = document.getElementById("wf-step-3");
+  if (prev) prev.remove();
+
+  var locked = wfStep2Color === "red";
+  var indicatorColor = locked ? "red" : (wfPromoGenerated ? "green" : "yellow");
+  var stepOpen = locked ? false : wfFormState.step3Open;
+
+  var step = document.createElement("div");
+  step.id = "wf-step-3";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (wfPromoGenerated ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 3</div>" +
+      "<div class='wf-step-title'>Page Structures" + (locked ? "" : (wfPromoGenerated ? " — Generated" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
+       (stepOpen ? "<div class='wf-step-desc'>Select sections for your promo, then generate desktop & mobile wireframes.</div>" : "")) +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step3Open = !wfFormState.step3Open;
+      var prev3 = document.getElementById("wf-step-3");
+      if (prev3) prev3.remove();
+      renderStep3(container);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!locked) {
+    var list = document.createElement("div");
+    list.className = "wf-token-list";
+
+    // Section type selector (future: landing page, full site)
+    var typeBar = document.createElement("div");
+    typeBar.style.cssText = "padding:8px 10px 4px;display:flex;gap:6px;";
+    var typeBtn = document.createElement("button");
+    typeBtn.className = "wf-gen-btn";
+    typeBtn.style.cssText = "padding:4px 12px;font-size:10px;opacity:1;cursor:default;";
+    typeBtn.textContent = "Promo";
+    typeBar.appendChild(typeBtn);
+    list.appendChild(typeBar);
+
+    // Section checkboxes
+    PROMO_SECTIONS.forEach(function(sec) {
+      var row = document.createElement("div");
+      row.className = "wf-token-acc" + (wfPromoSections[sec.key] ? " enabled" : " disabled");
+
+      var hdr = document.createElement("div");
+      hdr.className = "wf-token-header";
+      hdr.style.cursor = "default";
+
+      var chk = document.createElement("input");
+      chk.type = "checkbox";
+      chk.className = "wf-token-chk";
+      chk.checked = wfPromoSections[sec.key];
+      chk.addEventListener("click", function(e) { e.stopPropagation(); });
+      chk.addEventListener("change", function() {
+        wfPromoSections[sec.key] = chk.checked;
+        row.classList.toggle("enabled", chk.checked);
+        row.classList.toggle("disabled", !chk.checked);
+        saveSettings();
+      });
+      hdr.appendChild(chk);
+
+      var iconSpan = document.createElement("span");
+      iconSpan.className = "wf-token-icon";
+      iconSpan.textContent = sec.icon;
+      hdr.appendChild(iconSpan);
+
+      var infoDiv = document.createElement("div");
+      infoDiv.className = "wf-token-info";
+      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(sec.name) + "</div><div class='wf-token-desc'>" + esc(sec.desc) + "</div>";
+      hdr.appendChild(infoDiv);
+
+      row.appendChild(hdr);
+
+      // Sub-option: "Include form" for Popup
+      if (sec.key === "popup") {
+        var subOpt = document.createElement("div");
+        subOpt.style.cssText = "padding:4px 10px 6px 42px;display:" + (wfPromoSections.popup ? "flex" : "none") + ";align-items:center;gap:6px;";
+        var subChk = document.createElement("input");
+        subChk.type = "checkbox";
+        subChk.checked = wfPromoPopupIncludeForm;
+        subChk.style.cssText = "margin:0;";
+        subChk.addEventListener("click", function(e) { e.stopPropagation(); });
+        subChk.addEventListener("change", function() {
+          wfPromoPopupIncludeForm = subChk.checked;
+          saveSettings();
+        });
+        subOpt.appendChild(subChk);
+        var subLabel = document.createElement("span");
+        subLabel.style.cssText = "font-size:11px;color:#666;";
+        subLabel.textContent = "Include form fields";
+        subOpt.appendChild(subLabel);
+        row.appendChild(subOpt);
+
+        // Form fields selector panel
+        var fieldsPanel = document.createElement("div");
+        fieldsPanel.style.cssText = "padding:4px 10px 8px 56px;display:" + (wfPromoSections.popup && wfPromoPopupIncludeForm ? "block" : "none") + ";";
+
+        var _selectedField = null; // click-to-place state
+
+        function getPlacedFieldIndices() {
+          var placed = {};
+          wfPromoFormGrid.forEach(function(r) { r.fields.forEach(function(fi) { if (fi !== null) placed[fi] = true; }); });
+          return placed;
+        }
+
+        function makeFieldChip(fi, opts) {
+          var fld = wfPromoFormFields[fi];
+          var chip = document.createElement("span");
+          chip.className = "field-chip";
+          chip.draggable = true;
+          chip.dataset.fieldIndex = fi;
+          var labelSpan = document.createElement("span");
+          labelSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;";
+          labelSpan.textContent = fld.label || "(unnamed)";
+          labelSpan.title = "Double-click to rename";
+          chip.appendChild(labelSpan);
+          // Dropdown tag – clickable for custom fields to toggle type
+          if (fld.custom) {
+            var t = document.createElement("span"); t.className = "dd-tag";
+            t.textContent = fld.dropdown ? "dd" : "txt";
+            t.title = "Click to toggle input/dropdown";
+            t.style.cssText += "cursor:pointer;opacity:" + (fld.dropdown ? "1" : "0.4") + ";";
+            (function(f) { t.addEventListener("click", function(e) { e.stopPropagation(); f.dropdown = !f.dropdown; saveSettings(); buildFieldsPanel(); }); })(fld);
+            chip.appendChild(t);
+          } else if (fld.dropdown) {
+            var t = document.createElement("span"); t.className = "dd-tag"; t.textContent = "dd"; chip.appendChild(t);
+          }
+          // Required toggle
+          var reqStar = document.createElement("span");
+          reqStar.className = "req-star";
+          reqStar.textContent = "*";
+          reqStar.title = fld.required ? "Required – click to toggle" : "Optional – click to toggle";
+          reqStar.style.cssText = "cursor:pointer;opacity:" + (fld.required ? "1" : "0.3") + ";";
+          (function(f, star) {
+            star.addEventListener("click", function(e) {
+              e.stopPropagation();
+              f.required = !f.required;
+              saveSettings(); buildFieldsPanel();
+            });
+          })(fld, reqStar);
+          chip.appendChild(reqStar);
+          // Drag
+          chip.addEventListener("dragstart", function(e) {
+            e.dataTransfer.setData("text/plain", String(fi));
+            e.dataTransfer.effectAllowed = "move";
+            chip.classList.add("dragging");
+          });
+          chip.addEventListener("dragend", function() { chip.classList.remove("dragging"); });
+          // Click-to-place (debounced to allow dblclick)
+          (function(fieldIdx, chipEl, lblEl, fieldObj) {
+            var clickTimer = null;
+            chipEl.addEventListener("click", function(e) {
+              e.stopPropagation();
+              if (clickTimer) clearTimeout(clickTimer);
+              clickTimer = setTimeout(function() {
+                clickTimer = null;
+                if (_selectedField === fieldIdx) { _selectedField = null; buildFieldsPanel(); return; }
+                _selectedField = fieldIdx;
+                buildFieldsPanel();
+              }, 250);
+            });
+            chipEl.addEventListener("dblclick", function(e) {
+              e.stopPropagation();
+              if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+              chipEl.draggable = false;
+              var inp = document.createElement("input");
+              inp.type = "text"; inp.value = fieldObj.label;
+              inp.style.cssText = "background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;font-size:11px;padding:2px 5px;border-radius:3px;outline:none;width:100px;min-width:60px;";
+              lblEl.replaceWith(inp);
+              inp.focus(); inp.select();
+              var done = false;
+              function finish() {
+                if (done) return; done = true;
+                fieldObj.label = inp.value || "Field";
+                saveSettings(); buildFieldsPanel();
+              }
+              inp.addEventListener("blur", finish);
+              inp.addEventListener("keydown", function(ev) { if (ev.key === "Enter") { ev.preventDefault(); finish(); } });
+            });
+          })(fi, chip, labelSpan, fld);
+          if (_selectedField === fi) chip.classList.add("selected");
+          // Remove from grid (x button) — only in grid cells
+          if (opts && opts.inGrid) {
+            var rm = document.createElement("span");
+            rm.className = "chip-remove";
+            rm.textContent = "×";
+            rm.addEventListener("click", function(e) {
+              e.stopPropagation();
+              // Find and remove from grid
+              wfPromoFormGrid.forEach(function(r) {
+                var idx = r.fields.indexOf(fi);
+                if (idx !== -1) r.fields[idx] = null;
+              });
+              saveSettings(); buildFieldsPanel();
+            });
+            chip.appendChild(rm);
+          }
+          // Delete custom field entirely — only in pool
+          if (fld.custom && !(opts && opts.inGrid)) {
+            var del = document.createElement("span");
+            del.className = "chip-remove";
+            del.textContent = "×";
+            del.title = "Delete custom field";
+            (function(idx) { del.addEventListener("click", function(e) {
+              e.stopPropagation();
+              wfPromoFormGrid.forEach(function(r) {
+                for (var c = 0; c < r.fields.length; c++) {
+                  if (r.fields[c] === idx) r.fields[c] = null;
+                  else if (r.fields[c] !== null && r.fields[c] > idx) r.fields[c]--;
+                }
+              });
+              wfPromoFormFields.splice(idx, 1);
+              saveSettings(); buildFieldsPanel();
+            }); })(fi);
+            chip.appendChild(del);
+          }
+          return chip;
+        }
+
+        function buildFieldsPanel() {
+          fieldsPanel.innerHTML = "";
+          var placed = getPlacedFieldIndices();
+
+          // ── Grid Builder ──
+          var gridWrap = document.createElement("div");
+          gridWrap.className = "grid-builder";
+
+          // Title + Add Row
+          var gridHeader = document.createElement("div");
+          gridHeader.style.cssText = "display:flex;align-items:center;padding:0 2px;";
+          var gridTitle = document.createElement("span");
+          gridTitle.style.cssText = "font-size:10px;color:#585b70;font-weight:600;";
+          gridTitle.textContent = "Form Layout";
+          gridHeader.appendChild(gridTitle);
+          gridWrap.appendChild(gridHeader);
+
+          // Rows
+          wfPromoFormGrid.forEach(function(gRow, ri) {
+            var rowWrap = document.createElement("div");
+            rowWrap.className = "grid-row-wrap";
+
+            // Controls
+            var controls = document.createElement("div");
+            controls.className = "grid-row-controls";
+            var rowLbl = document.createElement("span");
+            rowLbl.className = "row-label";
+            rowLbl.textContent = "Row " + (ri + 1);
+            controls.appendChild(rowLbl);
+            // Column select
+            var colSel = document.createElement("select");
+            colSel.title = "Columns";
+            for (var c = 1; c <= 4; c++) { var o = document.createElement("option"); o.value = c; o.textContent = c + "col"; if (c === gRow.cols) o.selected = true; colSel.appendChild(o); }
+            (function(r, sel) {
+              sel.addEventListener("change", function() {
+                var newCols = parseInt(sel.value);
+                while (r.fields.length < newCols) r.fields.push(null);
+                while (r.fields.length > newCols) r.fields.pop();
+                r.cols = newCols;
+                r.colSpans = equalSpans(newCols);
+                saveSettings(); buildFieldsPanel();
+              });
+            })(gRow, colSel);
+            controls.appendChild(colSel);
+            // Move up
+            if (ri > 0) {
+              var upBtn = document.createElement("button");
+              upBtn.textContent = "↑"; upBtn.title = "Move up";
+              (function(i) { upBtn.addEventListener("click", function() {
+                var tmp = wfPromoFormGrid[i]; wfPromoFormGrid[i] = wfPromoFormGrid[i-1]; wfPromoFormGrid[i-1] = tmp;
+                saveSettings(); buildFieldsPanel();
+              }); })(ri);
+              controls.appendChild(upBtn);
+            }
+            // Move down
+            if (ri < wfPromoFormGrid.length - 1) {
+              var dnBtn = document.createElement("button");
+              dnBtn.textContent = "↓"; dnBtn.title = "Move down";
+              (function(i) { dnBtn.addEventListener("click", function() {
+                var tmp = wfPromoFormGrid[i]; wfPromoFormGrid[i] = wfPromoFormGrid[i+1]; wfPromoFormGrid[i+1] = tmp;
+                saveSettings(); buildFieldsPanel();
+              }); })(ri);
+              controls.appendChild(dnBtn);
+            }
+            // Delete row
+            var delBtn = document.createElement("button");
+            delBtn.textContent = "×"; delBtn.title = "Remove row";
+            delBtn.style.color = "#585b70";
+            (function(i) { delBtn.addEventListener("click", function() {
+              wfPromoFormGrid.splice(i, 1);
+              saveSettings(); buildFieldsPanel();
+            }); })(ri);
+            delBtn.addEventListener("mouseenter", function() { delBtn.style.color = "#f38ba8"; });
+            delBtn.addEventListener("mouseleave", function() { delBtn.style.color = "#585b70"; });
+            controls.appendChild(delBtn);
+            rowWrap.appendChild(controls);
+
+            // Grid cells with 12-col spans and resize handles
+            ensureColSpans(gRow);
+            var cellsDiv = document.createElement("div");
+            cellsDiv.className = "grid-cells";
+            // Build grid-template-columns from colSpans with resize handles between
+            var gtcParts = [];
+            for (var si = 0; si < gRow.colSpans.length; si++) {
+              if (si > 0) gtcParts.push("9px"); // resize handle column
+              gtcParts.push(gRow.colSpans[si] + "fr");
+            }
+            cellsDiv.style.gridTemplateColumns = gtcParts.join(" ");
+
+            gRow.fields.forEach(function(fi, ci) {
+              // Insert resize handle before each cell (except first)
+              if (ci > 0) {
+                var handle = document.createElement("div");
+                handle.className = "col-resize-handle";
+                (function(rowObj, rowIdx, colIdx, hdl, cellsContainer) {
+                  var startX, startSpans;
+                  hdl.addEventListener("mousedown", function(e) {
+                    e.preventDefault(); e.stopPropagation();
+                    hdl.classList.add("dragging");
+                    startX = e.clientX;
+                    startSpans = rowObj.colSpans.slice();
+                    var totalWidth = cellsContainer.getBoundingClientRect().width - 5 * 2 - 9 * (rowObj.cols - 1); // subtract padding and handles
+                    var pixPerSpan = totalWidth / 12;
+
+                    function onMove(ev) {
+                      var dx = ev.clientX - startX;
+                      var dSpan = Math.round(dx / pixPerSpan);
+                      var leftSpan = startSpans[colIdx - 1] + dSpan;
+                      var rightSpan = startSpans[colIdx] - dSpan;
+                      if (leftSpan >= 1 && rightSpan >= 1) {
+                        rowObj.colSpans[colIdx - 1] = leftSpan;
+                        rowObj.colSpans[colIdx] = rightSpan;
+                        // Update grid-template-columns live
+                        var parts = [];
+                        for (var s = 0; s < rowObj.colSpans.length; s++) {
+                          if (s > 0) parts.push("9px");
+                          parts.push(rowObj.colSpans[s] + "fr");
+                        }
+                        cellsContainer.style.gridTemplateColumns = parts.join(" ");
+                        // Update span labels
+                        var labels = cellsContainer.querySelectorAll(".grid-span-label");
+                        labels.forEach(function(lbl, li) { lbl.textContent = rowObj.colSpans[li] + "/12"; });
+                      }
+                    }
+                    function onUp() {
+                      hdl.classList.remove("dragging");
+                      document.removeEventListener("mousemove", onMove);
+                      document.removeEventListener("mouseup", onUp);
+                      saveSettings(); buildFieldsPanel();
+                    }
+                    document.addEventListener("mousemove", onMove);
+                    document.addEventListener("mouseup", onUp);
+                  });
+                })(gRow, ri, ci, handle, cellsDiv);
+                cellsDiv.appendChild(handle);
+              }
+
+              var cell = document.createElement("div");
+              cell.className = "grid-cell" + (fi !== null ? " occupied" : "");
+              if (fi !== null) {
+                cell.appendChild(makeFieldChip(fi, { inGrid: true }));
+              } else {
+                cell.textContent = "Drop here";
+              }
+              // Click-to-place on empty cell
+              if (_selectedField !== null && fi === null) {
+                cell.classList.add("selected-target");
+                (function(r, c) {
+                  cell.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    wfPromoFormGrid.forEach(function(gr) {
+                      var idx = gr.fields.indexOf(_selectedField);
+                      if (idx !== -1) gr.fields[idx] = null;
+                    });
+                    wfPromoFormGrid[r].fields[c] = _selectedField;
+                    _selectedField = null;
+                    saveSettings(); buildFieldsPanel();
+                  });
+                })(ri, ci);
+              }
+              // Drag-drop on cells
+              cell.addEventListener("dragover", function(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; cell.classList.add("drag-over"); });
+              cell.addEventListener("dragleave", function() { cell.classList.remove("drag-over"); });
+              (function(r, c) {
+                cell.addEventListener("drop", function(e) {
+                  e.preventDefault(); cell.classList.remove("drag-over");
+                  var dragIdx = parseInt(e.dataTransfer.getData("text/plain"));
+                  if (isNaN(dragIdx)) return;
+                  var existingFi = wfPromoFormGrid[r].fields[c];
+                  wfPromoFormGrid.forEach(function(gr) {
+                    var idx = gr.fields.indexOf(dragIdx);
+                    if (idx !== -1) gr.fields[idx] = existingFi;
+                  });
+                  wfPromoFormGrid[r].fields[c] = dragIdx;
+                  _selectedField = null;
+                  saveSettings(); buildFieldsPanel();
+                });
+              })(ri, ci);
+
+              cellsDiv.appendChild(cell);
+            });
+
+            // Span labels row
+            gRow.fields.forEach(function(_fi, ci) {
+              if (ci > 0) { var spacer = document.createElement("div"); cellsDiv.appendChild(spacer); }
+              var spanLbl = document.createElement("div");
+              spanLbl.className = "grid-span-label";
+              spanLbl.textContent = gRow.colSpans[ci] + "/12";
+              cellsDiv.appendChild(spanLbl);
+            });
+            rowWrap.appendChild(cellsDiv);
+            gridWrap.appendChild(rowWrap);
+          });
+
+          // + Row button below last row
+          var addRowBtn = document.createElement("button");
+          addRowBtn.style.cssText = "background:none;border:1px dashed #45475a;color:#a6adc8;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;width:100%;";
+          addRowBtn.textContent = "+ Row";
+          addRowBtn.addEventListener("click", function() {
+            wfPromoFormGrid.push({ cols: 2, colSpans: [6, 6], fields: [null, null] });
+            saveSettings(); buildFieldsPanel();
+          });
+          gridWrap.appendChild(addRowBtn);
+
+          fieldsPanel.appendChild(gridWrap);
+
+          // ── Field Pool ──
+          var poolWrap = document.createElement("div");
+          poolWrap.className = "field-pool-wrap";
+          var poolTitle = document.createElement("div");
+          poolTitle.className = "field-pool-title";
+          poolTitle.textContent = "Available Fields";
+          poolWrap.appendChild(poolTitle);
+
+          var pool = document.createElement("div");
+          pool.className = "field-pool";
+          var hasPoolItems = false;
+          wfPromoFormFields.forEach(function(fld, fi) {
+            if (placed[fi]) return;
+            hasPoolItems = true;
+            pool.appendChild(makeFieldChip(fi, { inGrid: false }));
+          });
+          if (!hasPoolItems) {
+            var emptyMsg = document.createElement("span");
+            emptyMsg.style.cssText = "font-size:9px;color:#45475a;font-style:italic;";
+            emptyMsg.textContent = "All fields placed";
+            pool.appendChild(emptyMsg);
+          }
+          // Drop on pool = remove from grid
+          pool.addEventListener("dragover", function(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; pool.classList.add("drag-over"); });
+          pool.addEventListener("dragleave", function() { pool.classList.remove("drag-over"); });
+          pool.addEventListener("drop", function(e) {
+            e.preventDefault(); pool.classList.remove("drag-over");
+            var dragIdx = parseInt(e.dataTransfer.getData("text/plain"));
+            if (isNaN(dragIdx)) return;
+            wfPromoFormGrid.forEach(function(gr) {
+              var idx = gr.fields.indexOf(dragIdx);
+              if (idx !== -1) gr.fields[idx] = null;
+            });
+            _selectedField = null;
+            saveSettings(); buildFieldsPanel();
+          });
+          poolWrap.appendChild(pool);
+
+          // ── Field management buttons ──
+          var btnRow = document.createElement("div");
+          btnRow.style.cssText = "display:flex;gap:8px;padding:6px 0 0;align-items:center;";
+
+          var addBtn = document.createElement("button");
+          addBtn.style.cssText = "background:none;border:1px dashed #45475a;color:#a6adc8;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;";
+          addBtn.textContent = "+ Custom field";
+          addBtn.addEventListener("click", function() {
+            wfPromoFormFields.push({ label: "", enabled: true, dropdown: false, custom: true, required: false });
+            wfPromoFormFieldNextId++;
+            saveSettings(); buildFieldsPanel();
+          });
+          btnRow.appendChild(addBtn);
+
+          var rstBtn = document.createElement("button");
+          rstBtn.style.cssText = "background:none;border:none;color:#585b70;font-size:11px;padding:4px 6px;cursor:pointer;margin-left:auto;border-radius:3px;";
+          rstBtn.textContent = "Reset to defaults";
+          rstBtn.addEventListener("mouseenter", function() { rstBtn.style.color = "#f38ba8"; });
+          rstBtn.addEventListener("mouseleave", function() { rstBtn.style.color = "#585b70"; });
+          rstBtn.addEventListener("click", function() {
+            wfPromoFormFields = [
+              { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+              { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+            ];
+            wfPromoFormFieldNextId = 7;
+            wfPromoFormGrid = [
+              { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+              { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+              { cols: 1, colSpans: [12], fields: [4] }
+            ];
+            _selectedField = null;
+            saveSettings(); buildFieldsPanel();
+          });
+          btnRow.appendChild(rstBtn);
+          poolWrap.appendChild(btnRow);
+
+
+          fieldsPanel.appendChild(poolWrap);
+
+          // Clear selection on click outside
+          document.addEventListener("click", function clearSel() {
+            if (_selectedField !== null) { _selectedField = null; buildFieldsPanel(); }
+            document.removeEventListener("click", clearSel);
+          });
+        }
+
+        buildFieldsPanel();
+        row.appendChild(fieldsPanel);
+
+        // Toggle sub-option and fields panel visibility
+        chk.addEventListener("change", function() {
+          subOpt.style.display = wfPromoSections.popup ? "flex" : "none";
+          fieldsPanel.style.display = wfPromoSections.popup && wfPromoPopupIncludeForm ? "block" : "none";
+        });
+        subChk.addEventListener("change", function() {
+          fieldsPanel.style.display = wfPromoPopupIncludeForm ? "block" : "none";
+        });
+      }
+
+      list.appendChild(row);
+    });
+
+    // Generate / Reset buttons
+    var btnWrap = document.createElement("div");
+    btnWrap.style.cssText = "padding: 8px 10px;";
+
+    if (wfPromoGenerated) {
+      var resetBtn = document.createElement("button");
+      resetBtn.className = "wf-reset-btn";
+      resetBtn.textContent = "Regenerate Promo Wireframes";
+      resetBtn.addEventListener("click", function() {
+        resetBtn.disabled = true; resetBtn.textContent = "Generating…";
+        wfPromoGenerating = true;
+        sendPromoGenerate();
+      });
+      btnWrap.appendChild(resetBtn);
+    } else {
+      var genBtn = document.createElement("button");
+      genBtn.className = "wf-gen-btn";
+      genBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+      genBtn.textContent = "Generate Promo Wireframes";
+      genBtn.addEventListener("click", function() {
+        if (wfPromoGenerating) return;
+        wfPromoGenerating = true;
+        genBtn.disabled = true; genBtn.textContent = "Generating…";
+        sendPromoGenerate();
+      });
+      btnWrap.appendChild(genBtn);
+    }
+    // Delete wireframes button
+    var delBtn = document.createElement("button");
+    delBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+    delBtn.textContent = "Delete Wireframes";
+    delBtn.addEventListener("mouseenter", function() { delBtn.style.borderColor = "#f38ba8"; delBtn.style.color = "#f38ba8"; });
+    delBtn.addEventListener("mouseleave", function() { delBtn.style.borderColor = "#45475a"; delBtn.style.color = "#a6adc8"; });
+    delBtn.addEventListener("click", function() {
+      if (!confirm("Delete all wireframes from Desktop and Mobile pages?")) return;
+      delBtn.disabled = true; delBtn.textContent = "Deleting…";
+      parent.postMessage({ pluginMessage: { type: "delete-wireframes" } }, "*");
+    });
+    btnWrap.appendChild(delBtn);
+
+    list.appendChild(btnWrap);
+
+    body.appendChild(list);
+  }
+
+  body.addEventListener("change", function() { saveSettings(); });
+
+  step.appendChild(body);
+  container.appendChild(step);
+}
+
+function sendPromoGenerate() {
+  var colors = getWfColors();
+  parent.postMessage({ pluginMessage: {
+    type: "generate-promo-pages",
+    sections: wfPromoSections,
+    popupIncludeForm: wfPromoPopupIncludeForm,
+    formRows: wfPromoFormGrid.map(function(row) {
+      ensureColSpans(row);
+      var fields = []; var spans = [];
+      row.fields.forEach(function(fi, ci) {
+        if (fi !== null && wfPromoFormFields[fi] && wfPromoFormFields[fi].label.trim()) {
+          var f = wfPromoFormFields[fi];
+          fields.push({ label: f.label.trim(), dropdown: f.dropdown, required: !!f.required, colSpan: row.colSpans[ci] });
+        }
+      });
+      return fields;
+    }).filter(function(r) { return r.length > 0; }),
+    brandColor: colors.primary,
+    textColor: wfColors.textColor || "#1A1A1A",
+    fontFamilies: {
+      primary: wfFonts.primary || "Inter, sans-serif",
+      secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
+      tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
+    },
+    radius: wfRadius,
+    spacing: wfSpacing,
+    shadows: wfShadows
+  } }, "*");
 }
 
 function buildCoverForm(fileInfo) {
@@ -2077,11 +2964,11 @@ function renderDebug(data){
 }
 
 // ── Import ──────────────────────────────────────────────────────────────────
-var fileQueue=[],importIdx=0;
+var fileQueue=[],importIdx=0,wfGenerateSpecimensAfterImport=false;
 var TYPE_LABELS={"primitives":"🎨 Primitives","colors-light":"🌤 Colors (Light)","colors-dark":"🌙 Colors (Dark)","spacing":"📐 Spacing","typography":"✏️ Typography tokens","radius":"⬜ Radius","border":"─ Border Width","shadows":"🌑 Shadows","zindex":"📦 Z-Index","breakpoints":"📱 Breakpoints","text-styles":"🔤 Text Styles","unknown":"❓ Unknown"};
 function detectTypeUI(fn){fn=fn.toLowerCase();if(fn.indexOf("text-style")!==-1||fn.indexOf("textstyle")!==-1)return"text-styles";if(fn.indexOf("primitive")!==-1)return"primitives";if(fn.indexOf("dark")!==-1)return"colors-dark";if(fn.indexOf("light")!==-1)return"colors-light";if(fn.indexOf("color")!==-1||fn.indexOf("colour")!==-1)return"colors-light";if(fn.indexOf("spacing")!==-1)return"spacing";if(fn.indexOf("typography")!==-1)return"typography";if(fn.indexOf("radius")!==-1)return"radius";if(fn.indexOf("border")!==-1)return"border";if(fn.indexOf("shadow")!==-1)return"shadows";if(fn.indexOf("z-index")!==-1)return"zindex";if(fn.indexOf("breakpoint")!==-1)return"breakpoints";return"unknown";}
 function renderQueue(){var q=document.getElementById("file-queue"),btn=document.getElementById("import-btn"),cnt=document.getElementById("file-count");q.innerHTML="";fileQueue.forEach(function(item,idx){var row=document.createElement("div");row.className="file-row"+(item.status==="ok"?" success":item.status==="error"?" error":"");row.innerHTML="<span style='font-size:14px;flex-shrink:0'>📄</span><div class='file-info'><div class='file-name'>"+esc(item.name)+"</div><div class='file-type'>"+(TYPE_LABELS[item.detectedType]||"Unknown")+"</div></div>"+(item.status==="ok"?"<span class='file-status ok'>✓ "+esc(item.message)+"</span>":"")+(item.status==="error"?"<span class='file-status err'>✗ Failed</span>":"")+(!item.status?"<button class='file-remove' data-idx='"+idx+"'>×</button>":"");q.appendChild(row);});q.querySelectorAll(".file-remove").forEach(function(b){b.addEventListener("click",function(){fileQueue.splice(parseInt(b.dataset.idx),1);renderQueue();});});var pending=fileQueue.filter(function(f){return !f.status;});cnt.textContent=pending.length+" file"+(pending.length!==1?"s":"")+" queued";btn.disabled=!pending.length;}
-function addFiles(list){for(var i=0;i<list.length;i++){var f=list[i];if(!fileQueue.some(function(x){return x.name===f.name;}))fileQueue.push({file:f,name:f.name,detectedType:detectTypeUI(f.name),status:null,message:""});}renderQueue();}
+function addFiles(list){for(var i=0;i<list.length;i++){var f=list[i];if(!fileQueue.some(function(x){return x.name===f.name;}))fileQueue.push({file:f,name:f.name,detectedType:detectTypeUI(f.name),status:null,message:""});}renderQueue();if(window._renderCzQueue)window._renderCzQueue();}
 document.getElementById("drop-zone").addEventListener("click",function(){document.getElementById("file-input").click();});
 document.getElementById("file-input").addEventListener("change",function(e){addFiles(e.target.files);e.target.value="";});
 var dz=document.getElementById("drop-zone");
@@ -2089,7 +2976,7 @@ dz.addEventListener("dragover",function(e){e.preventDefault();dz.classList.add("
 dz.addEventListener("dragleave",function(){dz.classList.remove("drag-over");});
 dz.addEventListener("drop",function(e){e.preventDefault();dz.classList.remove("drag-over");addFiles(e.dataTransfer.files);});
 document.getElementById("import-btn").addEventListener("click",function(){document.getElementById("import-btn").disabled=true;importIdx=0;processNext();});
-function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].status)importIdx++;if(importIdx>=fileQueue.length){renderQueue();return;}var item=fileQueue[importIdx],reader=new FileReader();reader.onload=function(e){try{var data=JSON.parse(e.target.result);parent.postMessage({pluginMessage:{type:"import-tokens",filename:item.name,data:data}},"*");}catch(err){item.status="error";item.message="Invalid JSON";importIdx++;renderQueue();processNext();}};reader.readAsText(item.file);}
+function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].status)importIdx++;if(importIdx>=fileQueue.length){renderQueue();if(window._renderCzQueue)window._renderCzQueue();if(wfGenerateSpecimensAfterImport){wfGenerateSpecimensAfterImport=false;parent.postMessage({pluginMessage:{type:"generate-specimens-from-vars"}},"*");}return;}var item=fileQueue[importIdx],reader=new FileReader();reader.onload=function(e){try{var data=JSON.parse(e.target.result);parent.postMessage({pluginMessage:{type:"import-tokens",filename:item.name,data:data}},"*");}catch(err){item.status="error";item.message="Invalid JSON";importIdx++;renderQueue();processNext();}};reader.readAsText(item.file);}
 
 // ── Message handler ────────────────────────────────────────────────────────
 window.onmessage=function(event){
@@ -2098,6 +2985,104 @@ window.onmessage=function(event){
     applyLoadedSettings(msg.settings);
     // Re-render workflow if it's visible
     var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
+  }
+  if(msg.type==="settings-reset"){
+    // Reset all token variables to defaults
+    wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
+    wfCustomColors = [];
+    wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
+    wfTextStyles = [
+      {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
+      {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
+      {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
+      {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
+      {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
+      {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
+      {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+      {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+      {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+      {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+      {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+      {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
+    ];
+    wfTsNextId = 18;
+    wfSpacing = [
+      {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
+      {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
+      {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
+      {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
+      {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
+      {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
+    ];
+    wfTypography = {
+      sizes: [
+        { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
+        { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
+        { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
+        { name: "6xl", value: "60" }
+      ],
+      weights: [
+        { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
+        { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
+        { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
+      ],
+      lineHeights: [
+        { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
+        { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
+        { name: "loose", value: "2" }
+      ]
+    };
+    wfRadius = [
+      { name: "sm", value: "4" },
+      { name: "md", value: "8" },
+      { name: "lg", value: "16" }
+    ];
+    wfShadows = [
+      { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
+    ];
+    wfBorders = [
+      { name: "thin", value: "1" },
+      { name: "default", value: "1.5" },
+      { name: "thick", value: "2" },
+      { name: "heavy", value: "4" }
+    ];
+    wfBdNextId = 5;
+    wfZIndex = [
+      { name: "hide", value: "-1" },
+      { name: "base", value: "0" },
+      { name: "dropdown", value: "1000" },
+      { name: "sticky", value: "1100" },
+      { name: "overlay", value: "1300" },
+      { name: "modal", value: "1400" },
+      { name: "toast", value: "1700" }
+    ];
+    wfZiNextId = 8;
+    TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
+    wfPromoSections = { hero: true, popup: true, banner: true };
+    wfPromoPopupIncludeForm = true;
+    wfPromoFormFields = [
+      { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+      { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+    ];
+    wfPromoFormFieldNextId = 7;
+    wfPromoFormGrid = [
+      { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+      { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+      { cols: 1, colSpans: [12], fields: [4] }
+    ];
+    wfFormState.step2Open = true;
+    wfFormState.step2Toggled = false;
+    // Re-render workflow
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
   if(msg.type==="audit-results"){renderAudit(msg.results);}
   if(msg.type==="pages-data"){
@@ -2117,6 +3102,10 @@ window.onmessage=function(event){
     wfGenerated = true;
     // tokens-data is sent right after, which triggers a full re-render of step 2
   }
+  if(msg.type==="specimens-generated"){
+    wfGenerated = true;
+    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+  }
   if(msg.type==="reset-complete"){
     wfGenerated = false;
     parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
@@ -2128,8 +3117,19 @@ window.onmessage=function(event){
     wfFormState.coverOpen = false;
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
+  if(msg.type==="promo-generated"){
+    wfPromoGenerating = false;
+    wfPromoGenerated = true;
+    var pc = document.getElementById("wf-container");
+    if (pc) renderStep3(pc);
+  }
+  if(msg.type==="wireframes-deleted"){
+    wfPromoGenerated = false;
+    var pc2 = document.getElementById("wf-container");
+    if (pc2) renderStep3(pc2);
+  }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
-  if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();processNext();}
+  if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
 };
 </script>
 </body>

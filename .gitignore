@@ -10,3 +10,7 @@ Thumbs.db
 
 # Ignore environmental variables
 .env
+
+# IDE and tool settings
+.vscode/settings.json
+.claude/settings.json

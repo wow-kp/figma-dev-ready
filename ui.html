@@ -11,8 +11,8 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .tab-btn { flex: 1; padding: 10px 0; border: none; background: transparent; color: #6c7086; font-size: 11px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
 .tab-btn.active { color: #89b4fa; border-bottom-color: #89b4fa; }
 .tab-btn:hover:not(.active) { color: #cdd6f4; }
-.pane { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-.pane.active { display: flex; }
+.pane { display: none; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+.pane.active { display: flex; overflow: hidden; }
 
 /* ── Shared ── */
 #hero { background: #181825; border-bottom: 1px solid #313244; padding: 14px 20px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -129,12 +129,139 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 #import-actions .file-count { font-size: 11px; color: #6c7086; flex: 1; }
 
 /* ── Workflow ── */
-#wf-container { flex: 1; overflow-y: auto; padding: 14px 12px 20px; display: flex; flex-direction: column; gap: 16px; }
+#wf-container { padding: 14px 12px 20px; display: flex; flex-direction: column; gap: 16px; }
 .wf-step { background: #181825; border: 1px solid #313244; border-radius: 10px; overflow: hidden; }
-.wf-step-header { padding: 12px 14px 10px; border-bottom: 1px solid #313244; }
+.wf-step-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 10px; cursor: pointer; user-select: none; transition: background 0.12s; }
+.wf-step:not(.complete) .wf-step-header:hover { background: #1e1e2e; }
+.wf-step.complete .wf-step-header { cursor: pointer; }
+.wf-step.collapsed .wf-step-header { border-bottom: none; }
+.wf-step:not(.collapsed) .wf-step-header { border-bottom: 1px solid #313244; }
+.wf-step-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.wf-step-indicator.green  { background: #a6e3a1; box-shadow: 0 0 6px #a6e3a140; }
+.wf-step-indicator.yellow { background: #f9e2af; box-shadow: 0 0 6px #f9e2af40; }
+.wf-step-indicator.red    { background: #f38ba8; box-shadow: 0 0 6px #f38ba840; }
+.wf-step-info { flex: 1; min-width: 0; }
 .wf-step-num { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: #45475a; margin-bottom: 4px; }
 .wf-step-title { font-size: 13px; font-weight: 700; color: #cdd6f4; }
 .wf-step-desc { font-size: 11px; color: #6c7086; margin-top: 3px; line-height: 1.5; }
+.wf-step-chevron { font-size: 10px; color: #585b70; flex-shrink: 0; transition: transform 0.18s; }
+.wf-step.collapsed .wf-step-chevron { transform: rotate(-90deg); }
+.wf-step-body { display: block; }
+.wf-step.collapsed .wf-step-body { display: none; }
+.wf-step.locked { opacity: 0.4; pointer-events: none; }
+.wf-step.locked .wf-step-header { cursor: default; }
+.wf-step-lock-msg { font-size: 10px; color: #585b70; font-style: italic; margin-left: 2px; }
+/* ── Token accordion rows ── */
+.wf-subsection { margin: 4px 10px; border: 1px solid #313244; border-radius: 8px; overflow: hidden; }
+.wf-subsection-header { display: flex; align-items: center; gap: 8px; padding: 9px 10px; cursor: pointer; user-select: none; transition: background 0.12s; }
+.wf-subsection-header:hover { background: #1e1e2e; }
+.wf-subsection-title { font-size: 11px; font-weight: 700; color: #cdd6f4; flex: 1; }
+.wf-subsection-chevron { font-size: 9px; color: #585b70; transition: transform 0.15s; }
+.wf-subsection.collapsed .wf-subsection-body { display: none !important; }
+.wf-subsection.collapsed .wf-subsection-chevron { transform: rotate(-90deg); }
+.wf-subsection:not(.collapsed) .wf-subsection-header { border-bottom: 1px solid #313244; }
+.wf-subsection-body { padding: 0; }
+.wf-token-list { padding: 4px 10px; display: flex; flex-direction: column; gap: 2px; }
+.wf-token-list.in-subsection { padding: 4px 0; }
+.wf-token-acc { border-radius: 7px; border: 1px solid transparent; overflow: hidden; }
+.wf-token-acc.enabled  { border-color: #313244; }
+.wf-token-acc.disabled { opacity: 0.5; }
+.wf-token-header { display: flex; align-items: center; gap: 8px; padding: 7px 8px; cursor: pointer; user-select: none; }
+.wf-token-header:hover { background: #1e1e2e40; }
+.wf-token-chk { width: 14px; height: 14px; accent-color: #89b4fa; cursor: pointer; flex-shrink: 0; }
+.wf-token-icon { font-size: 15px; flex-shrink: 0; width: 22px; text-align: center; }
+.wf-token-info { flex: 1; min-width: 0; }
+.wf-token-name { font-size: 11px; font-weight: 600; color: #cdd6f4; }
+.wf-token-desc { font-size: 10px; color: #585b70; margin-top: 1px; }
+.wf-token-count { font-size: 10px; font-weight: 700; flex-shrink: 0; color: #585b70; }
+.wf-token-acc.has-tokens .wf-token-count { color: #a6e3a1; }
+.wf-token-chevron { font-size: 10px; color: #585b70; flex-shrink: 0; transition: transform 0.15s; }
+.wf-token-acc.open .wf-token-chevron { transform: rotate(180deg); }
+.wf-token-panel { display: none; padding: 8px 10px; border-top: 1px solid #313244; }
+.wf-token-acc.open.enabled .wf-token-panel { display: block; }
+.wf-gen-btn { padding: 3px 10px; border-radius: 5px; border: 1px solid #a6e3a140; background: transparent; color: #a6e3a1; font-size: 10px; font-weight: 600; cursor: pointer; flex-shrink: 0; transition: background 0.12s; white-space: nowrap; }
+.wf-gen-btn:hover { background: #a6e3a118; }
+.wf-gen-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.wf-reset-btn { width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #f38ba840; background: transparent; color: #f38ba8; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.12s; }
+.wf-reset-btn:hover { background: #f38ba818; }
+/* Color pickers */
+.wf-color-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.wf-color-slot { flex: 0 0 15%; max-width: 15%; display: flex; flex-direction: column; gap: 4px; }
+.wf-color-slot .wf-color-label-row { height: 20px; display: flex; align-items: center; }
+.wf-color-label { font-size: 9px; font-weight: 600; color: #6c7086; }
+.wf-color-label .optional { color: #45475a; font-weight: 400; }
+.wf-color-pick { display: flex; align-items: center; gap: 5px; }
+.wf-color-swatch { width: 28px; height: 28px; border-radius: 6px; border: 2px solid #313244; cursor: pointer; flex-shrink: 0; overflow: hidden; position: relative; transition: border-color 0.15s; }
+.wf-color-swatch:hover { border-color: #45475a; }
+.wf-color-swatch.empty { background: #1e1e2e; border-style: dashed; }
+.wf-color-swatch input[type="color"] { position: absolute; inset: -6px; width: 40px; height: 40px; border: none; padding: 0; cursor: pointer; opacity: 0; }
+.wf-color-hex { background: #1e1e2e; border: 1px solid #313244; border-radius: 4px; padding: 4px 6px; font-size: 10px; color: #cdd6f4; outline: none; flex: 1; min-width: 0; font-family: "SF Mono", Monaco, monospace; }
+.wf-color-hex:focus { border-color: #89b4fa; }
+.wf-color-clear { background: none; border: none; color: #45475a; font-size: 12px; cursor: pointer; padding: 2px; flex-shrink: 0; line-height: 1; }
+.wf-panel-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #45475a; margin-bottom: 8px; }
+.wf-font-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.wf-font-slot { flex: 1 1 calc(33% - 8px); min-width: 100px; display: flex; flex-direction: column; gap: 4px; }
+.wf-font-label { font-size: 9px; font-weight: 600; color: #6c7086; }
+.wf-font-label .optional { color: #45475a; font-weight: 400; }
+.wf-font-input { background: #1e1e2e; border: 1px solid #313244; border-radius: 4px; padding: 5px 6px; font-size: 10px; color: #cdd6f4; outline: none; width: 100%; box-sizing: border-box; font-family: inherit; transition: border-color 0.12s; cursor: pointer; }
+.wf-font-input:focus { border-color: #89b4fa; }
+.wf-font-input::placeholder { color: #45475a; }
+.wf-color-clear:hover { color: #f38ba8; }
+.wf-add-color-btn button:hover { border-color: #89b4fa !important; color: #89b4fa !important; }
+/* Text styles table */
+.wf-ts-group-hdr { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #585b70; padding: 8px 0 4px; border-bottom: 1px solid #313244; margin-bottom: 2px; }
+.wf-ts-row { display: grid; grid-template-columns: 70px 90px 1fr 1fr 1fr 1.4fr 1.4fr 22px; gap: 4px; align-items: center; padding: 2px 0; }
+.wf-ts-col-hdr { padding-bottom: 2px; }
+.wf-ts-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
+.wf-ts-inp { background: #1e1e2e; border: 1px solid #313244; border-radius: 3px; padding: 4px 5px; font-size: 10px; color: #cdd6f4; outline: none; width: 100%; box-sizing: border-box; font-family: inherit; }
+.wf-ts-inp:focus { border-color: #89b4fa; }
+.wf-ts-num { font-family: "SF Mono", Monaco, monospace; text-align: right; }
+.wf-ts-select { background: #1e1e2e; border: 1px solid #313244; border-radius: 3px; padding: 4px 3px; font-size: 10px; color: #cdd6f4; outline: none; width: 100%; box-sizing: border-box; cursor: pointer; }
+.wf-ts-select:focus { border-color: #89b4fa; }
+.wf-ts-del { background: none; border: none; color: #45475a; font-size: 13px; cursor: pointer; padding: 0; line-height: 1; }
+.wf-ts-del:hover { color: #f38ba8; }
+.wf-ts-add { background: none; border: 1px dashed #313244; border-radius: 4px; color: #585b70; font-size: 10px; padding: 4px 8px; cursor: pointer; margin-top: 4px; margin-bottom: 8px; width: 100%; }
+.wf-ts-add:hover { border-color: #89b4fa; color: #89b4fa; }
+/* Radius cards */
+.wf-rad-grid { display: flex; flex-wrap: wrap; gap: 16px; padding: 4px 0; }
+.wf-rad-card { display: flex; align-items: center; gap: 10px; }
+.wf-rad-preview { width: 56px; height: 56px; background: #89b4fa18; border: 1.5px solid #89b4fa40; flex-shrink: 0; transition: border-radius 0.15s; }
+.wf-rad-fields { display: flex; flex-direction: column; gap: 3px; }
+.wf-rad-fields input { width: 48px; }
+.wf-rad-val-wrap { display: flex; align-items: center; gap: 0; }
+.wf-rad-val-wrap input { width: 36px; text-align: right; }
+.wf-rad-val-wrap .wf-rad-suffix { font-size: 9px; color: #585b70; margin-left: 2px; }
+/* Shadows */
+.wf-sh-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.wf-sh-row input.wf-sh-name { width: 80px; flex-shrink: 0; }
+.wf-sh-row input.wf-sh-val { flex: 1; font-family: monospace; font-size: 11px; min-width: 0; }
+.wf-sh-swatch { width: 56px; height: 36px; background: #c8cad8; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-sizing: border-box; border: 2px solid transparent; }
+.wf-sh-swatch.active { border-color: #89b4fa; }
+.wf-sh-swatch-inner { width: 32px; height: 20px; border-radius: 4px; background: #fff; }
+.wf-sh-picker { display: flex; gap: 16px; align-items: center; background: #181825; border: 1px solid #313244; border-radius: 8px; padding: 12px 16px; margin: 4px 0 6px 0; }
+.wf-sh-picker-preview { width: 90px; height: 70px; background: #c8cad8; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.wf-sh-picker-preview-inner { width: 52px; height: 36px; border-radius: 6px; background: #fff; }
+.wf-sh-sliders { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.wf-sh-slider-row { display: flex; align-items: center; gap: 8px; }
+.wf-sh-slider-row span.wf-sh-label { font-size: 10px; color: #585b70; width: 56px; flex-shrink: 0; }
+.wf-sh-slider-row input[type="range"] { flex: 1; accent-color: #89b4fa; cursor: pointer; }
+.wf-sh-slider-row input[type="number"] { width: 44px; text-align: center; font-family: monospace; font-size: 10px; }
+.wf-sh-slider-row span.wf-sh-unit { font-size: 9px; color: #585b70; width: 14px; flex-shrink: 0; }
+/* Borders */
+.wf-bd-row { display: grid; grid-template-columns: 70px 50px 1fr 22px; gap: 6px; align-items: center; padding: 2px 0; }
+.wf-bd-col-hdr { padding-bottom: 2px; }
+.wf-bd-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
+.wf-bd-bar { height: var(--h, 1px); background: #89b4fa; border-radius: 1px; min-width: 1px; max-height: 20px; transition: height 0.1s; }
+/* Z-Index */
+.wf-zi-row { display: grid; grid-template-columns: 90px 70px 22px; gap: 6px; align-items: center; padding: 2px 0; }
+.wf-zi-col-hdr { padding-bottom: 2px; }
+.wf-zi-col-hdr span { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; }
+/* Typography */
+.wf-typo-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.wf-typo-section { min-width: 0; }
+.wf-typo-label { font-size: 9px; color: #585b70; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.wf-typo-row { display: grid; grid-template-columns: 1fr 1fr 18px; gap: 4px; align-items: center; padding: 2px 0; }
+/* Spacing info */
 .wf-page-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 .wf-page-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; }
 .wf-page-row.found    { background: #a6e3a108; border-color: #a6e3a120; }
@@ -156,12 +283,61 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-create-all-btn { padding: 7px 16px; border-radius: 7px; border: none; background: #89b4fa; color: #1e1e2e; font-size: 11px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; flex-shrink: 0; }
 .wf-create-all-btn:hover { opacity: 0.88; }
 .wf-create-all-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
-.wf-all-good { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px 12px; text-align: center; }
-.wf-all-good-icon { font-size: 22px; }
-.wf-all-good-label { font-size: 12px; font-weight: 600; color: #a6e3a1; }
-.wf-all-good-sub { font-size: 10px; color: #585b70; }
+/* ── Cover form ── */
+.wf-cover-card { border: 1px solid #313244; border-radius: 7px; overflow: hidden; margin-top: 2px; }
+.wf-cover-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; border: 1px solid transparent; transition: background 0.12s; cursor: pointer; user-select: none; }
+.wf-cover-row.found   { background: #a6e3a108; border-color: #a6e3a120; border-radius: 7px 7px 0 0; }
+.wf-cover-row.missing { background: #f38ba808; border-color: #f38ba820; border-radius: 7px 7px 0 0; }
+.wf-cover-row.closed  { border-radius: 7px; }
+.wf-cover-row:hover   { filter: brightness(1.15); }
+.wf-cover-row.found  .wf-page-name { color: #a6e3a1; }
+.wf-cover-row.found  .wf-page-status { color: #a6e3a1; }
+.wf-chevron { font-size: 9px; color: #585b70; flex-shrink: 0; transition: transform 0.18s; }
+.wf-cover-row.open .wf-chevron { transform: rotate(180deg); }
+.wf-cover-form { padding: 10px 10px 12px; border-top: 1px solid #313244; background: #0f0f1a; }
+.wf-cover-form-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6c7086; margin-bottom: 8px; }
+.wf-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.wf-form-full { grid-column: 1 / -1; }
+.wf-field { display: flex; flex-direction: column; gap: 3px; }
+.wf-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #45475a; }
+.wf-input { background: #1e1e2e; border: 1px solid #313244; border-radius: 5px; padding: 6px 8px; font-size: 11px; color: #cdd6f4; outline: none; font-family: inherit; transition: border-color 0.12s; }
+.wf-input:focus { border-color: #89b4fa; }
+.wf-select { background: #1e1e2e; border: 1px solid #313244; border-radius: 5px; padding: 6px 8px; font-size: 11px; color: #cdd6f4; outline: none; font-family: inherit; cursor: pointer; }
+.wf-generate-btn { width: 100%; padding: 8px 0; border-radius: 6px; border: none; background: #89b4fa; color: #1e1e2e; font-size: 11px; font-weight: 700; cursor: pointer; margin-top: 8px; transition: opacity 0.15s; }
+.wf-generate-btn:hover { opacity: 0.88; }
+.wf-generate-btn:disabled { background: #45475a; color: #6c7086; cursor: not-allowed; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #313244; border-radius: 99px; }
+/* Grid builder */
+.grid-builder { display:flex; flex-direction:column; gap:8px; }
+.grid-row-wrap { display:flex; flex-direction:column; gap:4px; }
+.grid-row-controls { display:flex; align-items:center; gap:6px; padding:2px 2px; min-height:24px; }
+.grid-row-controls select { background:#1e1e2e; border:1px solid #45475a; color:#cdd6f4; font-size:11px; padding:3px 4px; border-radius:4px; width:44px; }
+.grid-row-controls .row-label { font-size:11px; color:#585b70; flex:1; }
+.grid-row-controls button { background:none; border:none; color:#585b70; cursor:pointer; font-size:14px; padding:2px 5px; border-radius:3px; }
+.grid-row-controls button:hover { color:#cdd6f4; background:#313244; }
+.grid-cells { display:grid; gap:0; padding:5px; border:1px solid #313244; border-radius:6px; background:#181825; }
+.grid-cell-wrap { display:contents; }
+.col-resize-handle { width:9px; cursor:col-resize; display:flex; align-items:center; justify-content:center; position:relative; z-index:2; }
+.col-resize-handle::after { content:""; display:block; width:3px; height:60%; border-radius:2px; background:#45475a; transition:background .15s, width .15s; }
+.col-resize-handle:hover::after, .col-resize-handle.dragging::after { background:#89b4fa; width:4px; }
+.grid-span-label { font-size:8px; color:#45475a; text-align:center; padding-top:2px; }
+.grid-cell { min-height:34px; border:1px dashed #45475a; border-radius:5px; display:flex; align-items:center; justify-content:center; transition:border-color .15s, background .15s; font-size:9px; color:#45475a; }
+.grid-cell.occupied { border-style:solid; border-color:#313244; background:#1e1e2e; justify-content:flex-start; padding:0 5px; }
+.grid-cell.occupied .field-chip { flex:1; width:100%; }
+.grid-cell.drag-over { border-color:#89b4fa; background:rgba(137,180,250,.06); }
+.grid-cell.selected-target { border-color:#89b4fa; background:rgba(137,180,250,.06); }
+.field-chip { padding:5px 8px; background:#313244; color:#cdd6f4; font-size:11px; border-radius:5px; cursor:grab; user-select:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; max-width:100%; min-height:26px; }
+.field-chip.dragging { opacity:.4; }
+.field-chip.selected { outline:2px solid #89b4fa; outline-offset:1px; }
+.field-chip .req-star { color:#f38ba8; font-weight:700; font-size:14px; padding:0 2px; min-width:14px; text-align:center; cursor:pointer; }
+.field-chip .dd-tag { font-size:9px; color:#585b70; background:#11111b; padding:2px 5px; border-radius:3px; cursor:pointer; }
+.field-chip .chip-remove { color:#585b70; cursor:pointer; font-size:14px; font-weight:700; margin-left:auto; padding:0 2px; min-width:14px; text-align:center; }
+.field-chip .chip-remove:hover { color:#f38ba8; }
+.field-pool-wrap { margin-top:6px; }
+.field-pool-title { font-size:10px; color:#585b70; padding:0 2px 4px; }
+.field-pool { display:flex; flex-wrap:wrap; gap:5px; padding:7px; min-height:34px; border:1px dashed #45475a; border-radius:6px; transition:border-color .15s; }
+.field-pool.drag-over { border-color:#89b4fa; }
 </style>
 </head>
 <body>
@@ -176,7 +352,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 <!-- ── AUDIT ─────────────────────────── -->
 <div class="pane" id="pane-audit">
   <div id="hero">
-    <h1>Is it ready for dev?</h1>
+    <h1>Dev-Ready Tools for Designers by wowbrands</h1>
     <p>13 weighted checks across naming, layout, variables, typography &amp; hygiene.</p>
     <button id="run-btn" class="primary-btn">Run audit on current page</button>
   </div>
@@ -195,8 +371,13 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 </div>
 
 <!-- ── WORKFLOW ────────────────────────── -->
-<div class="pane active" id="pane-workflow">
-  <div id="wf-container"></div>
+<div class="pane active" id="pane-workflow" style="overflow-y:auto;">
+  <div id="wf-container">
+    <div id="wf-loading" style="display:flex;align-items:center;justify-content:center;padding:40px 0;flex-direction:column;gap:8px;">
+      <div style="font-size:20px;opacity:0.4">🗂</div>
+      <div style="font-size:12px;color:#45475a;">Loading file structure…</div>
+    </div>
+  </div>
 </div>
 
 <!-- ── TOKEN DEBUGGER ─────────────────── -->
@@ -269,13 +450,13 @@ document.getElementById("run-btn").addEventListener("click",function(){
   parent.postMessage({pluginMessage:{type:"run-audit"}},"*");
 });
 var GROUPS_ORDER=[
-  {label:"Naming & Structure",keys:["naming","namingFormat","duplicates","deepNesting"]},
+  {label:"Naming & Structure",keys:["naming","namingFormat","deepNesting"]},
   {label:"Layout",            keys:["autoLayout"]},
   {label:"Variables & Styles",keys:["colors","spacingVars","radiusVars","opacityVars"]},
   {label:"Typography",        keys:["textStyles","mixedText"]},
   {label:"Hygiene",           keys:["hidden","empty","unsavedStyles"]},
 ];
-var WEIGHTS_UI={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,duplicates:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+var WEIGHTS_UI={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
 function priorityBadge(key){var w=WEIGHTS_UI[key]||1;if(w>=5)return"<span class='priority p-critical'>Critical</span>";if(w>=4)return"<span class='priority p-high'>High</span>";if(w>=3)return"<span class='priority p-medium'>Medium</span>";return"<span class='priority p-low'>Low</span>";}
 
 // Build one issue row with the appropriate inline action for its check type
@@ -343,6 +524,14 @@ function makeIssueRow(key, issue, hasColorVars) {
 
 function renderAudit(data){
   var btn=document.getElementById("run-btn"); btn.disabled=false; btn.textContent="Re-run audit";
+  if(data.noPages){
+    var container=document.getElementById("results"); container.innerHTML=""; container.style.display="block";
+    var msg=document.createElement("div"); msg.style.cssText="text-align:center;color:#a6adc8;padding:24px 12px;font-size:12px;";
+    msg.textContent="No \"Mobile\" or \"Desktop\" pages found. The audit runs only on those pages.";
+    container.appendChild(msg);
+    document.getElementById("score-bar").style.display="none";
+    return;
+  }
   var C=2*Math.PI*20,arc=document.getElementById("arc");
   arc.style.strokeDasharray=C; arc.style.strokeDashoffset=C-(data.score/100)*C;
   var col=data.score>=80?"#a6e3a1":data.score>=50?"#f9e2af":"#f38ba8"; arc.style.stroke=col;
@@ -380,24 +569,36 @@ function renderAudit(data){
 }
 
 // ── Workflow ───────────────────────────────────────────────────────────────
+// Persists cover form values across re-renders
+var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true, step2Toggled:false, step2BasicOpen:false, step2ComplexOpen:false, step3Open:true };
+var wfTokensData = null;
+var wfStep1Color = "red"; // track step 1 status for step 2 gating
+
 var REQUIRED_PAGES = [
-  { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover" },
-  { key:"foundations", icon:"🎨", name:"🎨 Foundations",   desc:"Colours, typography, spacing, radius, shadows, icons", hint:"foundations" },
-  { key:"components",  icon:"🧩", name:"🧩 Components",    desc:"All master components organised by type",              hint:"components" },
-  { key:"mobile",      icon:"📱", name:"📱 Mobile",        desc:"Complete screens at mobile breakpoint",                hint:"mobile" },
-  { key:"desktop",     icon:"🖥️", name:"🖥️ Desktop",      desc:"Complete screens at desktop breakpoint",               hint:"desktop" },
-  { key:"archive",     icon:"🗄️", name:"🗄️ Archive",      desc:"Deprecated screens, never delete old work",            hint:"archive" },
+  { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover",       critical:false },
+  { key:"foundations", icon:"🎨", name:"🎨 Foundations",   desc:"Colours, typography, spacing, radius, shadows, icons", hint:"foundations", critical:true },
+  { key:"components",  icon:"🧩", name:"🧩 Components",    desc:"All master components organised by type",              hint:"components",  critical:true },
+  { key:"mobile",      icon:"📱", name:"📱 Mobile",        desc:"Complete screens at mobile breakpoint",                hint:"mobile",      critical:true },
+  { key:"desktop",     icon:"🖥️", name:"🖥️ Desktop",      desc:"Complete screens at desktop breakpoint",               hint:"desktop",     critical:true },
+  { key:"archive",     icon:"🗄️", name:"🗄️ Archive",      desc:"Deprecated screens, never delete old work",            hint:"archive",     critical:false },
 ];
 
-function renderWorkflow(pages) {
+function renderWorkflow(data) {
+  var pages    = data.pages ? Array.prototype.slice.call(data.pages) : [];
+  var fileInfo = data.fileInfo || {};
   var container = document.getElementById("wf-container");
   container.innerHTML = "";
+  // Show error if code.js reported one
+  if (data.error) {
+    container.innerHTML = "<div style='padding:20px;font-size:11px;color:#f38ba8;margin:12px;border:1px solid #f38ba830;border-radius:8px;background:#f38ba810'>Plugin error: "+esc(data.error)+"</div>";
+    return;
+  }
 
   // Match each required page against the actual pages list
   var results = REQUIRED_PAGES.map(function(req) {
     var match = pages.find(function(p) {
-      var lower = p.name.toLowerCase();
-      return lower.indexOf(req.hint) !== -1;
+      var stripped = p.name.toLowerCase().replace(/[^a-z]/g, "");
+      return stripped.indexOf(req.hint) !== -1;
     });
     return { req: req, match: match || null, found: !!match };
   });
@@ -406,22 +607,104 @@ function renderWorkflow(pages) {
   var allGood  = missing.length === 0;
 
   // ── Step 1: File Structure ────────────────────────────────────────────────
+  // Determine indicator color: green = all found, red = critical missing, yellow = only non-critical missing
+  var hasCriticalMissing = missing.some(function(r) { return r.req.critical; });
+  var indicatorColor = allGood ? "green" : (hasCriticalMissing ? "red" : "yellow");
+
+  // Auto-collapse when all good
+  if (allGood) wfFormState.stepOpen = false;
+
+  var stepOpen = wfFormState.stepOpen;
   var step = document.createElement("div");
-  step.className = "wf-step";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (allGood ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
   header.innerHTML =
-    "<div class='wf-step-num'>Step 1 of 1</div>" +
-    "<div class='wf-step-title'>File Structure</div>" +
-    "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>";
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 1</div>" +
+      "<div class='wf-step-title'>File Structure" + (allGood ? " — All set" : "") + "</div>" +
+      (stepOpen ? "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>" : "") +
+    "</div>" +
+    "<span class='wf-step-chevron'>▼</span>";
+  header.addEventListener("click", function() {
+    wfFormState.stepOpen = !wfFormState.stepOpen;
+    step.classList.toggle("collapsed", !wfFormState.stepOpen);
+    // Re-render to update description visibility
+    renderWorkflow({ pages: pages, fileInfo: data.fileInfo || {} });
+  });
   step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
 
   // Page rows
   var list = document.createElement("div");
   list.className = "wf-page-list";
 
   results.forEach(function(r) {
+    // ── Cover page gets a special collapsible card ──────────────────────────
+    if (r.req.key === "cover") {
+      var coverOpen = wfFormState.coverOpen !== false; // default open
+
+      var card = document.createElement("div");
+      card.className = "wf-cover-card";
+
+      var actualName = r.found ? esc(r.match.name) : esc(r.req.name);
+      var row = document.createElement("div");
+      row.className = "wf-cover-row " + (r.found ? "found" : "missing") + (coverOpen ? " open" : " closed");
+      row.innerHTML =
+        "<span class='wf-page-icon'>" + r.req.icon + "</span>" +
+        "<div class='wf-page-info'>" +
+          "<div class='wf-page-name'>" + actualName + "</div>" +
+          "<div class='wf-page-desc'>" + esc(r.req.desc) + "</div>" +
+        "</div>" +
+        "<span class='wf-page-status'>" + (r.found ? "✓ Found" : "Missing") + "</span>";
+
+      // Create button — only shown when form is collapsed and page is missing
+      var createBtn = null;
+      if (!r.found) {
+        createBtn = document.createElement("button");
+        createBtn.className = "wf-create-btn";
+        createBtn.textContent = "+ Create";
+        createBtn.style.display = coverOpen ? "none" : "";
+        createBtn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          createBtn.disabled = true; createBtn.textContent = "…";
+          parent.postMessage({ pluginMessage: { type: "create-pages", keys: ["cover"] } }, "*");
+        });
+        row.appendChild(createBtn);
+      }
+
+      // Chevron
+      var chev = document.createElement("span");
+      chev.className = "wf-chevron";
+      chev.textContent = "▼";
+      row.appendChild(chev);
+
+      card.appendChild(row);
+
+      // Form panel
+      var form = buildCoverForm(fileInfo);
+      form.style.display = coverOpen ? "block" : "none";
+      card.appendChild(form);
+
+      // Toggle on row click
+      row.addEventListener("click", function() {
+        coverOpen = !coverOpen;
+        wfFormState.coverOpen = coverOpen;
+        form.style.display = coverOpen ? "block" : "none";
+        row.classList.toggle("open", coverOpen);
+        row.classList.toggle("closed", !coverOpen);
+        if (createBtn) createBtn.style.display = coverOpen ? "none" : "";
+      });
+
+      list.appendChild(card);
+      return;
+    }
+
+    // ── All other pages ─────────────────────────────────────────────────────
     var row = document.createElement("div");
     row.className = "wf-page-row " + (r.found ? "found" : "missing");
 
@@ -446,17 +729,12 @@ function renderWorkflow(pages) {
     }
     list.appendChild(row);
   });
-  step.appendChild(list);
 
-  // Footer
-  var footer = document.createElement("div");
-  if (allGood) {
-    footer.className = "wf-all-good";
-    footer.innerHTML =
-      "<div class='wf-all-good-icon'>✅</div>" +
-      "<div class='wf-all-good-label'>All required pages found</div>" +
-      "<div class='wf-all-good-sub'>File structure is ready — proceed to design.</div>";
-  } else {
+  body.appendChild(list);
+
+  // Footer — only show when there are missing pages
+  if (!allGood) {
+    var footer = document.createElement("div");
     footer.className = "wf-footer";
     var summary = document.createElement("span");
     summary.className = "wf-summary";
@@ -471,9 +749,2230 @@ function renderWorkflow(pages) {
     });
     footer.appendChild(summary);
     footer.appendChild(createAll);
+    body.appendChild(footer);
   }
-  step.appendChild(footer);
+  step.appendChild(body);
   container.appendChild(step);
+
+  // Track step 1 status for gating step 2
+  wfStep1Color = indicatorColor;
+
+  // Request token data and render step 2
+  parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+  renderStep2(container);
+}
+
+// Accordion token definitions: key matches generator category, countKey maps to tokens-data counts
+var TOKEN_DEFS = [
+  { key: "colors",       cats: ["colors","colors-light"], countKey: "colors",       icon: "🎨", name: "Color Variables",  desc: "Fills, strokes, backgrounds",       hasConfig: "colors" },
+  { key: "text-styles",  cats: ["text-styles"],                         countKey: "textStyles",   icon: "✏️",  name: "Text Styles",      desc: "Typography presets for all text",   hasConfig: "fonts" },
+  { key: "typography",   cats: ["typography"],                          countKey: "typography",   icon: "🔤", name: "Typography",        desc: "Font sizes, weights & line heights", hasConfig: "typography" },
+  { key: "radius",       cats: ["radius"],                              countKey: "radius",       icon: "◻️",  name: "Radius",            desc: "Corner radius tokens",              hasConfig: "radius" },
+  { key: "shadows",      cats: ["shadows"],                             countKey: "shadows",      icon: "✨", name: "Shadows",           desc: "Shadow tokens",                      hasConfig: "shadows" },
+  { key: "border",       cats: ["border"],                              countKey: "border",       icon: "▭",  name: "Border",            desc: "Border width tokens",               hasConfig: "border" },
+  { key: "zindex",       cats: ["zindex"],                              countKey: "zindex",       icon: "⇅",  name: "Z-Index",           desc: "Stacking order tokens",             hasConfig: "zindex" },
+  { key: "opacity",      cats: ["opacity"],                             countKey: "opacity",      icon: "👁",  name: "Opacity",           desc: "5%–95% in 5% steps — bind all opacity values", noCheckbox: true },
+  { key: "spacing",      cats: ["spacing"],                             countKey: "spacing",      icon: "📐", name: "Spacing",           desc: "Padding, gap, margins",             hasConfig: "spacing", noCheckbox: true },
+  { key: "breakpoints",  cats: ["breakpoints"],                         countKey: "breakpoints",  icon: "↔",  name: "Breakpoints",       desc: "Responsive breakpoints",            hasConfig: "breakpoints", noCheckbox: true },
+  { key: "grid",         cats: ["grid"],                                countKey: "grid",         icon: "▦",  name: "Grid",              desc: "12-col grid with 4 breakpoints",    noCheckbox: true }
+];
+
+// Track which tokens are enabled and which panels are open
+var wfTokenEnabled = {};
+var wfTokenOpen = {};
+(function() { TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; }); })();
+var wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
+var wfCustomColors = []; // { name: "Success", hex: "#22C55E" }
+var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
+var wfGenerating = false;
+var wfGenerated = false;
+var wfStep2Color = "red";
+
+// Step 3 — Page structures
+var PROMO_SECTIONS = [
+  { key: "hero",      icon: "🖼", name: "Hero Section",    desc: "Full-width hero with bg image, headline, subtext, CTA" },
+  { key: "popup",     icon: "💬", name: "Popup",           desc: "Overlay + content card (optional form, thank-you screen)" },
+  { key: "banner",    icon: "🏷", name: "Banner",          desc: "Full-width banner with background image and CTA" }
+];
+var wfPromoSections = { hero: true, popup: true, banner: true };
+var wfPromoPopupIncludeForm = true;
+var wfPromoFormFields = [
+  { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+  { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+  { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+];
+var wfPromoFormFieldNextId = 7;
+var wfPromoFormGrid = [
+  { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+  { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+  { cols: 1, colSpans: [12], fields: [4] }
+];
+
+function equalSpans(n) { var s = []; var base = Math.floor(12 / n); var rem = 12 - base * n; for (var i = 0; i < n; i++) s.push(base + (i < rem ? 1 : 0)); return s; }
+function ensureColSpans(row) { if (!row.colSpans || row.colSpans.length !== row.cols) row.colSpans = equalSpans(row.cols); }
+var wfPromoGenerating = false;
+var wfPromoGenerated = false;
+var wfPageType = "promo"; // "promo" | "landing" | "fullsite"
+var PAGE_TYPES = [
+  { key: "promo",    label: "Promo" },
+  { key: "landing",  label: "Landing Page" },
+  { key: "fullsite", label: "Full Site Build" }
+];
+
+var TS_GROUPS = ["heading","body","links","buttons","input","label"];
+var wfTextStyles = [
+  {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
+  {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
+  {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
+  {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
+  {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
+  {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
+  {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+  {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+  {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+  {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+  {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+  {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+  {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
+];
+var wfTsNextId = 18;
+
+var wfSpacing = [
+  {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
+  {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
+  {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
+  {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
+  {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
+  {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
+];
+
+var wfTypography = {
+  sizes: [
+    { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
+    { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
+    { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
+    { name: "6xl", value: "60" }
+  ],
+  weights: [
+    { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
+    { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
+    { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
+  ],
+  lineHeights: [
+    { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
+    { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
+    { name: "loose", value: "2" }
+  ]
+};
+
+var wfRadius = [
+  { name: "sm", value: "4" },
+  { name: "md", value: "8" },
+  { name: "lg", value: "16" }
+];
+
+var wfShadows = [
+  { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
+];
+
+var wfBorders = [
+  { name: "thin", value: "1" },
+  { name: "default", value: "1.5" },
+  { name: "thick", value: "2" },
+  { name: "heavy", value: "4" }
+];
+var wfBdNextId = 5;
+
+var wfZIndex = [
+  { name: "hide", value: "-1" },
+  { name: "base", value: "0" },
+  { name: "dropdown", value: "1000" },
+  { name: "sticky", value: "1100" },
+  { name: "overlay", value: "1300" },
+  { name: "modal", value: "1400" },
+  { name: "toast", value: "1700" }
+];
+var wfZiNextId = 8;
+
+// ── Settings persistence ──────────────────────────────────────────────────
+function collectSettings() {
+  return {
+    colors: JSON.parse(JSON.stringify(wfColors)),
+    customColors: JSON.parse(JSON.stringify(wfCustomColors)),
+    fonts: JSON.parse(JSON.stringify(wfFonts)),
+    textStyles: JSON.parse(JSON.stringify(wfTextStyles)),
+    tsNextId: wfTsNextId,
+    typography: JSON.parse(JSON.stringify(wfTypography)),
+    spacing: JSON.parse(JSON.stringify(wfSpacing)),
+    radius: JSON.parse(JSON.stringify(wfRadius)),
+    shadows: JSON.parse(JSON.stringify(wfShadows)),
+    borders: JSON.parse(JSON.stringify(wfBorders)),
+    bdNextId: wfBdNextId,
+    zindex: JSON.parse(JSON.stringify(wfZIndex)),
+    ziNextId: wfZiNextId,
+    tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled)),
+    pageType: wfPageType,
+    promoSections: JSON.parse(JSON.stringify(wfPromoSections)),
+    promoPopupIncludeForm: wfPromoPopupIncludeForm,
+    promoFormFields: JSON.parse(JSON.stringify(wfPromoFormFields)),
+    promoFormFieldNextId: wfPromoFormFieldNextId,
+    promoFormGrid: JSON.parse(JSON.stringify(wfPromoFormGrid)),
+    _promoFieldsMigratedV2: true
+  };
+}
+
+var _saveTimer = null;
+function saveSettings() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(function() {
+    parent.postMessage({ pluginMessage: { type: "save-settings", settings: collectSettings() } }, "*");
+  }, 400);
+}
+
+function applyLoadedSettings(s) {
+  if (!s) return;
+  if (s.colors) { wfColors.primary = s.colors.primary || wfColors.primary; wfColors.secondary = s.colors.secondary || ""; wfColors.tertiary = s.colors.tertiary || ""; wfColors.textColor = s.colors.textColor || wfColors.textColor; }
+  if (s.customColors) wfCustomColors = s.customColors;
+  if (s.fonts) { wfFonts.primary = s.fonts.primary || wfFonts.primary; wfFonts.secondary = s.fonts.secondary || ""; wfFonts.tertiary = s.fonts.tertiary || ""; }
+  if (s.textStyles) wfTextStyles = s.textStyles;
+  if (s.tsNextId) wfTsNextId = s.tsNextId;
+  if (s.typography) wfTypography = s.typography;
+  if (s.spacing) wfSpacing = s.spacing;
+  if (s.radius) wfRadius = s.radius;
+  if (s.shadows) wfShadows = s.shadows;
+  if (s.borders) wfBorders = s.borders;
+  if (s.bdNextId) wfBdNextId = s.bdNextId;
+  if (s.zindex) wfZIndex = s.zindex;
+  if (s.ziNextId) wfZiNextId = s.ziNextId;
+  if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
+  if (s.pageType) wfPageType = s.pageType;
+  if (s.promoSections) { for (var pk in s.promoSections) { wfPromoSections[pk] = s.promoSections[pk]; } }
+  if (s.promoPopupIncludeForm !== undefined) wfPromoPopupIncludeForm = s.promoPopupIncludeForm;
+  if (s.promoFormFields) {
+    wfPromoFormFields = s.promoFormFields;
+    // Migrate v2: apply correct required defaults for built-in fields
+    var defaultRequired = { "First name": true, "Last name": true, "Email address": true, "Phone number": true, "Select your store": true };
+    if (!s._promoFieldsMigratedV2) {
+      wfPromoFormFields.forEach(function(f) {
+        if (!f.custom && defaultRequired[f.label] !== undefined) f.required = !!defaultRequired[f.label];
+        if (f.required === undefined) f.required = false;
+      });
+    } else {
+      wfPromoFormFields.forEach(function(f) { if (f.required === undefined) f.required = false; });
+    }
+  }
+  if (s.promoFormFieldNextId) wfPromoFormFieldNextId = s.promoFormFieldNextId;
+  if (s.promoFormGrid) {
+    wfPromoFormGrid = s.promoFormGrid;
+    wfPromoFormGrid.forEach(function(r) { ensureColSpans(r); });
+  } else {
+    // Migration: build grid from old enabled fields, 2 per row
+    wfPromoFormGrid = [];
+    var enabledIdxs = [];
+    wfPromoFormFields.forEach(function(f, i) { if (f.enabled) enabledIdxs.push(i); });
+    for (var gi = 0; gi < enabledIdxs.length; gi += 2) {
+      if (gi + 1 < enabledIdxs.length) {
+        wfPromoFormGrid.push({ cols: 2, colSpans: [6, 6], fields: [enabledIdxs[gi], enabledIdxs[gi + 1]] });
+      } else {
+        wfPromoFormGrid.push({ cols: 1, colSpans: [12], fields: [enabledIdxs[gi]] });
+      }
+    }
+  }
+}
+
+function getWfColors() {
+  return {
+    primary:   wfColors.primary || "#3B82F6",
+    secondary: wfColors.secondary || "",
+    tertiary:  wfColors.tertiary || ""
+  };
+}
+
+function buildColorSlot(key, label, isOptional) {
+  var val = wfColors[key] || "";
+  var hasVal = /^#[0-9A-Fa-f]{6}$/.test(val);
+  var slot = document.createElement("div");
+  slot.className = "wf-color-slot";
+
+  var lblRow = document.createElement("div");
+  lblRow.className = "wf-color-label-row";
+  var lbl = document.createElement("div");
+  lbl.className = "wf-color-label";
+  lbl.innerHTML = label + (isOptional ? " <span class='optional'>(optional)</span>" : "");
+  lblRow.appendChild(lbl);
+  slot.appendChild(lblRow);
+
+  var pick = document.createElement("div");
+  pick.className = "wf-color-pick";
+
+  var swatch = document.createElement("div");
+  swatch.className = "wf-color-swatch" + (hasVal ? "" : " empty");
+  if (hasVal) swatch.style.background = val;
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = hasVal ? val : "#6366F1";
+  swatch.appendChild(colorInput);
+  pick.appendChild(swatch);
+
+  var hexInp = document.createElement("input");
+  hexInp.type = "text";
+  hexInp.className = "wf-color-hex";
+  hexInp.value = hasVal ? val : "";
+  hexInp.placeholder = isOptional ? "—" : "#hex";
+  hexInp.maxLength = 7;
+  hexInp.spellcheck = false;
+  pick.appendChild(hexInp);
+
+  function ensureClearButton() {
+    if (!isOptional || pick.querySelector(".wf-color-clear")) return;
+    var cb = document.createElement("button");
+    cb.className = "wf-color-clear"; cb.textContent = "×"; cb.title = "Clear";
+    cb.addEventListener("click", function() {
+      wfColors[key] = "";
+      hexInp.value = "";
+      swatch.style.background = "";
+      swatch.classList.add("empty");
+      cb.remove();
+      saveSettings();
+    });
+    pick.appendChild(cb);
+  }
+
+  if (isOptional && hasVal) {
+    ensureClearButton();
+  }
+
+  // Sync picker → hex → state
+  colorInput.addEventListener("input", function() {
+    wfColors[key] = colorInput.value;
+    hexInp.value = colorInput.value;
+    swatch.style.background = colorInput.value;
+    swatch.classList.remove("empty");
+    ensureClearButton();
+  });
+  hexInp.addEventListener("input", function() {
+    var v = hexInp.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) {
+      wfColors[key] = v;
+      colorInput.value = v;
+      swatch.style.background = v;
+      swatch.classList.remove("empty");
+      ensureClearButton();
+    }
+  });
+
+  slot.appendChild(pick);
+  return slot;
+}
+
+function buildCustomColorSlot(idx, onRemove, onUpdate) {
+  if (!wfCustomColors[idx]) {
+    var empty = document.createElement("div");
+    return empty;
+  }
+  var entry = wfCustomColors[idx];
+  var hasVal = /^#[0-9A-Fa-f]{6}$/.test(entry.hex);
+  var slot = document.createElement("div");
+  slot.className = "wf-color-slot";
+
+  // Editable name input
+  var nameRow = document.createElement("div");
+  nameRow.className = "wf-color-label-row";
+  nameRow.style.cssText = "gap:3px;";
+  var nameInp = document.createElement("input");
+  nameInp.type = "text";
+  nameInp.className = "wf-font-input";
+  nameInp.style.cssText = "padding:2px 4px;font-size:9px;font-weight:600;";
+  nameInp.value = entry.name;
+  nameInp.placeholder = "Color name";
+  nameInp.spellcheck = false;
+  nameInp.addEventListener("input", function() {
+    wfCustomColors[idx].name = nameInp.value.trim();
+  });
+  var rmBtn = document.createElement("button");
+  rmBtn.className = "wf-color-clear";
+  rmBtn.textContent = "×";
+  rmBtn.title = "Remove";
+  rmBtn.addEventListener("click", function() {
+    wfCustomColors.splice(idx, 1);
+    onRemove();
+  });
+  nameRow.appendChild(nameInp);
+  nameRow.appendChild(rmBtn);
+  slot.appendChild(nameRow);
+
+  // Color picker + hex (same pattern as buildColorSlot)
+  var pick = document.createElement("div");
+  pick.className = "wf-color-pick";
+
+  var swatch = document.createElement("div");
+  swatch.className = "wf-color-swatch" + (hasVal ? "" : " empty");
+  if (hasVal) swatch.style.background = entry.hex;
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = hasVal ? entry.hex : "#6366F1";
+  swatch.appendChild(colorInput);
+  pick.appendChild(swatch);
+
+  var hexInp = document.createElement("input");
+  hexInp.type = "text";
+  hexInp.className = "wf-color-hex";
+  hexInp.value = hasVal ? entry.hex : "";
+  hexInp.placeholder = "#hex";
+  hexInp.maxLength = 7;
+  hexInp.spellcheck = false;
+  pick.appendChild(hexInp);
+
+  colorInput.addEventListener("input", function() {
+    wfCustomColors[idx].hex = colorInput.value;
+    hexInp.value = colorInput.value;
+    swatch.style.background = colorInput.value;
+    swatch.classList.remove("empty");
+  });
+  hexInp.addEventListener("input", function() {
+    var v = hexInp.value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) {
+      wfCustomColors[idx].hex = v;
+      colorInput.value = v;
+      swatch.style.background = v;
+      swatch.classList.remove("empty");
+    }
+  });
+
+  slot.appendChild(pick);
+  return slot;
+}
+
+var FONT_FAMILIES = [
+  {label:"Inter", value:"Inter, sans-serif"},
+  {label:"Roboto", value:"Roboto, sans-serif"},
+  {label:"Open Sans", value:"Open Sans, sans-serif"},
+  {label:"Lato", value:"Lato, sans-serif"},
+  {label:"Montserrat", value:"Montserrat, sans-serif"},
+  {label:"Poppins", value:"Poppins, sans-serif"},
+  {label:"Nunito", value:"Nunito, sans-serif"},
+  {label:"Raleway", value:"Raleway, sans-serif"},
+  {label:"Work Sans", value:"Work Sans, sans-serif"},
+  {label:"DM Sans", value:"DM Sans, sans-serif"},
+  {label:"Plus Jakarta Sans", value:"Plus Jakarta Sans, sans-serif"},
+  {label:"Source Sans 3", value:"Source Sans 3, sans-serif"},
+  {label:"Manrope", value:"Manrope, sans-serif"},
+  {label:"Outfit", value:"Outfit, sans-serif"},
+  {label:"Space Grotesk", value:"Space Grotesk, sans-serif"},
+  {label:"Arial", value:"Arial, sans-serif"},
+  {label:"Helvetica Neue", value:"Helvetica Neue, sans-serif"},
+  {label:"SF Pro Display", value:"SF Pro Display, sans-serif"},
+  {label:"Playfair Display", value:"Playfair Display, serif"},
+  {label:"Merriweather", value:"Merriweather, serif"},
+  {label:"Lora", value:"Lora, serif"},
+  {label:"PT Serif", value:"PT Serif, serif"},
+  {label:"Libre Baskerville", value:"Libre Baskerville, serif"},
+  {label:"EB Garamond", value:"EB Garamond, serif"},
+  {label:"Crimson Text", value:"Crimson Text, serif"},
+  {label:"Georgia", value:"Georgia, serif"},
+  {label:"Times New Roman", value:"Times New Roman, serif"},
+  {label:"Fira Code", value:"Fira Code, monospace"},
+  {label:"JetBrains Mono", value:"JetBrains Mono, monospace"},
+  {label:"Source Code Pro", value:"Source Code Pro, monospace"},
+  {label:"IBM Plex Mono", value:"IBM Plex Mono, monospace"},
+  {label:"Roboto Mono", value:"Roboto Mono, monospace"},
+  {label:"Courier New", value:"Courier New, monospace"},
+  {label:"Menlo", value:"Menlo, monospace"},
+  {label:"Inconsolata", value:"Inconsolata, monospace"},
+  {label:"system-ui", value:"system-ui, sans-serif"},
+  {label:"cursive", value:"cursive"}
+];
+
+function buildFontFamilyPicker(key, label, isOptional) {
+  var val = wfFonts[key] || "";
+  var slot = document.createElement("div");
+  slot.className = "wf-font-slot";
+
+  var lbl = document.createElement("div");
+  lbl.className = "wf-font-label";
+  lbl.innerHTML = label + (isOptional ? " <span class='optional'>(optional)</span>" : "");
+  slot.appendChild(lbl);
+
+  var sel = document.createElement("select");
+  sel.className = "wf-font-input";
+  sel.style.fontFamily = val || "inherit";
+  if (isOptional) {
+    var emptyOpt = document.createElement("option");
+    emptyOpt.value = "";
+    emptyOpt.textContent = "Same as Primary";
+    if (!val) emptyOpt.selected = true;
+    sel.appendChild(emptyOpt);
+  }
+  var matched = false;
+  for (var i = 0; i < FONT_FAMILIES.length; i++) {
+    var opt = document.createElement("option");
+    opt.value = FONT_FAMILIES[i].value;
+    opt.textContent = FONT_FAMILIES[i].label;
+    opt.style.fontFamily = FONT_FAMILIES[i].value;
+    if (val === FONT_FAMILIES[i].value) { opt.selected = true; matched = true; }
+    sel.appendChild(opt);
+  }
+  if (val && !matched) {
+    var custom = document.createElement("option");
+    custom.value = val;
+    custom.textContent = val;
+    custom.selected = true;
+    sel.appendChild(custom);
+  }
+  // Ensure the select element's value matches the state
+  if (matched || (isOptional && !val)) {
+    sel.value = val;
+  }
+  sel.addEventListener("change", function() {
+    wfFonts[key] = sel.value;
+    sel.style.fontFamily = sel.value || "inherit";
+    saveSettings();
+  });
+  slot.appendChild(sel);
+  return slot;
+}
+
+function buildFontRoleSelect(currentRole) {
+  var sel = document.createElement("select");
+  sel.className = "wf-ts-select";
+  var roles = [
+    { value: "primary",   label: "Primary" },
+    { value: "secondary", label: "Secondary" },
+    { value: "tertiary",  label: "Tertiary" }
+  ];
+  for (var i = 0; i < roles.length; i++) {
+    var opt = document.createElement("option");
+    opt.value = roles[i].value;
+    opt.textContent = roles[i].label;
+    if (currentRole === roles[i].value) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  return sel;
+}
+
+function buildTextStylesPanel(panel) {
+  panel.innerHTML = "";
+
+  // Font family pickers at the top
+  var fontGrid = document.createElement("div");
+  fontGrid.className = "wf-font-grid";
+  fontGrid.appendChild(buildFontFamilyPicker("primary", "Primary", false));
+  fontGrid.appendChild(buildFontFamilyPicker("secondary", "Secondary", true));
+  fontGrid.appendChild(buildFontFamilyPicker("tertiary", "Tertiary", true));
+  panel.appendChild(fontGrid);
+
+  var sep = document.createElement("div");
+  sep.style.cssText = "height:1px;background:#313244;margin:10px 0 6px;";
+  panel.appendChild(sep);
+
+  TS_GROUPS.forEach(function(group) {
+    var styles = wfTextStyles.filter(function(s) { return s.group === group; });
+    if (styles.length === 0) return;
+
+    // Group header
+    var ghdr = document.createElement("div");
+    ghdr.className = "wf-ts-group-hdr";
+    ghdr.textContent = group;
+    panel.appendChild(ghdr);
+
+    // Column headers
+    var colHdr = document.createElement("div");
+    colHdr.className = "wf-ts-row wf-ts-col-hdr";
+    colHdr.innerHTML = "<span>Name</span><span>Font</span><span>Size (px)</span><span>Weight</span><span>Line Height (×)</span><span>Letter Spacing (px)</span><span>Paragraph Spacing (px)</span><span></span>";
+    panel.appendChild(colHdr);
+
+    styles.forEach(function(s) {
+      var row = document.createElement("div");
+      row.className = "wf-ts-row";
+
+      // Name
+      var nameInp = document.createElement("input");
+      nameInp.className = "wf-ts-inp";
+      nameInp.value = s.name;
+      nameInp.addEventListener("input", function() { s.name = nameInp.value.trim(); });
+      row.appendChild(nameInp);
+
+      // Font role (Primary / Secondary / Tertiary)
+      var fontSel = buildFontRoleSelect(s.fontRole || "primary");
+      fontSel.addEventListener("change", function() { s.fontRole = fontSel.value; });
+      row.appendChild(fontSel);
+
+      // Size
+      var sizeInp = document.createElement("input");
+      sizeInp.className = "wf-ts-inp wf-ts-num";
+      sizeInp.value = s.fontSize;
+      sizeInp.addEventListener("input", function() { s.fontSize = sizeInp.value.trim(); });
+      row.appendChild(sizeInp);
+
+      // Weight
+      var weightInp = document.createElement("input");
+      weightInp.className = "wf-ts-inp wf-ts-num";
+      weightInp.value = s.fontWeight;
+      weightInp.addEventListener("input", function() { s.fontWeight = weightInp.value.trim(); });
+      row.appendChild(weightInp);
+
+      // Line height
+      var lhInp = document.createElement("input");
+      lhInp.className = "wf-ts-inp wf-ts-num";
+      lhInp.value = s.lineHeight;
+      lhInp.addEventListener("input", function() { s.lineHeight = lhInp.value.trim(); });
+      row.appendChild(lhInp);
+
+      // Letter spacing
+      var lsInp = document.createElement("input");
+      lsInp.className = "wf-ts-inp wf-ts-num";
+      lsInp.value = s.letterSpacing;
+      lsInp.addEventListener("input", function() { s.letterSpacing = lsInp.value.trim(); });
+      row.appendChild(lsInp);
+
+      // Paragraph spacing
+      var psInp = document.createElement("input");
+      psInp.className = "wf-ts-inp wf-ts-num";
+      psInp.value = s.paragraphSpacing || "0";
+      psInp.addEventListener("input", function() { s.paragraphSpacing = psInp.value.trim(); });
+      row.appendChild(psInp);
+
+      // Delete button
+      var delBtn = document.createElement("button");
+      delBtn.className = "wf-ts-del";
+      delBtn.textContent = "×";
+      delBtn.title = "Remove style";
+      delBtn.addEventListener("click", function() {
+        wfTextStyles = wfTextStyles.filter(function(x) { return x.id !== s.id; });
+        buildTextStylesPanel(panel); saveSettings();
+      });
+      row.appendChild(delBtn);
+
+      panel.appendChild(row);
+    });
+
+    // Add style button
+    var addBtn = document.createElement("button");
+    addBtn.className = "wf-ts-add";
+    addBtn.textContent = "+ Add style to " + group;
+    addBtn.addEventListener("click", function() {
+      wfTextStyles.push({ id: wfTsNextId++, group: group, name: "new", fontRole: "primary", fontSize: "16", fontWeight: "400", lineHeight: "1.5", letterSpacing: "0", paragraphSpacing: "0" });
+      buildTextStylesPanel(panel); saveSettings();
+    });
+    panel.appendChild(addBtn);
+  });
+}
+
+function buildSpacingPanel(panel) {
+  panel.innerHTML = "";
+
+  var info = document.createElement("div");
+  info.style.cssText = "font-size:11px;color:#a6adc8;line-height:1.5;";
+  info.innerHTML = "A 4 px based, Tailwind-inspired spacing scale with <strong>18 tokens</strong> ranging from <strong>0</strong> to <strong>128 px</strong>. " +
+    "The <strong>px</strong> token is a 1 px utility value for fine adjustments like borders and outlines.<br>" +
+    "<span style='color:#585b70;'>0 (0px), px (1px), 0.5 (2px), 1 (4px), 1.5 (6px), 2 (8px), 2.5 (10px), 3 (12px), 4 (16px), 5 (20px), 6 (24px), 8 (32px), 10 (40px), 12 (48px), 16 (64px), 20 (80px), 24 (96px), 32 (128px)</span>";
+  panel.appendChild(info);
+}
+
+function buildTypoSection(panel, items, label, unit, onRebuild) {
+  var section = document.createElement("div");
+  section.className = "wf-typo-section";
+
+  var lbl = document.createElement("div");
+  lbl.className = "wf-typo-label";
+  lbl.textContent = label + (unit ? " (" + unit + ")" : "");
+  section.appendChild(lbl);
+
+  items.forEach(function(item) {
+    var row = document.createElement("div");
+    row.className = "wf-typo-row";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp";
+    nameInp.value = item.name;
+    nameInp.addEventListener("input", function() { item.name = nameInp.value.trim(); });
+    row.appendChild(nameInp);
+
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-ts-num";
+    valInp.value = item.value;
+    valInp.addEventListener("input", function() { item.value = valInp.value.trim(); });
+    row.appendChild(valInp);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      var idx = items.indexOf(item);
+      if (idx !== -1) items.splice(idx, 1);
+      onRebuild();
+    });
+    row.appendChild(delBtn);
+
+    section.appendChild(row);
+  });
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add " + label.toLowerCase() + " token";
+  addBtn.addEventListener("click", function() {
+    items.push({ name: "new", value: "0" });
+    onRebuild();
+  });
+  section.appendChild(addBtn);
+
+  return section;
+}
+
+function buildTypographyPanel(panel) {
+  panel.innerHTML = "";
+
+  var grid = document.createElement("div");
+  grid.className = "wf-typo-grid";
+
+  function rebuild() { buildTypographyPanel(panel); }
+
+  grid.appendChild(buildTypoSection(panel, wfTypography.sizes, "Font size", "px", rebuild));
+  grid.appendChild(buildTypoSection(panel, wfTypography.weights, "Font weight", "", rebuild));
+  grid.appendChild(buildTypoSection(panel, wfTypography.lineHeights, "Line height", "×", rebuild));
+
+  panel.appendChild(grid);
+}
+
+var wfRadNextId = 4;
+
+function syncTokenEnabled(key, acc, chk, hasItems) {
+  wfTokenEnabled[key] = hasItems;
+  chk.checked = hasItems;
+  acc.classList.toggle("enabled", hasItems);
+  acc.classList.toggle("disabled", !hasItems);
+  if (!hasItems) { wfTokenOpen[key] = false; acc.classList.remove("open"); }
+}
+
+function buildRadiusPanel(panel, acc, chk) {
+  panel.innerHTML = "";
+
+  var grid = document.createElement("div");
+  grid.className = "wf-rad-grid";
+
+  wfRadius.forEach(function(r) {
+    var card = document.createElement("div");
+    card.className = "wf-rad-card";
+
+    var preview = document.createElement("div");
+    preview.className = "wf-rad-preview";
+    preview.style.borderRadius = Math.min(parseFloat(r.value) || 0, 28) + "px";
+    card.appendChild(preview);
+
+    var fields = document.createElement("div");
+    fields.className = "wf-rad-fields";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp";
+    nameInp.value = r.name;
+    nameInp.addEventListener("input", function() { r.name = nameInp.value.trim(); });
+    fields.appendChild(nameInp);
+
+    var valWrap = document.createElement("div");
+    valWrap.className = "wf-rad-val-wrap";
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-ts-num";
+    valInp.value = r.value;
+    valInp.addEventListener("input", function() {
+      r.value = valInp.value.trim();
+      preview.style.borderRadius = Math.min(parseFloat(r.value) || 0, 28) + "px";
+    });
+    var suffix = document.createElement("span");
+    suffix.className = "wf-rad-suffix";
+    suffix.textContent = "px";
+    valWrap.appendChild(valInp);
+    valWrap.appendChild(suffix);
+    fields.appendChild(valWrap);
+
+    card.appendChild(fields);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      wfRadius = wfRadius.filter(function(x) { return x !== r; });
+      if (wfRadius.length === 0) syncTokenEnabled("radius", acc, chk, false);
+      buildRadiusPanel(panel, acc, chk); saveSettings();
+    });
+    card.appendChild(delBtn);
+
+    grid.appendChild(card);
+  });
+
+  panel.appendChild(grid);
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add radius token";
+  addBtn.addEventListener("click", function() {
+    var wasEmpty = wfRadius.length === 0;
+    wfRadius.push({ id: wfRadNextId++, name: "new", value: "8" });
+    if (wasEmpty) syncTokenEnabled("radius", acc, chk, true);
+    buildRadiusPanel(panel, acc, chk); saveSettings();
+  });
+  panel.appendChild(addBtn);
+}
+
+function parseShadow(str) {
+  if (!str) return { x: 0, y: 4, blur: 8, spread: 0, color: "rgba(0,0,0,0.20)", inset: false };
+  var inset = /\binset\b/.test(str);
+  var clean = str.replace(/\binset\b/, "").trim();
+  var rgbaMatch = clean.match(/rgba?\([^)]+\)/);
+  var hexMatch = clean.match(/#[0-9a-fA-F]{3,8}/);
+  var color = rgbaMatch ? rgbaMatch[0] : hexMatch ? hexMatch[0] : "rgba(0,0,0,0.20)";
+  var nums = clean.replace(color, "").trim().split(/\s+/).map(function(v) { return parseFloat(v) || 0; });
+  return { x: nums[0] || 0, y: nums[1] || 4, blur: nums[2] || 8, spread: nums[3] || 0, color: color, inset: inset };
+}
+
+function buildShadow(p) {
+  return (p.inset ? "inset " : "") + p.x + "px " + p.y + "px " + p.blur + "px " + p.spread + "px " + p.color;
+}
+
+function buildShadowSlider(label, value, min, max, unit, onChange) {
+  var row = document.createElement("div");
+  row.className = "wf-sh-slider-row";
+
+  var lbl = document.createElement("span");
+  lbl.className = "wf-sh-label";
+  lbl.textContent = label;
+  row.appendChild(lbl);
+
+  var range = document.createElement("input");
+  range.type = "range";
+  range.min = min;
+  range.max = max;
+  range.value = value;
+
+  var num = document.createElement("input");
+  num.className = "wf-ts-inp wf-ts-num";
+  num.type = "number";
+  num.value = value;
+
+  range.addEventListener("input", function() {
+    num.value = range.value;
+    onChange(Number(range.value));
+  });
+  num.addEventListener("input", function() {
+    range.value = num.value;
+    onChange(Number(num.value) || 0);
+  });
+
+  row.appendChild(range);
+  row.appendChild(num);
+
+  if (unit) {
+    var u = document.createElement("span");
+    u.className = "wf-sh-unit";
+    u.textContent = unit;
+    row.appendChild(u);
+  }
+
+  return row;
+}
+
+function buildShadowPicker(shadow, onUpdate) {
+  var p = parseShadow(shadow.value);
+
+  var wrap = document.createElement("div");
+  wrap.className = "wf-sh-picker";
+
+  var previewOuter = document.createElement("div");
+  previewOuter.className = "wf-sh-picker-preview";
+  var previewInner = document.createElement("div");
+  previewInner.className = "wf-sh-picker-preview-inner";
+  previewInner.style.boxShadow = shadow.value;
+  previewOuter.appendChild(previewInner);
+  wrap.appendChild(previewOuter);
+
+  var sliders = document.createElement("div");
+  sliders.className = "wf-sh-sliders";
+
+  function update(field, val) {
+    p[field] = val;
+    shadow.value = buildShadow(p);
+    previewInner.style.boxShadow = shadow.value;
+    onUpdate(shadow.value);
+  }
+
+  sliders.appendChild(buildShadowSlider("X offset", p.x, -80, 80, "px", function(v) { update("x", v); }));
+  sliders.appendChild(buildShadowSlider("Y offset", p.y, -80, 80, "px", function(v) { update("y", v); }));
+  sliders.appendChild(buildShadowSlider("Blur", p.blur, 0, 120, "px", function(v) { update("blur", v); }));
+  sliders.appendChild(buildShadowSlider("Spread", p.spread, -40, 60, "px", function(v) { update("spread", v); }));
+
+  // Color + inset row
+  var colorRow = document.createElement("div");
+  colorRow.className = "wf-sh-slider-row";
+  var colorLbl = document.createElement("span");
+  colorLbl.className = "wf-sh-label";
+  colorLbl.textContent = "Color";
+  colorRow.appendChild(colorLbl);
+
+  var colorInp = document.createElement("input");
+  colorInp.className = "wf-ts-inp";
+  colorInp.style.cssText = "flex:1;font-family:monospace;font-size:10px;min-width:0;";
+  colorInp.value = p.color;
+  colorInp.addEventListener("input", function() { update("color", colorInp.value); });
+  colorRow.appendChild(colorInp);
+
+  var insetLabel = document.createElement("label");
+  insetLabel.style.cssText = "display:flex;align-items:center;gap:4px;font-size:10px;color:#a6adc8;cursor:pointer;flex-shrink:0;user-select:none;";
+  var insetChk = document.createElement("input");
+  insetChk.type = "checkbox";
+  insetChk.checked = p.inset;
+  insetChk.style.accentColor = "#89b4fa";
+  insetChk.addEventListener("change", function() { update("inset", insetChk.checked); });
+  insetLabel.appendChild(insetChk);
+  insetLabel.appendChild(document.createTextNode("inset"));
+  colorRow.appendChild(insetLabel);
+
+  sliders.appendChild(colorRow);
+  wrap.appendChild(sliders);
+
+  return wrap;
+}
+
+function buildShadowsPanel(panel, acc, chk) {
+  panel.innerHTML = "";
+
+  wfShadows.forEach(function(s) {
+    var container = document.createElement("div");
+
+    // Row: name, value input, swatch
+    var row = document.createElement("div");
+    row.className = "wf-sh-row";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp wf-sh-name";
+    nameInp.value = s.name;
+    nameInp.addEventListener("input", function() { s.name = nameInp.value.trim(); });
+    row.appendChild(nameInp);
+
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-sh-val";
+    valInp.value = s.value;
+    valInp.addEventListener("input", function() {
+      s.value = valInp.value;
+      swatchInner.style.boxShadow = s.value;
+    });
+    row.appendChild(valInp);
+
+    var swatch = document.createElement("div");
+    swatch.className = "wf-sh-swatch";
+    var swatchInner = document.createElement("div");
+    swatchInner.className = "wf-sh-swatch-inner";
+    swatchInner.style.boxShadow = s.value;
+    swatch.appendChild(swatchInner);
+
+    var pickerEl = null;
+    swatch.addEventListener("click", function() {
+      if (pickerEl) {
+        pickerEl.remove();
+        pickerEl = null;
+        swatch.classList.remove("active");
+      } else {
+        pickerEl = buildShadowPicker(s, function(newVal) {
+          valInp.value = newVal;
+          swatchInner.style.boxShadow = newVal;
+        });
+        container.appendChild(pickerEl);
+        swatch.classList.add("active");
+      }
+    });
+    row.appendChild(swatch);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      wfShadows = wfShadows.filter(function(x) { return x !== s; });
+      if (wfShadows.length === 0) syncTokenEnabled("shadows", acc, chk, false);
+      buildShadowsPanel(panel, acc, chk); saveSettings();
+    });
+    row.appendChild(delBtn);
+
+    container.appendChild(row);
+    panel.appendChild(container);
+  });
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add shadow token";
+  addBtn.addEventListener("click", function() {
+    var wasEmpty = wfShadows.length === 0;
+    wfShadows.push({ name: "new", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" });
+    if (wasEmpty) syncTokenEnabled("shadows", acc, chk, true);
+    buildShadowsPanel(panel, acc, chk); saveSettings();
+  });
+  panel.appendChild(addBtn);
+}
+
+function buildBorderPanel(panel, acc, chk) {
+  panel.innerHTML = "";
+
+  var colHdr = document.createElement("div");
+  colHdr.className = "wf-bd-row wf-bd-col-hdr";
+  colHdr.innerHTML = "<span>Name</span><span>Width (px)</span><span>Preview</span><span></span>";
+  panel.appendChild(colHdr);
+
+  wfBorders.forEach(function(b) {
+    var row = document.createElement("div");
+    row.className = "wf-bd-row";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp";
+    nameInp.value = b.name;
+    nameInp.addEventListener("input", function() { b.name = nameInp.value.trim(); });
+    row.appendChild(nameInp);
+
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-ts-num";
+    valInp.value = b.value;
+    valInp.addEventListener("input", function() {
+      b.value = valInp.value.trim();
+      bar.style.setProperty("--h", Math.min(parseFloat(b.value) || 0, 20) + "px");
+    });
+    row.appendChild(valInp);
+
+    var bar = document.createElement("div");
+    bar.className = "wf-bd-bar";
+    bar.style.setProperty("--h", Math.min(parseFloat(b.value) || 0, 20) + "px");
+    row.appendChild(bar);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      wfBorders = wfBorders.filter(function(x) { return x !== b; });
+      if (wfBorders.length === 0) syncTokenEnabled("border", acc, chk, false);
+      buildBorderPanel(panel, acc, chk); saveSettings();
+    });
+    row.appendChild(delBtn);
+
+    panel.appendChild(row);
+  });
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add border token";
+  addBtn.addEventListener("click", function() {
+    var wasEmpty = wfBorders.length === 0;
+    wfBorders.push({ id: wfBdNextId++, name: "new", value: "1" });
+    if (wasEmpty) syncTokenEnabled("border", acc, chk, true);
+    buildBorderPanel(panel, acc, chk); saveSettings();
+  });
+  panel.appendChild(addBtn);
+}
+
+function buildZIndexPanel(panel, acc, chk) {
+  panel.innerHTML = "";
+
+  var colHdr = document.createElement("div");
+  colHdr.className = "wf-zi-row wf-zi-col-hdr";
+  colHdr.innerHTML = "<span>Name</span><span>Value</span><span></span>";
+  panel.appendChild(colHdr);
+
+  wfZIndex.forEach(function(z) {
+    var row = document.createElement("div");
+    row.className = "wf-zi-row";
+
+    var nameInp = document.createElement("input");
+    nameInp.className = "wf-ts-inp";
+    nameInp.value = z.name;
+    nameInp.addEventListener("input", function() { z.name = nameInp.value.trim(); });
+    row.appendChild(nameInp);
+
+    var valInp = document.createElement("input");
+    valInp.className = "wf-ts-inp wf-ts-num";
+    valInp.value = z.value;
+    valInp.addEventListener("input", function() { z.value = valInp.value.trim(); });
+    row.appendChild(valInp);
+
+    var delBtn = document.createElement("button");
+    delBtn.className = "wf-ts-del";
+    delBtn.textContent = "×";
+    delBtn.addEventListener("click", function() {
+      wfZIndex = wfZIndex.filter(function(x) { return x !== z; });
+      if (wfZIndex.length === 0) syncTokenEnabled("zindex", acc, chk, false);
+      buildZIndexPanel(panel, acc, chk); saveSettings();
+    });
+    row.appendChild(delBtn);
+
+    panel.appendChild(row);
+  });
+
+  var addBtn = document.createElement("button");
+  addBtn.className = "wf-ts-add";
+  addBtn.textContent = "+ Add z-index token";
+  addBtn.addEventListener("click", function() {
+    var wasEmpty = wfZIndex.length === 0;
+    wfZIndex.push({ id: wfZiNextId++, name: "new", value: "0" });
+    if (wasEmpty) syncTokenEnabled("zindex", acc, chk, true);
+    buildZIndexPanel(panel, acc, chk); saveSettings();
+  });
+  panel.appendChild(addBtn);
+}
+
+function buildBreakpointsPanel(panel) {
+  panel.innerHTML = "";
+
+  var info = document.createElement("div");
+  info.style.cssText = "font-size:11px;color:#a6adc8;line-height:1.5;";
+  info.innerHTML = "Responsive breakpoints for consistent media queries across design and code.<br>" +
+    "<span style='color:#585b70;'>xs (0–567px), sm (567–767px), md (767–991px), lg (991px+)</span>";
+  panel.appendChild(info);
+}
+
+function renderStep2(container) {
+  var prev = document.getElementById("wf-step-2");
+  if (prev) prev.remove();
+
+  var locked = wfStep1Color === "red";
+  var tokens = wfTokensData;
+
+  // Check if enabled tokens have been generated
+  var enabledWithCounts = TOKEN_DEFS.filter(function(d) { return wfTokenEnabled[d.key] && d.countKey; });
+  var allHaveTokens = enabledWithCounts.every(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
+  var someHaveTokens = enabledWithCounts.some(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
+  var indicatorColor = locked ? "red" : (allHaveTokens ? "green" : (someHaveTokens ? "yellow" : "red"));
+
+  var stepOpen = locked ? false : (allHaveTokens && !wfFormState.step2Toggled ? false : wfFormState.step2Open);
+
+  var step = document.createElement("div");
+  step.id = "wf-step-2";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allHaveTokens && !locked ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 2</div>" +
+      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allHaveTokens ? " — All set" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Complete file structure first</div>" :
+       (stepOpen ? "<div class='wf-step-desc'>Pick your brand colors, then generate or import tokens.</div>" : "")) +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step2Toggled = true;
+      wfFormState.step2Open = !wfFormState.step2Open;
+      var prev2 = document.getElementById("wf-step-2");
+      if (prev2) prev2.remove();
+      renderStep2(container);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!tokens) {
+    body.innerHTML = "<div class='wf-token-list'><div style='padding:8px;font-size:11px;color:#585b70;text-align:center'>Loading…</div></div>";
+  } else {
+    // ── Basic Variables sub-section ──
+    var basicSection = document.createElement("div");
+    basicSection.className = "wf-subsection" + (wfFormState.step2BasicOpen ? "" : " collapsed");
+    var basicHdr = document.createElement("div");
+    basicHdr.className = "wf-subsection-header";
+    basicHdr.innerHTML = "<span class='wf-subsection-title'>Basic Variables</span><span class='wf-subsection-chevron'>▼</span>";
+    basicHdr.addEventListener("click", function() {
+      wfFormState.step2BasicOpen = !wfFormState.step2BasicOpen;
+      basicSection.classList.toggle("collapsed", !wfFormState.step2BasicOpen);
+    });
+    basicSection.appendChild(basicHdr);
+    var basicBody = document.createElement("div");
+    basicBody.className = "wf-subsection-body";
+
+    var list = document.createElement("div");
+    list.className = "wf-token-list in-subsection";
+
+    TOKEN_DEFS.forEach(function(def) {
+      var count = tokens && def.countKey ? (tokens[def.countKey] || 0) : 0;
+      var isEnabled = wfTokenEnabled[def.key];
+      var isOpen = wfTokenOpen[def.key];
+
+      var acc = document.createElement("div");
+      acc.className = "wf-token-acc" + (isEnabled ? " enabled" : " disabled") + (isOpen ? " open" : "") + (count > 0 ? " has-tokens" : "");
+
+      // ── Header row ──
+      var hdr = document.createElement("div");
+      hdr.className = "wf-token-header";
+
+      var chk = document.createElement("input");
+      chk.type = "checkbox";
+      chk.className = "wf-token-chk";
+      chk.checked = isEnabled;
+      if (def.noCheckbox) {
+        chk.style.cssText = "visibility:hidden;";
+        wfTokenEnabled[def.key] = true;
+      } else {
+        chk.addEventListener("click", function(e) { e.stopPropagation(); });
+        chk.addEventListener("change", function(e) {
+          e.stopPropagation();
+          wfTokenEnabled[def.key] = chk.checked;
+          acc.classList.toggle("enabled", chk.checked);
+          acc.classList.toggle("disabled", !chk.checked);
+          if (!chk.checked) { wfTokenOpen[def.key] = false; acc.classList.remove("open"); }
+          saveSettings();
+        });
+      }
+      hdr.appendChild(chk);
+
+      var iconSpan = document.createElement("span");
+      iconSpan.className = "wf-token-icon";
+      iconSpan.textContent = def.icon;
+      hdr.appendChild(iconSpan);
+
+      var infoDiv = document.createElement("div");
+      infoDiv.className = "wf-token-info";
+      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(def.name) + "</div><div class='wf-token-desc'>" + esc(def.desc) + "</div>";
+      hdr.appendChild(infoDiv);
+
+      var countSpan = document.createElement("span");
+      countSpan.className = "wf-token-count";
+      countSpan.textContent = count > 0 ? count + " found" : "";
+      hdr.appendChild(countSpan);
+
+      if (def.hasConfig) {
+        var chevron = document.createElement("span");
+        chevron.className = "wf-token-chevron";
+        chevron.textContent = "▼";
+        hdr.appendChild(chevron);
+        hdr.style.cursor = "pointer";
+      }
+
+      hdr.addEventListener("click", function(e) {
+        if (e.target.classList.contains("wf-token-chk")) return;
+        if (!def.hasConfig || !wfTokenEnabled[def.key]) return;
+        wfTokenOpen[def.key] = !wfTokenOpen[def.key];
+        acc.classList.toggle("open", wfTokenOpen[def.key]);
+      });
+      acc.appendChild(hdr);
+
+      // ── Config panel ──
+      if (def.hasConfig) {
+        var panel = document.createElement("div");
+        panel.className = "wf-token-panel";
+
+        if (def.hasConfig === "colors") {
+          // Color pickers inside panel
+          var colorGrid = document.createElement("div");
+          colorGrid.className = "wf-color-grid";
+          colorGrid.appendChild(buildColorSlot("primary", "Primary", false));
+          colorGrid.appendChild(buildColorSlot("secondary", "Secondary", true));
+          colorGrid.appendChild(buildColorSlot("tertiary", "Tertiary", true));
+          colorGrid.appendChild(buildColorSlot("textColor", "Text Color", false));
+
+          var rebuildCustomColors = (function(grid) {
+            return function rebuild() {
+              grid.querySelectorAll(".wf-custom-color, .wf-add-color-btn").forEach(function(el) { el.remove(); });
+              for (var ci = 0; ci < wfCustomColors.length; ci++) {
+                var cSlot = buildCustomColorSlot(ci, function() { rebuild(); });
+                cSlot.classList.add("wf-custom-color");
+                grid.appendChild(cSlot);
+              }
+              var addSlot = document.createElement("div");
+              addSlot.className = "wf-color-slot wf-add-color-btn";
+              addSlot.innerHTML = "<div class='wf-color-label-row' style='opacity:0'>.</div><div class='wf-color-pick' style='justify-content:center;'><button style='width:28px;height:28px;border-radius:6px;border:2px dashed #45475a;background:transparent;color:#6c7086;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:border-color 0.15s,color 0.15s;' title='Add custom color'>+</button></div>";
+              addSlot.querySelector("button").addEventListener("click", function() {
+                wfCustomColors.push({ name: "", hex: "" });
+                rebuild(); saveSettings();
+              });
+              grid.appendChild(addSlot);
+            };
+          })(colorGrid);
+          rebuildCustomColors();
+
+          var autoNote = document.createElement("div");
+          autoNote.style.cssText = "font-size:9px;color:#585b70;margin-top:6px;";
+          autoNote.textContent = "Black, white, gray, focus & error colors are auto-included. Semantic brand, text, border & overlay tokens are generated automatically.";
+
+          panel.appendChild(colorGrid);
+          panel.appendChild(autoNote);
+        }
+
+        if (def.hasConfig === "fonts") {
+          buildTextStylesPanel(panel);
+        }
+
+        if (def.hasConfig === "typography") {
+          buildTypographyPanel(panel);
+        }
+
+        if (def.hasConfig === "spacing") {
+          buildSpacingPanel(panel);
+        }
+
+        if (def.hasConfig === "radius") {
+          buildRadiusPanel(panel, acc, chk);
+        }
+
+        if (def.hasConfig === "shadows") {
+          buildShadowsPanel(panel, acc, chk);
+        }
+
+        if (def.hasConfig === "border") {
+          buildBorderPanel(panel, acc, chk);
+        }
+
+        if (def.hasConfig === "zindex") {
+          buildZIndexPanel(panel, acc, chk);
+        }
+
+        if (def.hasConfig === "breakpoints") {
+          buildBreakpointsPanel(panel);
+        }
+
+        acc.appendChild(panel);
+      }
+
+      list.appendChild(acc);
+    });
+
+    // ── Generate / Reset buttons ──
+    var btnWrap = document.createElement("div");
+    btnWrap.style.cssText = "padding: 8px 10px;";
+
+    if (wfGenerated || someHaveTokens) {
+      var resetBtn = document.createElement("button");
+      resetBtn.className = "wf-reset-btn";
+      resetBtn.textContent = "Reset Variables & Text Styles";
+      resetBtn.addEventListener("click", function() {
+        resetBtn.disabled = true; resetBtn.textContent = "Resetting…";
+        parent.postMessage({ pluginMessage: { type: "reset-tokens" } }, "*");
+      });
+      btnWrap.appendChild(resetBtn);
+    } else {
+      var genAllBtn = document.createElement("button");
+      genAllBtn.className = "wf-gen-btn";
+      genAllBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+      genAllBtn.textContent = "Generate Enabled Tokens";
+      genAllBtn.addEventListener("click", function() {
+        if (wfGenerating) return;
+        wfGenerating = true;
+        genAllBtn.disabled = true; genAllBtn.textContent = "Generating…";
+        var colors = getWfColors();
+        var customCols = wfCustomColors.filter(function(c) { return c.name && /^#[0-9A-Fa-f]{6}$/.test(c.hex); });
+        var enabledCats = [];
+        TOKEN_DEFS.forEach(function(d) {
+          if (wfTokenEnabled[d.key]) {
+            for (var i = 0; i < d.cats.length; i++) enabledCats.push(d.cats[i]);
+          }
+        });
+        parent.postMessage({ pluginMessage: {
+          type: "generate-tokens",
+          brandColor: colors.primary,
+          secondaryColor: colors.secondary,
+          tertiaryColor: colors.tertiary,
+          textColor: wfColors.textColor || "#1A1A1A",
+          customColors: customCols,
+          textStyles: wfTextStyles,
+          fontFamilies: {
+            primary: wfFonts.primary || "Inter, sans-serif",
+            secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
+            tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
+          },
+          typography: wfTypography,
+          spacing: wfSpacing,
+          radius: wfRadius,
+          shadows: wfShadows,
+          borders: wfBorders,
+          zindex: wfZIndex,
+          enabledCategories: enabledCats
+        } }, "*");
+      });
+      btnWrap.appendChild(genAllBtn);
+    }
+    // Restore Token Defaults button
+    var rstDefBtn = document.createElement("button");
+    rstDefBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+    rstDefBtn.textContent = "Restore Token Defaults";
+    rstDefBtn.addEventListener("mouseenter", function() { rstDefBtn.style.borderColor = "#f38ba8"; rstDefBtn.style.color = "#f38ba8"; });
+    rstDefBtn.addEventListener("mouseleave", function() { rstDefBtn.style.borderColor = "#45475a"; rstDefBtn.style.color = "#a6adc8"; });
+    rstDefBtn.addEventListener("click", function() {
+      if (!confirm("Reset all token settings to defaults? This cannot be undone.")) return;
+      rstDefBtn.disabled = true; rstDefBtn.textContent = "Resetting…";
+      parent.postMessage({ pluginMessage: { type: "reset-settings" } }, "*");
+    });
+    btnWrap.appendChild(rstDefBtn);
+    list.appendChild(btnWrap);
+
+    basicBody.appendChild(list);
+    basicSection.appendChild(basicBody);
+    body.appendChild(basicSection);
+
+    // ── Complex Variables sub-section ──
+    var complexSection = document.createElement("div");
+    complexSection.className = "wf-subsection" + (wfFormState.step2ComplexOpen ? "" : " collapsed");
+    var complexHdr = document.createElement("div");
+    complexHdr.className = "wf-subsection-header";
+    complexHdr.innerHTML = "<span class='wf-subsection-title'>Complex Variables</span><span class='wf-subsection-chevron'>▼</span>";
+    complexHdr.addEventListener("click", function() {
+      wfFormState.step2ComplexOpen = !wfFormState.step2ComplexOpen;
+      complexSection.classList.toggle("collapsed", !wfFormState.step2ComplexOpen);
+    });
+    complexSection.appendChild(complexHdr);
+    var complexBody = document.createElement("div");
+    complexBody.className = "wf-subsection-body";
+    complexBody.style.cssText = "padding: 10px;display:flex;flex-direction:column;gap:10px;";
+
+    // Link to external generator
+    var extNote = document.createElement("div");
+    extNote.style.cssText = "font-size:11px;color:#6c7086;line-height:1.65;background:#181825;border:1px solid #313244;border-radius:8px;padding:9px 12px;";
+    extNote.innerHTML = "Use the <b style='color:#89b4fa'>Figma Variables Generator</b> to create complex token sets (primitives, semantic colors, dark mode, etc.), then import the JSON files below.";
+    complexBody.appendChild(extNote);
+
+    var extOpenBtn = document.createElement("button");
+    extOpenBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;";
+    extOpenBtn.textContent = "Open Variables Generator \u2197";
+    extOpenBtn.addEventListener("mouseenter", function() { extOpenBtn.style.borderColor = "#89b4fa"; extOpenBtn.style.color = "#89b4fa"; });
+    extOpenBtn.addEventListener("mouseleave", function() { extOpenBtn.style.borderColor = "#45475a"; extOpenBtn.style.color = "#a6adc8"; });
+    extOpenBtn.addEventListener("click", function() {
+      window.open("https://figma-variables-generator.netlify.app/", "_blank");
+    });
+    complexBody.appendChild(extOpenBtn);
+
+    // Inline drop zone for JSON import
+    var czDrop = document.createElement("div");
+    czDrop.style.cssText = "border:2px dashed #313244;border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:border-color 0.15s,background 0.15s;";
+    czDrop.innerHTML = "<input type='file' multiple accept='.json' style='display:none'><div style='font-size:16px;margin-bottom:4px;'>📂</div><div style='font-size:12px;color:#cdd6f4;font-weight:600;'>Click to select JSON files</div><div style='font-size:10px;color:#6c7086;margin-top:2px;'>or drag and drop here</div>";
+    var czFileInput = czDrop.querySelector("input");
+    czDrop.addEventListener("click", function() { czFileInput.click(); });
+    czFileInput.addEventListener("change", function(e) { addFiles(e.target.files); renderCzQueue(); e.target.value = ""; });
+    czDrop.addEventListener("dragover", function(e) { e.preventDefault(); czDrop.style.borderColor = "#89b4fa"; czDrop.style.background = "#89b4fa0a"; });
+    czDrop.addEventListener("dragleave", function() { czDrop.style.borderColor = "#313244"; czDrop.style.background = ""; });
+    czDrop.addEventListener("drop", function(e) { e.preventDefault(); czDrop.style.borderColor = "#313244"; czDrop.style.background = ""; addFiles(e.dataTransfer.files); renderCzQueue(); });
+    complexBody.appendChild(czDrop);
+
+    // Inline file queue
+    var czQueue = document.createElement("div");
+    czQueue.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    complexBody.appendChild(czQueue);
+
+    // Import actions row
+    var czActions = document.createElement("div");
+    czActions.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0 0;border-top:1px solid #313244;";
+    var czCount = document.createElement("span");
+    czCount.style.cssText = "font-size:11px;color:#6c7086;flex:1;";
+    czCount.textContent = "No files queued";
+    czActions.appendChild(czCount);
+    var czImportBtn = document.createElement("button");
+    czImportBtn.className = "primary-btn";
+    czImportBtn.textContent = "Import to Figma";
+    czImportBtn.disabled = true;
+    czImportBtn.addEventListener("click", function() {
+      czImportBtn.disabled = true;
+      wfGenerateSpecimensAfterImport = true;
+      importIdx = 0;
+      processNext();
+    });
+    czActions.appendChild(czImportBtn);
+    complexBody.appendChild(czActions);
+
+    // Render inline queue
+    function renderCzQueue() {
+      czQueue.innerHTML = "";
+      fileQueue.forEach(function(item, idx) {
+        var row = document.createElement("div");
+        row.className = "file-row" + (item.status === "ok" ? " success" : item.status === "error" ? " error" : "");
+        row.innerHTML = "<span style='font-size:14px;flex-shrink:0'>\uD83D\uDCC4</span><div class='file-info'><div class='file-name'>" + esc(item.name) + "</div><div class='file-type'>" + (TYPE_LABELS[item.detectedType] || "Unknown") + "</div></div>" +
+          (item.status === "ok" ? "<span class='file-status ok'>\u2713 " + esc(item.message) + "</span>" : "") +
+          (item.status === "error" ? "<span class='file-status err'>\u2717 Failed</span>" : "") +
+          (!item.status ? "<button class='file-remove' data-idx='" + idx + "'>\u00D7</button>" : "");
+        czQueue.appendChild(row);
+      });
+      czQueue.querySelectorAll(".file-remove").forEach(function(b) {
+        b.addEventListener("click", function() {
+          fileQueue.splice(parseInt(b.dataset.idx, 10), 1);
+          renderCzQueue();
+          renderQueue(); // sync the import tab too
+        });
+      });
+      var pending = fileQueue.filter(function(f) { return !f.status; });
+      czCount.textContent = pending.length + " file" + (pending.length !== 1 ? "s" : "") + " queued";
+      czImportBtn.disabled = !pending.length;
+    }
+    // Expose so the import-result handler can refresh it
+    window._renderCzQueue = renderCzQueue;
+
+    // Reset button in complex section
+    if (wfGenerated || someHaveTokens) {
+      var czResetBtn = document.createElement("button");
+      czResetBtn.className = "wf-reset-btn";
+      czResetBtn.style.cssText += "margin-top:4px;";
+      czResetBtn.textContent = "Reset Variables & Text Styles";
+      czResetBtn.addEventListener("click", function() {
+        czResetBtn.disabled = true; czResetBtn.textContent = "Resetting…";
+        parent.postMessage({ pluginMessage: { type: "reset-tokens" } }, "*");
+      });
+      complexBody.appendChild(czResetBtn);
+    }
+
+    complexSection.appendChild(complexBody);
+    body.appendChild(complexSection);
+  }
+
+  // Auto-save settings on any input/change within step 2
+  body.addEventListener("input", function() { saveSettings(); });
+  body.addEventListener("change", function() { saveSettings(); });
+
+  step.appendChild(body);
+  container.appendChild(step);
+
+  // Track step 2 status for gating step 3
+  wfStep2Color = indicatorColor;
+  renderStep3(container);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 3 — Page Structures
+// ══════════════════════════════════════════════════════════════════════════════
+function renderStep3(container) {
+  var prev = document.getElementById("wf-step-3");
+  if (prev) prev.remove();
+
+  var locked = wfStep2Color === "red";
+  var indicatorColor = locked ? "red" : (wfPromoGenerated ? "green" : "yellow");
+  var stepOpen = locked ? false : wfFormState.step3Open;
+
+  var step = document.createElement("div");
+  step.id = "wf-step-3";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (wfPromoGenerated ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 3</div>" +
+      "<div class='wf-step-title'>Page Structures" + (locked ? "" : (wfPromoGenerated ? " — Generated" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
+       (stepOpen ? "<div class='wf-step-desc'>Choose a page type, configure sections, then generate desktop & mobile wireframes.</div>" : "")) +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step3Open = !wfFormState.step3Open;
+      var prev3 = document.getElementById("wf-step-3");
+      if (prev3) prev3.remove();
+      renderStep3(container);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!locked) {
+    var list = document.createElement("div");
+    list.className = "wf-token-list";
+
+    // Page type tabs
+    var typeBar = document.createElement("div");
+    typeBar.style.cssText = "padding:8px 10px 4px;display:flex;gap:4px;";
+    PAGE_TYPES.forEach(function(pt) {
+      var tb = document.createElement("button");
+      tb.className = "wf-gen-btn";
+      var isActive = wfPageType === pt.key;
+      tb.style.cssText = "padding:4px 12px;font-size:10px;border-radius:4px;cursor:pointer;" +
+        (isActive ? "opacity:1;background:#89b4fa;color:#1e1e2e;" : "opacity:0.5;background:transparent;border:1px solid #45475a;color:#a6adc8;");
+      tb.textContent = pt.label;
+      tb.addEventListener("click", function() {
+        if (wfPageType === pt.key) return;
+        wfPageType = pt.key;
+        saveSettings();
+        var prev3 = document.getElementById("wf-step-3");
+        if (prev3) prev3.remove();
+        renderStep3(container);
+      });
+      typeBar.appendChild(tb);
+    });
+    list.appendChild(typeBar);
+
+    if (wfPageType === "promo") {
+    // Section checkboxes
+    PROMO_SECTIONS.forEach(function(sec) {
+      var row = document.createElement("div");
+      row.className = "wf-token-acc" + (wfPromoSections[sec.key] ? " enabled" : " disabled");
+
+      var hdr = document.createElement("div");
+      hdr.className = "wf-token-header";
+      hdr.style.cursor = "default";
+
+      var chk = document.createElement("input");
+      chk.type = "checkbox";
+      chk.className = "wf-token-chk";
+      chk.checked = wfPromoSections[sec.key];
+      chk.addEventListener("click", function(e) { e.stopPropagation(); });
+      chk.addEventListener("change", function() {
+        wfPromoSections[sec.key] = chk.checked;
+        row.classList.toggle("enabled", chk.checked);
+        row.classList.toggle("disabled", !chk.checked);
+        saveSettings();
+      });
+      hdr.appendChild(chk);
+
+      var iconSpan = document.createElement("span");
+      iconSpan.className = "wf-token-icon";
+      iconSpan.textContent = sec.icon;
+      hdr.appendChild(iconSpan);
+
+      var infoDiv = document.createElement("div");
+      infoDiv.className = "wf-token-info";
+      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(sec.name) + "</div><div class='wf-token-desc'>" + esc(sec.desc) + "</div>";
+      hdr.appendChild(infoDiv);
+
+      row.appendChild(hdr);
+
+      // Sub-option: "Include form" for Popup
+      if (sec.key === "popup") {
+        var subOpt = document.createElement("div");
+        subOpt.style.cssText = "padding:4px 10px 6px 42px;display:" + (wfPromoSections.popup ? "flex" : "none") + ";align-items:center;gap:6px;";
+        var subChk = document.createElement("input");
+        subChk.type = "checkbox";
+        subChk.checked = wfPromoPopupIncludeForm;
+        subChk.style.cssText = "margin:0;";
+        subChk.addEventListener("click", function(e) { e.stopPropagation(); });
+        subChk.addEventListener("change", function() {
+          wfPromoPopupIncludeForm = subChk.checked;
+          saveSettings();
+        });
+        subOpt.appendChild(subChk);
+        var subLabel = document.createElement("span");
+        subLabel.style.cssText = "font-size:11px;color:#666;";
+        subLabel.textContent = "Include form fields";
+        subOpt.appendChild(subLabel);
+        row.appendChild(subOpt);
+
+        // Form fields selector panel
+        var fieldsPanel = document.createElement("div");
+        fieldsPanel.style.cssText = "padding:4px 10px 8px 56px;display:" + (wfPromoSections.popup && wfPromoPopupIncludeForm ? "block" : "none") + ";";
+
+        var _selectedField = null; // click-to-place state
+        var _clearSelHandler = null;
+
+        function getPlacedFieldIndices() {
+          var placed = {};
+          wfPromoFormGrid.forEach(function(r) { r.fields.forEach(function(fi) { if (fi !== null) placed[fi] = true; }); });
+          return placed;
+        }
+
+        function makeFieldChip(fi, opts) {
+          var fld = wfPromoFormFields[fi];
+          var chip = document.createElement("span");
+          chip.className = "field-chip";
+          chip.draggable = true;
+          chip.dataset.fieldIndex = fi;
+          var labelSpan = document.createElement("span");
+          labelSpan.style.cssText = "overflow:hidden;text-overflow:ellipsis;";
+          labelSpan.textContent = fld.label || "(unnamed)";
+          labelSpan.title = "Double-click to rename";
+          chip.appendChild(labelSpan);
+          // Dropdown tag – clickable for custom fields to toggle type
+          if (fld.custom) {
+            var t = document.createElement("span"); t.className = "dd-tag";
+            t.textContent = fld.dropdown ? "dd" : "txt";
+            t.title = "Click to toggle input/dropdown";
+            t.style.cssText += "cursor:pointer;opacity:" + (fld.dropdown ? "1" : "0.4") + ";";
+            (function(f) { t.addEventListener("click", function(e) { e.stopPropagation(); f.dropdown = !f.dropdown; saveSettings(); buildFieldsPanel(); }); })(fld);
+            chip.appendChild(t);
+          } else if (fld.dropdown) {
+            var t = document.createElement("span"); t.className = "dd-tag"; t.textContent = "dd"; chip.appendChild(t);
+          }
+          // Required toggle
+          var reqStar = document.createElement("span");
+          reqStar.className = "req-star";
+          reqStar.textContent = "*";
+          reqStar.title = fld.required ? "Required – click to toggle" : "Optional – click to toggle";
+          reqStar.style.cssText = "cursor:pointer;opacity:" + (fld.required ? "1" : "0.3") + ";";
+          (function(f, star) {
+            star.addEventListener("click", function(e) {
+              e.stopPropagation();
+              f.required = !f.required;
+              saveSettings(); buildFieldsPanel();
+            });
+          })(fld, reqStar);
+          chip.appendChild(reqStar);
+          // Drag
+          chip.addEventListener("dragstart", function(e) {
+            e.dataTransfer.setData("text/plain", String(fi));
+            e.dataTransfer.effectAllowed = "move";
+            chip.classList.add("dragging");
+          });
+          chip.addEventListener("dragend", function() { chip.classList.remove("dragging"); });
+          // Click-to-place (debounced to allow dblclick)
+          (function(fieldIdx, chipEl, lblEl, fieldObj) {
+            var clickTimer = null;
+            chipEl.addEventListener("click", function(e) {
+              e.stopPropagation();
+              if (clickTimer) clearTimeout(clickTimer);
+              clickTimer = setTimeout(function() {
+                clickTimer = null;
+                if (_selectedField === fieldIdx) { _selectedField = null; buildFieldsPanel(); return; }
+                _selectedField = fieldIdx;
+                buildFieldsPanel();
+              }, 250);
+            });
+            chipEl.addEventListener("dblclick", function(e) {
+              e.stopPropagation();
+              if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+              chipEl.draggable = false;
+              var inp = document.createElement("input");
+              inp.type = "text"; inp.value = fieldObj.label;
+              inp.style.cssText = "background:#1e1e2e;border:1px solid #45475a;color:#cdd6f4;font-size:11px;padding:2px 5px;border-radius:3px;outline:none;width:100px;min-width:60px;";
+              lblEl.replaceWith(inp);
+              inp.focus(); inp.select();
+              var done = false;
+              function finish() {
+                if (done) return; done = true;
+                fieldObj.label = inp.value || "Field";
+                saveSettings(); buildFieldsPanel();
+              }
+              inp.addEventListener("blur", finish);
+              inp.addEventListener("keydown", function(ev) { if (ev.key === "Enter") { ev.preventDefault(); finish(); } });
+            });
+          })(fi, chip, labelSpan, fld);
+          if (_selectedField === fi) chip.classList.add("selected");
+          // Remove from grid (x button) — only in grid cells
+          if (opts && opts.inGrid) {
+            var rm = document.createElement("span");
+            rm.className = "chip-remove";
+            rm.textContent = "×";
+            rm.addEventListener("click", function(e) {
+              e.stopPropagation();
+              // Find and remove from grid
+              wfPromoFormGrid.forEach(function(r) {
+                var idx = r.fields.indexOf(fi);
+                if (idx !== -1) r.fields[idx] = null;
+              });
+              saveSettings(); buildFieldsPanel();
+            });
+            chip.appendChild(rm);
+          }
+          // Delete custom field entirely — only in pool
+          if (fld.custom && !(opts && opts.inGrid)) {
+            var del = document.createElement("span");
+            del.className = "chip-remove";
+            del.textContent = "×";
+            del.title = "Delete custom field";
+            (function(idx) { del.addEventListener("click", function(e) {
+              e.stopPropagation();
+              wfPromoFormGrid.forEach(function(r) {
+                for (var c = 0; c < r.fields.length; c++) {
+                  if (r.fields[c] === idx) r.fields[c] = null;
+                  else if (r.fields[c] !== null && r.fields[c] > idx) r.fields[c]--;
+                }
+              });
+              wfPromoFormFields.splice(idx, 1);
+              saveSettings(); buildFieldsPanel();
+            }); })(fi);
+            chip.appendChild(del);
+          }
+          return chip;
+        }
+
+        function buildFieldsPanel() {
+          fieldsPanel.innerHTML = "";
+          var placed = getPlacedFieldIndices();
+
+          // ── Grid Builder ──
+          var gridWrap = document.createElement("div");
+          gridWrap.className = "grid-builder";
+
+          // Title + Add Row
+          var gridHeader = document.createElement("div");
+          gridHeader.style.cssText = "display:flex;align-items:center;padding:0 2px;";
+          var gridTitle = document.createElement("span");
+          gridTitle.style.cssText = "font-size:10px;color:#585b70;font-weight:600;";
+          gridTitle.textContent = "Form Layout";
+          gridHeader.appendChild(gridTitle);
+          gridWrap.appendChild(gridHeader);
+
+          // Rows
+          wfPromoFormGrid.forEach(function(gRow, ri) {
+            var rowWrap = document.createElement("div");
+            rowWrap.className = "grid-row-wrap";
+
+            // Controls
+            var controls = document.createElement("div");
+            controls.className = "grid-row-controls";
+            var rowLbl = document.createElement("span");
+            rowLbl.className = "row-label";
+            rowLbl.textContent = "Row " + (ri + 1);
+            controls.appendChild(rowLbl);
+            // Column select
+            var colSel = document.createElement("select");
+            colSel.title = "Columns";
+            for (var c = 1; c <= 4; c++) { var o = document.createElement("option"); o.value = c; o.textContent = c + "col"; if (c === gRow.cols) o.selected = true; colSel.appendChild(o); }
+            (function(r, sel) {
+              sel.addEventListener("change", function() {
+                var newCols = parseInt(sel.value, 10);
+                while (r.fields.length < newCols) r.fields.push(null);
+                while (r.fields.length > newCols) r.fields.pop();
+                r.cols = newCols;
+                r.colSpans = equalSpans(newCols);
+                saveSettings(); buildFieldsPanel();
+              });
+            })(gRow, colSel);
+            controls.appendChild(colSel);
+            // Move up
+            if (ri > 0) {
+              var upBtn = document.createElement("button");
+              upBtn.textContent = "↑"; upBtn.title = "Move up";
+              (function(i) { upBtn.addEventListener("click", function() {
+                var tmp = wfPromoFormGrid[i]; wfPromoFormGrid[i] = wfPromoFormGrid[i-1]; wfPromoFormGrid[i-1] = tmp;
+                saveSettings(); buildFieldsPanel();
+              }); })(ri);
+              controls.appendChild(upBtn);
+            }
+            // Move down
+            if (ri < wfPromoFormGrid.length - 1) {
+              var dnBtn = document.createElement("button");
+              dnBtn.textContent = "↓"; dnBtn.title = "Move down";
+              (function(i) { dnBtn.addEventListener("click", function() {
+                var tmp = wfPromoFormGrid[i]; wfPromoFormGrid[i] = wfPromoFormGrid[i+1]; wfPromoFormGrid[i+1] = tmp;
+                saveSettings(); buildFieldsPanel();
+              }); })(ri);
+              controls.appendChild(dnBtn);
+            }
+            // Delete row
+            var delBtn = document.createElement("button");
+            delBtn.textContent = "×"; delBtn.title = "Remove row";
+            delBtn.style.color = "#585b70";
+            (function(i) { delBtn.addEventListener("click", function() {
+              wfPromoFormGrid.splice(i, 1);
+              saveSettings(); buildFieldsPanel();
+            }); })(ri);
+            delBtn.addEventListener("mouseenter", function() { delBtn.style.color = "#f38ba8"; });
+            delBtn.addEventListener("mouseleave", function() { delBtn.style.color = "#585b70"; });
+            controls.appendChild(delBtn);
+            rowWrap.appendChild(controls);
+
+            // Grid cells with 12-col spans and resize handles
+            ensureColSpans(gRow);
+            var cellsDiv = document.createElement("div");
+            cellsDiv.className = "grid-cells";
+            // Build grid-template-columns from colSpans with resize handles between
+            var gtcParts = [];
+            for (var si = 0; si < gRow.colSpans.length; si++) {
+              if (si > 0) gtcParts.push("9px"); // resize handle column
+              gtcParts.push(gRow.colSpans[si] + "fr");
+            }
+            cellsDiv.style.gridTemplateColumns = gtcParts.join(" ");
+
+            gRow.fields.forEach(function(fi, ci) {
+              // Insert resize handle before each cell (except first)
+              if (ci > 0) {
+                var handle = document.createElement("div");
+                handle.className = "col-resize-handle";
+                (function(rowObj, rowIdx, colIdx, hdl, cellsContainer) {
+                  var startX, startSpans;
+                  hdl.addEventListener("mousedown", function(e) {
+                    e.preventDefault(); e.stopPropagation();
+                    hdl.classList.add("dragging");
+                    startX = e.clientX;
+                    startSpans = rowObj.colSpans.slice();
+                    var totalWidth = cellsContainer.getBoundingClientRect().width - 5 * 2 - 9 * (rowObj.cols - 1); // subtract padding and handles
+                    var pixPerSpan = totalWidth / 12;
+
+                    function onMove(ev) {
+                      var dx = ev.clientX - startX;
+                      var dSpan = Math.round(dx / pixPerSpan);
+                      var leftSpan = startSpans[colIdx - 1] + dSpan;
+                      var rightSpan = startSpans[colIdx] - dSpan;
+                      if (leftSpan >= 1 && rightSpan >= 1) {
+                        rowObj.colSpans[colIdx - 1] = leftSpan;
+                        rowObj.colSpans[colIdx] = rightSpan;
+                        // Update grid-template-columns live
+                        var parts = [];
+                        for (var s = 0; s < rowObj.colSpans.length; s++) {
+                          if (s > 0) parts.push("9px");
+                          parts.push(rowObj.colSpans[s] + "fr");
+                        }
+                        cellsContainer.style.gridTemplateColumns = parts.join(" ");
+                        // Update span labels
+                        var labels = cellsContainer.querySelectorAll(".grid-span-label");
+                        labels.forEach(function(lbl, li) { lbl.textContent = rowObj.colSpans[li] + "/12"; });
+                      }
+                    }
+                    function onUp() {
+                      hdl.classList.remove("dragging");
+                      document.removeEventListener("mousemove", onMove);
+                      document.removeEventListener("mouseup", onUp);
+                      saveSettings(); buildFieldsPanel();
+                    }
+                    document.addEventListener("mousemove", onMove);
+                    document.addEventListener("mouseup", onUp);
+                  });
+                })(gRow, ri, ci, handle, cellsDiv);
+                cellsDiv.appendChild(handle);
+              }
+
+              var cell = document.createElement("div");
+              cell.className = "grid-cell" + (fi !== null ? " occupied" : "");
+              if (fi !== null) {
+                cell.appendChild(makeFieldChip(fi, { inGrid: true }));
+              } else {
+                cell.textContent = "Drop here";
+              }
+              // Click-to-place on empty cell
+              if (_selectedField !== null && fi === null) {
+                cell.classList.add("selected-target");
+                (function(r, c) {
+                  cell.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    wfPromoFormGrid.forEach(function(gr) {
+                      var idx = gr.fields.indexOf(_selectedField);
+                      if (idx !== -1) gr.fields[idx] = null;
+                    });
+                    wfPromoFormGrid[r].fields[c] = _selectedField;
+                    _selectedField = null;
+                    saveSettings(); buildFieldsPanel();
+                  });
+                })(ri, ci);
+              }
+              // Drag-drop on cells
+              cell.addEventListener("dragover", function(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; cell.classList.add("drag-over"); });
+              cell.addEventListener("dragleave", function() { cell.classList.remove("drag-over"); });
+              (function(r, c) {
+                cell.addEventListener("drop", function(e) {
+                  e.preventDefault(); cell.classList.remove("drag-over");
+                  var dragIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                  if (isNaN(dragIdx)) return;
+                  var existingFi = wfPromoFormGrid[r].fields[c];
+                  wfPromoFormGrid.forEach(function(gr) {
+                    var idx = gr.fields.indexOf(dragIdx);
+                    if (idx !== -1) gr.fields[idx] = existingFi;
+                  });
+                  wfPromoFormGrid[r].fields[c] = dragIdx;
+                  _selectedField = null;
+                  saveSettings(); buildFieldsPanel();
+                });
+              })(ri, ci);
+
+              cellsDiv.appendChild(cell);
+            });
+
+            // Span labels row
+            gRow.fields.forEach(function(_fi, ci) {
+              if (ci > 0) { var spacer = document.createElement("div"); cellsDiv.appendChild(spacer); }
+              var spanLbl = document.createElement("div");
+              spanLbl.className = "grid-span-label";
+              spanLbl.textContent = gRow.colSpans[ci] + "/12";
+              cellsDiv.appendChild(spanLbl);
+            });
+            rowWrap.appendChild(cellsDiv);
+            gridWrap.appendChild(rowWrap);
+          });
+
+          // + Row button below last row
+          var addRowBtn = document.createElement("button");
+          addRowBtn.style.cssText = "background:none;border:1px dashed #45475a;color:#a6adc8;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;width:100%;";
+          addRowBtn.textContent = "+ Row";
+          addRowBtn.addEventListener("click", function() {
+            wfPromoFormGrid.push({ cols: 2, colSpans: [6, 6], fields: [null, null] });
+            saveSettings(); buildFieldsPanel();
+          });
+          gridWrap.appendChild(addRowBtn);
+
+          fieldsPanel.appendChild(gridWrap);
+
+          // ── Field Pool ──
+          var poolWrap = document.createElement("div");
+          poolWrap.className = "field-pool-wrap";
+          var poolTitle = document.createElement("div");
+          poolTitle.className = "field-pool-title";
+          poolTitle.textContent = "Available Fields";
+          poolWrap.appendChild(poolTitle);
+
+          var pool = document.createElement("div");
+          pool.className = "field-pool";
+          var hasPoolItems = false;
+          wfPromoFormFields.forEach(function(fld, fi) {
+            if (placed[fi]) return;
+            hasPoolItems = true;
+            pool.appendChild(makeFieldChip(fi, { inGrid: false }));
+          });
+          if (!hasPoolItems) {
+            var emptyMsg = document.createElement("span");
+            emptyMsg.style.cssText = "font-size:9px;color:#45475a;font-style:italic;";
+            emptyMsg.textContent = "All fields placed";
+            pool.appendChild(emptyMsg);
+          }
+          // Drop on pool = remove from grid
+          pool.addEventListener("dragover", function(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; pool.classList.add("drag-over"); });
+          pool.addEventListener("dragleave", function() { pool.classList.remove("drag-over"); });
+          pool.addEventListener("drop", function(e) {
+            e.preventDefault(); pool.classList.remove("drag-over");
+            var dragIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+            if (isNaN(dragIdx)) return;
+            wfPromoFormGrid.forEach(function(gr) {
+              var idx = gr.fields.indexOf(dragIdx);
+              if (idx !== -1) gr.fields[idx] = null;
+            });
+            _selectedField = null;
+            saveSettings(); buildFieldsPanel();
+          });
+          poolWrap.appendChild(pool);
+
+          // ── Field management buttons ──
+          var btnRow = document.createElement("div");
+          btnRow.style.cssText = "display:flex;gap:8px;padding:6px 0 0;align-items:center;";
+
+          var addBtn = document.createElement("button");
+          addBtn.style.cssText = "background:none;border:1px dashed #45475a;color:#a6adc8;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;";
+          addBtn.textContent = "+ Custom field";
+          addBtn.addEventListener("click", function() {
+            wfPromoFormFields.push({ label: "", enabled: true, dropdown: false, custom: true, required: false });
+            wfPromoFormFieldNextId++;
+            saveSettings(); buildFieldsPanel();
+          });
+          btnRow.appendChild(addBtn);
+
+          var rstBtn = document.createElement("button");
+          rstBtn.style.cssText = "background:none;border:none;color:#585b70;font-size:11px;padding:4px 6px;cursor:pointer;margin-left:auto;border-radius:3px;";
+          rstBtn.textContent = "Reset to defaults";
+          rstBtn.addEventListener("mouseenter", function() { rstBtn.style.color = "#f38ba8"; });
+          rstBtn.addEventListener("mouseleave", function() { rstBtn.style.color = "#585b70"; });
+          rstBtn.addEventListener("click", function() {
+            wfPromoFormFields = [
+              { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+              { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+              { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+            ];
+            wfPromoFormFieldNextId = 7;
+            wfPromoFormGrid = [
+              { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+              { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+              { cols: 1, colSpans: [12], fields: [4] }
+            ];
+            _selectedField = null;
+            saveSettings(); buildFieldsPanel();
+          });
+          btnRow.appendChild(rstBtn);
+          poolWrap.appendChild(btnRow);
+
+
+          fieldsPanel.appendChild(poolWrap);
+
+          // Clear selection on click outside
+          if (_clearSelHandler) { document.removeEventListener("click", _clearSelHandler); }
+          _clearSelHandler = function() {
+            if (_selectedField !== null) { _selectedField = null; buildFieldsPanel(); }
+          };
+          document.addEventListener("click", _clearSelHandler);
+        }
+
+        buildFieldsPanel();
+        row.appendChild(fieldsPanel);
+
+        // Toggle sub-option and fields panel visibility
+        chk.addEventListener("change", function() {
+          subOpt.style.display = wfPromoSections.popup ? "flex" : "none";
+          fieldsPanel.style.display = wfPromoSections.popup && wfPromoPopupIncludeForm ? "block" : "none";
+        });
+        subChk.addEventListener("change", function() {
+          fieldsPanel.style.display = wfPromoPopupIncludeForm ? "block" : "none";
+        });
+      }
+
+      list.appendChild(row);
+    });
+
+    // Generate / Reset buttons
+    var btnWrap = document.createElement("div");
+    btnWrap.style.cssText = "padding: 8px 10px;";
+
+    if (wfPromoGenerated) {
+      var resetBtn = document.createElement("button");
+      resetBtn.className = "wf-reset-btn";
+      resetBtn.textContent = "Regenerate Promo Wireframes";
+      resetBtn.addEventListener("click", function() {
+        resetBtn.disabled = true; resetBtn.textContent = "Generating…";
+        wfPromoGenerating = true;
+        sendPromoGenerate();
+      });
+      btnWrap.appendChild(resetBtn);
+    } else {
+      var genBtn = document.createElement("button");
+      genBtn.className = "wf-gen-btn";
+      genBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+      genBtn.textContent = "Generate Promo Wireframes";
+      genBtn.addEventListener("click", function() {
+        if (wfPromoGenerating) return;
+        wfPromoGenerating = true;
+        genBtn.disabled = true; genBtn.textContent = "Generating…";
+        sendPromoGenerate();
+      });
+      btnWrap.appendChild(genBtn);
+    }
+    // Delete wireframes button
+    var delBtn = document.createElement("button");
+    delBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+    delBtn.textContent = "Delete Wireframes";
+    delBtn.addEventListener("mouseenter", function() { delBtn.style.borderColor = "#f38ba8"; delBtn.style.color = "#f38ba8"; });
+    delBtn.addEventListener("mouseleave", function() { delBtn.style.borderColor = "#45475a"; delBtn.style.color = "#a6adc8"; });
+    delBtn.addEventListener("click", function() {
+      if (!confirm("Delete all wireframes from Desktop and Mobile pages?")) return;
+      delBtn.disabled = true; delBtn.textContent = "Deleting…";
+      parent.postMessage({ pluginMessage: { type: "delete-wireframes" } }, "*");
+    });
+    btnWrap.appendChild(delBtn);
+
+    list.appendChild(btnWrap);
+    } else {
+      // Landing Page / Full Site Build — coming soon
+      var csPanel = document.createElement("div");
+      csPanel.style.cssText = "padding:24px 16px;text-align:center;";
+      var csIcon = document.createElement("div");
+      csIcon.style.cssText = "font-size:28px;margin-bottom:8px;opacity:0.5;";
+      csIcon.textContent = wfPageType === "landing" ? "🚀" : "🌐";
+      csPanel.appendChild(csIcon);
+      var csTitle = document.createElement("div");
+      csTitle.style.cssText = "font-size:12px;font-weight:600;color:#cdd6f4;margin-bottom:4px;";
+      csTitle.textContent = wfPageType === "landing" ? "Landing Page" : "Full Site Build";
+      csPanel.appendChild(csTitle);
+      var csDesc = document.createElement("div");
+      csDesc.style.cssText = "font-size:11px;color:#6c7086;line-height:1.4;";
+      csDesc.textContent = "Coming soon — this page type is under development.";
+      csPanel.appendChild(csDesc);
+      list.appendChild(csPanel);
+    }
+
+    body.appendChild(list);
+  }
+
+  body.addEventListener("change", function() { saveSettings(); });
+
+  step.appendChild(body);
+  container.appendChild(step);
+}
+
+function sendPromoGenerate() {
+  var colors = getWfColors();
+  parent.postMessage({ pluginMessage: {
+    type: "generate-promo-pages",
+    sections: wfPromoSections,
+    popupIncludeForm: wfPromoPopupIncludeForm,
+    formRows: wfPromoFormGrid.map(function(row) {
+      ensureColSpans(row);
+      var fields = []; var spans = [];
+      row.fields.forEach(function(fi, ci) {
+        if (fi !== null && wfPromoFormFields[fi] && wfPromoFormFields[fi].label.trim()) {
+          var f = wfPromoFormFields[fi];
+          fields.push({ label: f.label.trim(), dropdown: f.dropdown, required: !!f.required, colSpan: row.colSpans[ci] });
+        }
+      });
+      return fields;
+    }).filter(function(r) { return r.length > 0; }),
+    brandColor: colors.primary,
+    textColor: wfColors.textColor || "#1A1A1A",
+    fontFamilies: {
+      primary: wfFonts.primary || "Inter, sans-serif",
+      secondary: wfFonts.secondary || wfFonts.primary || "Inter, sans-serif",
+      tertiary: wfFonts.tertiary || wfFonts.primary || "Inter, sans-serif"
+    },
+    radius: wfRadius,
+    spacing: wfSpacing,
+    shadows: wfShadows
+  } }, "*");
+}
+
+function buildCoverForm(fileInfo) {
+  var today = new Date();
+  var dateStr = today.getFullYear() + "-" +
+    String(today.getMonth()+1).padStart(2,"0") + "-" +
+    String(today.getDate()).padStart(2,"0");
+
+  // Seed state on first load; always refresh designers/project if still empty
+  if (!wfFormState.initialised) {
+    wfFormState.project    = fileInfo.fileName || "";
+    wfFormState.date       = dateStr;
+    wfFormState.initialised = true;
+  }
+  if (!wfFormState.designers && fileInfo.userName) {
+    wfFormState.designers = fileInfo.userName;
+  }
+  if (!wfFormState.project && fileInfo.fileName) {
+    wfFormState.project = fileInfo.fileName;
+  }
+
+  var wrap = document.createElement("div");
+  wrap.className = "wf-cover-form";
+  wrap.innerHTML =
+
+    "<div class='wf-form-grid'>" +
+      "<div class='wf-field wf-form-full'>" +
+        "<label class='wf-label'>Project Name</label>" +
+        "<input class='wf-input' id='cf-project' value='" + esc(wfFormState.project) + "' placeholder='My Project' />" +
+      "</div>" +
+      "<div class='wf-field'>" +
+        "<label class='wf-label'>Version</label>" +
+        "<input class='wf-input' id='cf-version' value='" + esc(wfFormState.version) + "' placeholder='v1.0.0' />" +
+      "</div>" +
+      "<div class='wf-field'>" +
+        "<label class='wf-label'>Last Updated</label>" +
+        "<input class='wf-input' id='cf-date' value='" + esc(wfFormState.date) + "' placeholder='YYYY-MM-DD' />" +
+      "</div>" +
+      "<div class='wf-field wf-form-full'>" +
+        "<label class='wf-label'>Designer(s)</label>" +
+        "<input class='wf-input' id='cf-designers' value='" + esc(wfFormState.designers) + "' placeholder='Designer names' />" +
+      "</div>" +
+      "<div class='wf-field wf-form-full'>" +
+        "<label class='wf-label'>Status</label>" +
+        "<select class='wf-select' id='cf-status'>" +
+          "<option value='In Progress'" + (wfFormState.status==="In Progress"?" selected":"") + ">🟡 In Progress</option>" +
+          "<option value='Ready for Review'" + (wfFormState.status==="Ready for Review"?" selected":"") + ">🔵 Ready for Review</option>" +
+          "<option value='Dev Ready'" + (wfFormState.status==="Dev Ready"?" selected":"") + ">🟢 Dev Ready</option>" +
+        "</select>" +
+      "</div>" +
+    "</div>" +
+    "<button class='wf-generate-btn' id='cf-generate-btn'>✦ Generate Cover Page</button>";
+
+  // Save field changes to wfFormState so they survive re-renders
+  ["cf-project","cf-version","cf-date","cf-designers"].forEach(function(id) {
+    var el = wrap.querySelector("#"+id);
+    var key = id.replace("cf-","");
+    if (el) el.addEventListener("input", function() { wfFormState[key] = el.value; });
+  });
+  var selEl = wrap.querySelector("#cf-status");
+  if (selEl) selEl.addEventListener("change", function() { wfFormState.status = selEl.value; });
+
+  // Update button label if already generated
+  var genBtn = wrap.querySelector("#cf-generate-btn");
+  if (wfFormState.generated) genBtn.textContent = "✦ Regenerate Cover Page";
+
+  genBtn.addEventListener("click", function() {
+    genBtn.disabled = true; genBtn.textContent = "Generating…";
+    // Snapshot current values into state
+    wfFormState.project   = wrap.querySelector("#cf-project").value.trim()   || "My Project";
+    wfFormState.version   = wrap.querySelector("#cf-version").value.trim()   || "v1.0.0";
+    wfFormState.date      = wrap.querySelector("#cf-date").value.trim()      || dateStr;
+    wfFormState.designers = wrap.querySelector("#cf-designers").value.trim() || "Designer";
+    wfFormState.status    = wrap.querySelector("#cf-status").value;
+    parent.postMessage({ pluginMessage: {
+      type:      "generate-cover",
+      project:   wfFormState.project,
+      version:   wfFormState.version,
+      date:      wfFormState.date,
+      designers: wfFormState.designers,
+      status:    wfFormState.status,
+    }}, "*");
+  });
+
+  return wrap;
 }
 
 // ── Token Debugger ──────────────────────────────────────────────────────────
@@ -502,11 +3001,11 @@ function renderDebug(data){
 }
 
 // ── Import ──────────────────────────────────────────────────────────────────
-var fileQueue=[],importIdx=0;
+var fileQueue=[],importIdx=0,wfGenerateSpecimensAfterImport=false;
 var TYPE_LABELS={"primitives":"🎨 Primitives","colors-light":"🌤 Colors (Light)","colors-dark":"🌙 Colors (Dark)","spacing":"📐 Spacing","typography":"✏️ Typography tokens","radius":"⬜ Radius","border":"─ Border Width","shadows":"🌑 Shadows","zindex":"📦 Z-Index","breakpoints":"📱 Breakpoints","text-styles":"🔤 Text Styles","unknown":"❓ Unknown"};
 function detectTypeUI(fn){fn=fn.toLowerCase();if(fn.indexOf("text-style")!==-1||fn.indexOf("textstyle")!==-1)return"text-styles";if(fn.indexOf("primitive")!==-1)return"primitives";if(fn.indexOf("dark")!==-1)return"colors-dark";if(fn.indexOf("light")!==-1)return"colors-light";if(fn.indexOf("color")!==-1||fn.indexOf("colour")!==-1)return"colors-light";if(fn.indexOf("spacing")!==-1)return"spacing";if(fn.indexOf("typography")!==-1)return"typography";if(fn.indexOf("radius")!==-1)return"radius";if(fn.indexOf("border")!==-1)return"border";if(fn.indexOf("shadow")!==-1)return"shadows";if(fn.indexOf("z-index")!==-1)return"zindex";if(fn.indexOf("breakpoint")!==-1)return"breakpoints";return"unknown";}
-function renderQueue(){var q=document.getElementById("file-queue"),btn=document.getElementById("import-btn"),cnt=document.getElementById("file-count");q.innerHTML="";fileQueue.forEach(function(item,idx){var row=document.createElement("div");row.className="file-row"+(item.status==="ok"?" success":item.status==="error"?" error":"");row.innerHTML="<span style='font-size:14px;flex-shrink:0'>📄</span><div class='file-info'><div class='file-name'>"+esc(item.name)+"</div><div class='file-type'>"+(TYPE_LABELS[item.detectedType]||"Unknown")+"</div></div>"+(item.status==="ok"?"<span class='file-status ok'>✓ "+esc(item.message)+"</span>":"")+(item.status==="error"?"<span class='file-status err'>✗ Failed</span>":"")+(!item.status?"<button class='file-remove' data-idx='"+idx+"'>×</button>":"");q.appendChild(row);});q.querySelectorAll(".file-remove").forEach(function(b){b.addEventListener("click",function(){fileQueue.splice(parseInt(b.dataset.idx),1);renderQueue();});});var pending=fileQueue.filter(function(f){return !f.status;});cnt.textContent=pending.length+" file"+(pending.length!==1?"s":"")+" queued";btn.disabled=!pending.length;}
-function addFiles(list){for(var i=0;i<list.length;i++){var f=list[i];if(!fileQueue.some(function(x){return x.name===f.name;}))fileQueue.push({file:f,name:f.name,detectedType:detectTypeUI(f.name),status:null,message:""});}renderQueue();}
+function renderQueue(){var q=document.getElementById("file-queue"),btn=document.getElementById("import-btn"),cnt=document.getElementById("file-count");q.innerHTML="";fileQueue.forEach(function(item,idx){var row=document.createElement("div");row.className="file-row"+(item.status==="ok"?" success":item.status==="error"?" error":"");row.innerHTML="<span style='font-size:14px;flex-shrink:0'>📄</span><div class='file-info'><div class='file-name'>"+esc(item.name)+"</div><div class='file-type'>"+(TYPE_LABELS[item.detectedType]||"Unknown")+"</div></div>"+(item.status==="ok"?"<span class='file-status ok'>✓ "+esc(item.message)+"</span>":"")+(item.status==="error"?"<span class='file-status err'>✗ Failed</span>":"")+(!item.status?"<button class='file-remove' data-idx='"+idx+"'>×</button>":"");q.appendChild(row);});q.querySelectorAll(".file-remove").forEach(function(b){b.addEventListener("click",function(){fileQueue.splice(parseInt(b.dataset.idx, 10),1);renderQueue();});});var pending=fileQueue.filter(function(f){return !f.status;});cnt.textContent=pending.length+" file"+(pending.length!==1?"s":"")+" queued";btn.disabled=!pending.length;}
+function addFiles(list){for(var i=0;i<list.length;i++){var f=list[i];if(!fileQueue.some(function(x){return x.name===f.name;}))fileQueue.push({file:f,name:f.name,detectedType:detectTypeUI(f.name),status:null,message:""});}renderQueue();if(window._renderCzQueue)window._renderCzQueue();}
 document.getElementById("drop-zone").addEventListener("click",function(){document.getElementById("file-input").click();});
 document.getElementById("file-input").addEventListener("change",function(e){addFiles(e.target.files);e.target.value="";});
 var dz=document.getElementById("drop-zone");
@@ -514,16 +3013,161 @@ dz.addEventListener("dragover",function(e){e.preventDefault();dz.classList.add("
 dz.addEventListener("dragleave",function(){dz.classList.remove("drag-over");});
 dz.addEventListener("drop",function(e){e.preventDefault();dz.classList.remove("drag-over");addFiles(e.dataTransfer.files);});
 document.getElementById("import-btn").addEventListener("click",function(){document.getElementById("import-btn").disabled=true;importIdx=0;processNext();});
-function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].status)importIdx++;if(importIdx>=fileQueue.length){renderQueue();return;}var item=fileQueue[importIdx],reader=new FileReader();reader.onload=function(e){try{var data=JSON.parse(e.target.result);parent.postMessage({pluginMessage:{type:"import-tokens",filename:item.name,data:data}},"*");}catch(err){item.status="error";item.message="Invalid JSON";importIdx++;renderQueue();processNext();}};reader.readAsText(item.file);}
+function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].status)importIdx++;if(importIdx>=fileQueue.length){renderQueue();if(window._renderCzQueue)window._renderCzQueue();if(wfGenerateSpecimensAfterImport){wfGenerateSpecimensAfterImport=false;parent.postMessage({pluginMessage:{type:"generate-specimens-from-vars"}},"*");}return;}var item=fileQueue[importIdx],reader=new FileReader();reader.onload=function(e){try{var data=JSON.parse(e.target.result);parent.postMessage({pluginMessage:{type:"import-tokens",filename:item.name,data:data}},"*");}catch(err){item.status="error";item.message="Invalid JSON";importIdx++;renderQueue();processNext();}};reader.readAsText(item.file);}
 
 // ── Message handler ────────────────────────────────────────────────────────
 window.onmessage=function(event){
   var msg=event.data.pluginMessage; if(!msg)return;
+  if(msg.type==="load-settings"){
+    applyLoadedSettings(msg.settings);
+    // Re-render workflow if it's visible
+    var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
+  }
+  if(msg.type==="settings-reset"){
+    // Reset all token variables to defaults
+    wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
+    wfCustomColors = [];
+    wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
+    wfTextStyles = [
+      {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
+      {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
+      {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
+      {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
+      {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
+      {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
+      {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+      {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+      {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+      {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+      {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+      {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+      {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
+    ];
+    wfTsNextId = 18;
+    wfSpacing = [
+      {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
+      {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
+      {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
+      {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
+      {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
+      {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
+    ];
+    wfTypography = {
+      sizes: [
+        { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
+        { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
+        { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
+        { name: "6xl", value: "60" }
+      ],
+      weights: [
+        { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
+        { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
+        { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
+      ],
+      lineHeights: [
+        { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
+        { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
+        { name: "loose", value: "2" }
+      ]
+    };
+    wfRadius = [
+      { name: "sm", value: "4" },
+      { name: "md", value: "8" },
+      { name: "lg", value: "16" }
+    ];
+    wfShadows = [
+      { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
+    ];
+    wfBorders = [
+      { name: "thin", value: "1" },
+      { name: "default", value: "1.5" },
+      { name: "thick", value: "2" },
+      { name: "heavy", value: "4" }
+    ];
+    wfBdNextId = 5;
+    wfZIndex = [
+      { name: "hide", value: "-1" },
+      { name: "base", value: "0" },
+      { name: "dropdown", value: "1000" },
+      { name: "sticky", value: "1100" },
+      { name: "overlay", value: "1300" },
+      { name: "modal", value: "1400" },
+      { name: "toast", value: "1700" }
+    ];
+    wfZiNextId = 8;
+    TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
+    wfPageType = "promo";
+    wfPromoSections = { hero: true, popup: true, banner: true };
+    wfPromoPopupIncludeForm = true;
+    wfPromoFormFields = [
+      { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+      { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+      { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+    ];
+    wfPromoFormFieldNextId = 7;
+    wfPromoFormGrid = [
+      { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+      { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+      { cols: 1, colSpans: [12], fields: [4] }
+    ];
+    wfFormState.step2Open = true;
+    wfFormState.step2Toggled = false;
+    // Re-render workflow
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+  }
   if(msg.type==="audit-results"){renderAudit(msg.results);}
-  if(msg.type==="pages-data"){renderWorkflow(msg.pages);}
-  if(msg.type==="pages-created"){parent.postMessage({pluginMessage:{type:"check-pages"}},"*");}
+  if(msg.type==="pages-data"){
+    try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
+    catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
+  }
+  if(msg.type==="tokens-data"){
+    wfTokensData = msg.tokens || null;
+    var c = document.getElementById("wf-container");
+    if (c) renderStep2(c);
+  }
+  if(msg.type==="generate-result"){
+    // Individual category done — nothing to do here, wait for generate-complete
+  }
+  if(msg.type==="generate-complete"){
+    wfGenerating = false;
+    wfGenerated = true;
+    // tokens-data is sent right after, which triggers a full re-render of step 2
+  }
+  if(msg.type==="specimens-generated"){
+    wfGenerated = true;
+    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+  }
+  if(msg.type==="reset-complete"){
+    wfGenerated = false;
+    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+    var rc = document.getElementById("wf-container");
+    if (rc) renderStep2(rc);
+  }
+  if(msg.type==="cover-generated"){
+    wfFormState.generated = true;
+    wfFormState.coverOpen = false;
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+  }
+  if(msg.type==="promo-generated"){
+    wfPromoGenerating = false;
+    wfPromoGenerated = true;
+    var pc = document.getElementById("wf-container");
+    if (pc) renderStep3(pc);
+  }
+  if(msg.type==="wireframes-deleted"){
+    wfPromoGenerated = false;
+    var pc2 = document.getElementById("wf-container");
+    if (pc2) renderStep3(pc2);
+  }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
-  if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();processNext();}
+  if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
 };
 </script>
 </body>

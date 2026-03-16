@@ -11,6 +11,12 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .tab-btn { flex: 1; padding: 10px 0; border: none; background: transparent; color: #6c7086; font-size: 11px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
 .tab-btn.active { color: #89b4fa; border-bottom-color: #89b4fa; }
 .tab-btn:hover:not(.active) { color: #cdd6f4; }
+#sub-tabs { display: flex; border-bottom: 1px solid #313244; background: #1e1e2e; flex-shrink: 0; }
+.sub-tab-btn { flex: 1; padding: 7px 0; border: none; background: transparent; color: #585b70; font-size: 10px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+.sub-tab-btn.active { color: #cdd6f4; border-bottom-color: #cdd6f4; }
+.sub-tab-btn:hover:not(.active) { color: #a6adc8; }
+.sub-pane { display: none; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+.sub-pane.active { display: flex; overflow: hidden; }
 .pane { display: none; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
 .pane.active { display: flex; overflow: hidden; }
 
@@ -344,13 +350,19 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 
 <div id="tabs">
   <button class="tab-btn active" data-tab="workflow">🗂 Workflow</button>
-  <button class="tab-btn"        data-tab="audit">🔍 Audit</button>
-  <button class="tab-btn"        data-tab="debug">🪙 Tokens</button>
-  <button class="tab-btn"        data-tab="import">📥 Import</button>
+  <button class="tab-btn"        data-tab="tools">🛠 Tools</button>
 </div>
 
-<!-- ── AUDIT ─────────────────────────── -->
-<div class="pane" id="pane-audit">
+<!-- ── TOOLS (container with sub-tabs) ── -->
+<div class="pane" id="pane-tools" style="overflow:hidden;flex-direction:column;">
+  <div id="sub-tabs">
+    <button class="sub-tab-btn active" data-subtab="audit">🔍 Audit</button>
+    <button class="sub-tab-btn"        data-subtab="debug">🪙 Tokens</button>
+    <button class="sub-tab-btn"        data-subtab="import">📥 Import</button>
+  </div>
+
+  <!-- ── AUDIT ─────────────────────────── -->
+  <div class="sub-pane active" id="pane-audit">
   <div id="hero">
     <h1>Dev-Ready Tools for Designers by wowbrands</h1>
     <p>13 weighted checks across naming, layout, variables, typography &amp; hygiene.</p>
@@ -368,6 +380,54 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
   </div>
 
   <div id="results"></div>
+  </div>
+
+  <!-- ── TOKEN DEBUGGER ─────────────────── -->
+  <div class="sub-pane" id="pane-debug">
+    <div class="debug-empty" id="debug-empty">
+      <div class="debug-empty-icon">🔎</div>
+      <div class="debug-empty-title">Select a layer to inspect</div>
+      <div class="debug-empty-sub">Variable bindings, alias chains and style references appear here. Updates live as you click the canvas.</div>
+    </div>
+    <div class="debug-empty" id="debug-multi" style="display:none">
+      <div class="debug-empty-icon">👆</div>
+      <div class="debug-empty-title">Select a single layer</div>
+      <div class="debug-empty-sub" id="debug-multi-sub"></div>
+    </div>
+    <div id="debug-content" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="debug-layer-header">
+        <div id="debug-layer-row">
+          <span id="debug-type-badge" class="debug-type-badge"></span>
+          <span id="debug-layer-name"></span>
+        </div>
+        <div id="debug-stats-row"></div>
+      </div>
+      <div id="debug-groups-container"></div>
+    </div>
+  </div>
+
+  <!-- ── IMPORT ─────────────────────────── -->
+  <div class="sub-pane" id="pane-import">
+    <div id="import-pane">
+      <div class="hint">
+        Supports all JSON files from the <b>Figma Variables Generator</b> plus <b>text-styles.json</b>.<br>
+        Type is auto-detected from filename — keep original names.<br>
+        For Colors: import <b>colors-light.json</b> first, then <b>colors-dark.json</b>.<br>
+        For Text Styles: fonts must be <b>installed locally</b> or styles will be skipped.
+      </div>
+      <div id="drop-zone">
+        <input type="file" id="file-input" multiple accept=".json" style="display:none">
+        <div class="dz-icon">📂</div>
+        <div class="dz-label">Click to select JSON files</div>
+        <div class="dz-sub">or drag and drop here</div>
+      </div>
+      <div id="file-queue"></div>
+      <div id="import-actions">
+        <span class="file-count" id="file-count">No files queued</span>
+        <button id="import-btn" class="primary-btn" disabled>Import to Figma</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ── WORKFLOW ────────────────────────── -->
@@ -380,65 +440,34 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
   </div>
 </div>
 
-<!-- ── TOKEN DEBUGGER ─────────────────── -->
-<div class="pane" id="pane-debug">
-  <div class="debug-empty" id="debug-empty">
-    <div class="debug-empty-icon">🔎</div>
-    <div class="debug-empty-title">Select a layer to inspect</div>
-    <div class="debug-empty-sub">Variable bindings, alias chains and style references appear here. Updates live as you click the canvas.</div>
-  </div>
-  <div class="debug-empty" id="debug-multi" style="display:none">
-    <div class="debug-empty-icon">👆</div>
-    <div class="debug-empty-title">Select a single layer</div>
-    <div class="debug-empty-sub" id="debug-multi-sub"></div>
-  </div>
-  <div id="debug-content" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
-    <div id="debug-layer-header">
-      <div id="debug-layer-row">
-        <span id="debug-type-badge" class="debug-type-badge"></span>
-        <span id="debug-layer-name"></span>
-      </div>
-      <div id="debug-stats-row"></div>
-    </div>
-    <div id="debug-groups-container"></div>
-  </div>
-</div>
-
-<!-- ── IMPORT ─────────────────────────── -->
-<div class="pane" id="pane-import">
-  <div id="import-pane">
-    <div class="hint">
-      Supports all JSON files from the <b>Figma Variables Generator</b> plus <b>text-styles.json</b>.<br>
-      Type is auto-detected from filename — keep original names.<br>
-      For Colors: import <b>colors-light.json</b> first, then <b>colors-dark.json</b>.<br>
-      For Text Styles: fonts must be <b>installed locally</b> or styles will be skipped.
-    </div>
-    <div id="drop-zone">
-      <input type="file" id="file-input" multiple accept=".json" style="display:none">
-      <div class="dz-icon">📂</div>
-      <div class="dz-label">Click to select JSON files</div>
-      <div class="dz-sub">or drag and drop here</div>
-    </div>
-    <div id="file-queue"></div>
-    <div id="import-actions">
-      <span class="file-count" id="file-count">No files queued</span>
-      <button id="import-btn" class="primary-btn" disabled>Import to Figma</button>
-    </div>
-  </div>
-</div>
-
 <script>
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 
 // ── Tabs ───────────────────────────────────────────────────────────────────────
+var _activeSubTab = "audit";
 document.querySelectorAll(".tab-btn").forEach(function(btn){
   btn.addEventListener("click",function(){
     document.querySelectorAll(".tab-btn").forEach(function(b){b.classList.remove("active");});
     document.querySelectorAll(".pane").forEach(function(p){p.classList.remove("active");});
     btn.classList.add("active");
     document.getElementById("pane-"+btn.dataset.tab).classList.add("active");
-    if(btn.dataset.tab==="debug")parent.postMessage({pluginMessage:{type:"request-debug"}},"*");
     if(btn.dataset.tab==="workflow")parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+    if(btn.dataset.tab==="tools"){
+      // Activate the last-used sub-tab
+      if(_activeSubTab==="debug")parent.postMessage({pluginMessage:{type:"request-debug"}},"*");
+    }
+  });
+});
+// Sub-tabs within Tools
+document.querySelectorAll(".sub-tab-btn").forEach(function(btn){
+  btn.addEventListener("click",function(){
+    document.querySelectorAll(".sub-tab-btn").forEach(function(b){b.classList.remove("active");});
+    document.querySelectorAll(".sub-pane").forEach(function(p){p.classList.remove("active");});
+    btn.classList.add("active");
+    var pane = document.getElementById("pane-"+btn.dataset.subtab);
+    if(pane) pane.classList.add("active");
+    _activeSubTab = btn.dataset.subtab;
+    if(btn.dataset.subtab==="debug")parent.postMessage({pluginMessage:{type:"request-debug"}},"*");
   });
 });
 // Workflow is the first tab — load it immediately on plugin open
@@ -458,6 +487,14 @@ var GROUPS_ORDER=[
 ];
 var WEIGHTS_UI={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
 function priorityBadge(key){var w=WEIGHTS_UI[key]||1;if(w>=5)return"<span class='priority p-critical'>Critical</span>";if(w>=4)return"<span class='priority p-high'>High</span>";if(w>=3)return"<span class='priority p-medium'>Medium</span>";return"<span class='priority p-low'>Low</span>";}
+// Returns true when all Critical + High priority audit checks have 0 issues
+function auditCritHighPass(data) {
+  if (!data || !data.checks) return false;
+  for (var k in WEIGHTS_UI) {
+    if (WEIGHTS_UI[k] >= 4 && data.checks[k] && data.checks[k].issues.length > 0) return false;
+  }
+  return true;
+}
 
 // Build one issue row with the appropriate inline action for its check type
 function makeIssueRow(key, issue, hasColorVars) {
@@ -522,6 +559,11 @@ function makeIssueRow(key, issue, hasColorVars) {
   return row;
 }
 
+function clearAuditDisplay(){
+  var r=document.getElementById("results"); if(r){r.innerHTML="";r.style.display="none";}
+  var sb=document.getElementById("score-bar"); if(sb) sb.style.display="none";
+  var btn=document.getElementById("run-btn"); if(btn){btn.disabled=false;btn.textContent="Run audit on current page";}
+}
 function renderAudit(data){
   var btn=document.getElementById("run-btn"); btn.disabled=false; btn.textContent="Re-run audit";
   if(data.noPages){
@@ -570,7 +612,7 @@ function renderAudit(data){
 
 // ── Workflow ───────────────────────────────────────────────────────────────
 // Persists cover form values across re-renders
-var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true, step2Toggled:false, step2BasicOpen:false, step2ComplexOpen:false, step3Open:true };
+var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true, step2Toggled:false, step2BasicOpen:false, step2ComplexOpen:false, step3Open:true, step4Open:true, step5Open:true };
 var wfTokensData = null;
 var wfStep1Color = "red"; // track step 1 status for step 2 gating
 
@@ -787,6 +829,11 @@ var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
 var wfGenerating = false;
 var wfGenerated = false;
 var wfStep2Color = "red";
+var wfStep3Color = "red";
+var wfStep4Color = "red";
+var wfAuditData = null; // last audit results for Step 4
+var wfDevReady = false; // Step 5 handoff
+var wfDevReadyDate = null;
 
 // Step 3 — Page structures
 var PROMO_SECTIONS = [
@@ -919,12 +966,15 @@ function collectSettings() {
     ziNextId: wfZiNextId,
     tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled)),
     pageType: wfPageType,
+    promoGenerated: wfPromoGenerated,
     promoSections: JSON.parse(JSON.stringify(wfPromoSections)),
     promoPopupIncludeForm: wfPromoPopupIncludeForm,
     promoFormFields: JSON.parse(JSON.stringify(wfPromoFormFields)),
     promoFormFieldNextId: wfPromoFormFieldNextId,
     promoFormGrid: JSON.parse(JSON.stringify(wfPromoFormGrid)),
-    _promoFieldsMigratedV2: true
+    _promoFieldsMigratedV2: true,
+    devReady: wfDevReady,
+    devReadyDate: wfDevReadyDate
   };
 }
 
@@ -953,6 +1003,7 @@ function applyLoadedSettings(s) {
   if (s.ziNextId) wfZiNextId = s.ziNextId;
   if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
   if (s.pageType) wfPageType = s.pageType;
+  if (s.promoGenerated !== undefined) wfPromoGenerated = s.promoGenerated;
   if (s.promoSections) { for (var pk in s.promoSections) { wfPromoSections[pk] = s.promoSections[pk]; } }
   if (s.promoPopupIncludeForm !== undefined) wfPromoPopupIncludeForm = s.promoPopupIncludeForm;
   if (s.promoFormFields) {
@@ -985,6 +1036,8 @@ function applyLoadedSettings(s) {
       }
     }
   }
+  if (s.devReady !== undefined) wfDevReady = s.devReady;
+  if (s.devReadyDate) wfDevReadyDate = s.devReadyDate;
 }
 
 function getWfColors() {
@@ -2798,9 +2851,10 @@ function renderStep3(container) {
     if (wfPromoGenerated) {
       var resetBtn = document.createElement("button");
       resetBtn.className = "wf-reset-btn";
-      resetBtn.textContent = "Regenerate Promo Wireframes";
+      resetBtn.textContent = "Rebuild Wireframes";
       resetBtn.addEventListener("click", function() {
-        resetBtn.disabled = true; resetBtn.textContent = "Generating…";
+        if (!confirm("This will rebuild the Desktop and Mobile pages, replacing all existing wireframe content. Continue?")) return;
+        resetBtn.disabled = true; resetBtn.textContent = "Rebuilding…";
         wfPromoGenerating = true;
         sendPromoGenerate();
       });
@@ -2809,7 +2863,7 @@ function renderStep3(container) {
       var genBtn = document.createElement("button");
       genBtn.className = "wf-gen-btn";
       genBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
-      genBtn.textContent = "Generate Promo Wireframes";
+      genBtn.textContent = "Generate Wireframes";
       genBtn.addEventListener("click", function() {
         if (wfPromoGenerating) return;
         wfPromoGenerating = true;
@@ -2855,6 +2909,276 @@ function renderStep3(container) {
   }
 
   body.addEventListener("change", function() { saveSettings(); });
+
+  step.appendChild(body);
+  container.appendChild(step);
+
+  // Track step 3 status for gating step 4
+  wfStep3Color = indicatorColor;
+  renderStep4(container);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 4 — Audit & Validation
+// ══════════════════════════════════════════════════════════════════════════════
+function renderStep4(container) {
+  var prev = document.getElementById("wf-step-4");
+  if (prev) prev.remove();
+
+  var locked = wfStep3Color === "red";
+  var hasResults = wfAuditData && !wfAuditData.noPages;
+  var score = hasResults ? wfAuditData.score : -1;
+  var critHighOk = hasResults && auditCritHighPass(wfAuditData);
+  var indicatorColor = locked ? "red" : (!hasResults ? "yellow" : (critHighOk ? "green" : (score >= 50 ? "yellow" : "red")));
+  var stepOpen = locked ? false : wfFormState.step4Open;
+
+  var step = document.createElement("div");
+  step.id = "wf-step-4";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (critHighOk ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 4</div>" +
+      "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : (hasResults ? " — " + score + "/100" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Generate wireframes first</div>" :
+       (stepOpen ? "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>" : "")) +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step4Open = !wfFormState.step4Open;
+      var prev4 = document.getElementById("wf-step-4");
+      if (prev4) prev4.remove();
+      renderStep4(container);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!locked) {
+    var auditWrap = document.createElement("div");
+    auditWrap.className = "wf-token-list";
+
+    // Score bar (reusable in-step version)
+    if (hasResults) {
+      var scoreBar = document.createElement("div");
+      scoreBar.style.cssText = "display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid #313244;";
+      var C = 2 * Math.PI * 20;
+      var col = score >= 80 ? "#a6e3a1" : score >= 50 ? "#f9e2af" : "#f38ba8";
+      scoreBar.innerHTML =
+        "<div style='position:relative;width:48px;height:48px;flex-shrink:0;'>" +
+          "<svg width='48' height='48' viewBox='0 0 48 48'>" +
+            "<circle cx='24' cy='24' r='20' fill='none' stroke='#313244' stroke-width='4'/>" +
+            "<circle cx='24' cy='24' r='20' fill='none' stroke='" + col + "' stroke-width='4' stroke-linecap='round' stroke-dasharray='" + C + "' stroke-dashoffset='" + (C - (score / 100) * C) + "' transform='rotate(-90 24 24)'/>" +
+          "</svg>" +
+          "<div style='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:" + col + ";'>" + score + "</div>" +
+        "</div>" +
+        "<div>" +
+          "<div style='font-size:12px;font-weight:600;color:#cdd6f4;'>" + (score >= 80 ? "Looking good!" : score >= 50 ? "Needs some work" : "Not ready yet") + "</div>" +
+          "<div style='font-size:10px;color:#6c7086;'>" + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") + " · " + Object.keys(wfAuditData.checks).filter(function(k) { return wfAuditData.checks[k].issues.length === 0; }).length + "/" + Object.keys(wfAuditData.checks).length + " passing</div>" +
+        "</div>";
+      auditWrap.appendChild(scoreBar);
+
+      // Check groups and issues
+      var resultsDiv = document.createElement("div");
+      resultsDiv.style.cssText = "padding:4px 0;";
+      GROUPS_ORDER.forEach(function(group) {
+        var ghdr = document.createElement("div");
+        ghdr.className = "group-header";
+        ghdr.textContent = group.label;
+        resultsDiv.appendChild(ghdr);
+        group.keys.forEach(function(key) {
+          var check = wfAuditData.checks[key]; if (!check) return;
+          var count = check.issues.length;
+          var card = document.createElement("div"); card.className = "check-card";
+          var chdr = document.createElement("div"); chdr.className = "check-header";
+          chdr.innerHTML = "<div class='check-icon " + (count ? "icon-fail" : "icon-pass") + "'>" + check.icon + "</div><div class='check-info'><div class='check-label'>" + esc(check.label) + "</div><div class='check-desc'>" + esc(check.description) + "</div></div>" + priorityBadge(key) + "<span class='check-badge " + (count ? "badge-fail" : "badge-pass") + "'>" + (count ? count + " issue" + (count !== 1 ? "s" : "") : "Pass") + "</span>" + (count ? "<span class='check-chevron'>▼</span>" : "");
+          card.appendChild(chdr);
+          if (count) {
+            var list = document.createElement("div"); list.className = "issue-list";
+            check.issues.forEach(function(issue) {
+              list.appendChild(makeIssueRow(key, issue, wfAuditData.fixable.hasColorVars));
+            });
+            card.appendChild(list);
+            chdr.addEventListener("click", function() { card.classList.toggle("open"); });
+          }
+          resultsDiv.appendChild(card);
+        });
+      });
+      auditWrap.appendChild(resultsDiv);
+    } else if (wfAuditData && wfAuditData.noPages) {
+      var noPages = document.createElement("div");
+      noPages.style.cssText = "padding:24px 16px;text-align:center;font-size:11px;color:#a6adc8;";
+      noPages.textContent = "No Desktop or Mobile pages found. The audit runs only on those pages.";
+      auditWrap.appendChild(noPages);
+    }
+
+    // Run / Re-run button
+    var btnWrap = document.createElement("div");
+    btnWrap.style.cssText = "padding:8px 10px;";
+    var runBtn = document.createElement("button");
+    runBtn.className = "wf-gen-btn";
+    runBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+    runBtn.textContent = hasResults ? "Re-run Audit" : "Run Audit";
+    runBtn.addEventListener("click", function() {
+      runBtn.disabled = true; runBtn.textContent = "Scanning…";
+      parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
+    });
+    btnWrap.appendChild(runBtn);
+    auditWrap.appendChild(btnWrap);
+
+    body.appendChild(auditWrap);
+  }
+
+  step.appendChild(body);
+  container.appendChild(step);
+
+  // No auto-run — user must click "Run Audit" or re-run manually
+
+  // Track step 4 status for gating step 5
+  wfStep4Color = indicatorColor;
+  renderStep5(container);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP 5 — Ready for Dev
+// ══════════════════════════════════════════════════════════════════════════════
+function renderStep5(container) {
+  var prev = document.getElementById("wf-step-5");
+  if (prev) prev.remove();
+
+  var locked = wfStep4Color === "red";
+  var indicatorColor = locked ? "red" : (wfDevReady ? "green" : "yellow");
+  var stepOpen = locked ? false : wfFormState.step5Open;
+
+  var step = document.createElement("div");
+  step.id = "wf-step-5";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (wfDevReady ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 5</div>" +
+      "<div class='wf-step-title'>Ready for Dev" + (locked ? "" : (wfDevReady ? " — Handed Off" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Run the audit first</div>" :
+       (stepOpen ? "<div class='wf-step-desc'>Review the summary and mark this file as ready for development handoff.</div>" : "")) +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step5Open = !wfFormState.step5Open;
+      var prev5 = document.getElementById("wf-step-5");
+      if (prev5) prev5.remove();
+      renderStep5(container);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!locked) {
+    var wrap = document.createElement("div");
+    wrap.className = "wf-token-list";
+
+    // ── Summary checklist ──
+    var summary = document.createElement("div");
+    summary.style.cssText = "padding:10px 12px 6px;";
+
+    var checks = [
+      { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
+      { label: "Design tokens generated", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
+      { label: "Wireframes built", done: wfStep3Color === "green" || wfPromoGenerated, detail: "Desktop & mobile page structures" },
+      { label: "Audit — all critical & high passed", done: auditCritHighPass(wfAuditData), detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : "Not run yet" }
+    ];
+
+    checks.forEach(function(c) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:flex-start;gap:8px;padding:5px 0;";
+      var icon = document.createElement("span");
+      icon.style.cssText = "font-size:13px;flex-shrink:0;margin-top:1px;";
+      icon.textContent = c.done ? "✅" : "⬜";
+      row.appendChild(icon);
+      var info = document.createElement("div");
+      info.innerHTML = "<div style='font-size:11px;font-weight:600;color:" + (c.done ? "#a6e3a1" : "#6c7086") + ";'>" + esc(c.label) + "</div>" +
+        "<div style='font-size:10px;color:#585b70;'>" + esc(c.detail) + "</div>";
+      row.appendChild(info);
+      summary.appendChild(row);
+    });
+    wrap.appendChild(summary);
+
+    // ── Handoff section ──
+    var btnWrap = document.createElement("div");
+    btnWrap.style.cssText = "padding:8px 10px 12px;";
+
+    if (wfDevReady) {
+      // Already marked — show badge and revoke option
+      var badge = document.createElement("div");
+      badge.style.cssText = "display:flex;align-items:center;gap:10px;padding:12px 14px;background:#1a3a1a;border:1px solid #2d5a2d;border-radius:8px;margin-bottom:8px;";
+      badge.innerHTML =
+        "<span style='font-size:22px;'>✅</span>" +
+        "<div>" +
+          "<div style='font-size:12px;font-weight:700;color:#a6e3a1;'>Dev Ready</div>" +
+          "<div style='font-size:10px;color:#6c7086;'>Marked on " + esc(wfDevReadyDate || "unknown") + "</div>" +
+        "</div>";
+      btnWrap.appendChild(badge);
+
+      var revokeBtn = document.createElement("button");
+      revokeBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;";
+      revokeBtn.textContent = "Revoke — Back to In Progress";
+      revokeBtn.addEventListener("mouseenter", function() { revokeBtn.style.borderColor = "#f9e2af"; revokeBtn.style.color = "#f9e2af"; });
+      revokeBtn.addEventListener("mouseleave", function() { revokeBtn.style.borderColor = "#45475a"; revokeBtn.style.color = "#a6adc8"; });
+      revokeBtn.addEventListener("click", function() {
+        revokeBtn.disabled = true; revokeBtn.textContent = "Updating…";
+        wfDevReady = false;
+        wfDevReadyDate = null;
+        wfFormState.status = "In Progress";
+        saveSettings();
+        parent.postMessage({ pluginMessage: { type: "update-cover-status", status: "In Progress" } }, "*");
+      });
+      btnWrap.appendChild(revokeBtn);
+    } else {
+      var allDone = checks.every(function(c) { return c.done; });
+      var readyBtn = document.createElement("button");
+      readyBtn.className = "wf-gen-btn";
+      readyBtn.style.cssText = "width:100%;padding:10px;font-size:12px;font-weight:700;" + (allDone ? "" : "opacity:0.4;cursor:not-allowed;");
+      readyBtn.textContent = "✦ Mark as Dev Ready";
+      if (!allDone) {
+        readyBtn.disabled = true;
+        readyBtn.title = "Complete all checklist items first";
+      }
+      readyBtn.addEventListener("click", function() {
+        if (!allDone) return;
+        readyBtn.disabled = true; readyBtn.textContent = "Updating…";
+        var now = new Date();
+        var dateStr = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+        wfDevReady = true;
+        wfDevReadyDate = dateStr;
+        wfFormState.status = "Dev Ready";
+        saveSettings();
+        parent.postMessage({ pluginMessage: { type: "update-cover-status", status: "Dev Ready" } }, "*");
+      });
+      btnWrap.appendChild(readyBtn);
+
+      if (!allDone) {
+        var hint = document.createElement("div");
+        hint.style.cssText = "text-align:center;font-size:10px;color:#585b70;margin-top:6px;";
+        hint.textContent = "Complete all steps above to enable handoff";
+        btnWrap.appendChild(hint);
+      }
+    }
+    wrap.appendChild(btnWrap);
+    body.appendChild(wrap);
+  }
 
   step.appendChild(body);
   container.appendChild(step);
@@ -3117,12 +3441,25 @@ window.onmessage=function(event){
       { cols: 2, colSpans: [6, 6], fields: [2, 3] },
       { cols: 1, colSpans: [12], fields: [4] }
     ];
+    wfAuditData = null;
     wfFormState.step2Open = true;
     wfFormState.step2Toggled = false;
+    wfFormState.step4Open = true;
+    wfFormState.step5Open = true;
+    wfDevReady = false;
+    wfDevReadyDate = null;
     // Re-render workflow
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
-  if(msg.type==="audit-results"){renderAudit(msg.results);}
+  if(msg.type==="audit-results"){
+    renderAudit(msg.results);
+    wfAuditData = msg.results;
+    if (msg.results && msg.results.score === 100) {
+      wfFormState.step4Open = false;
+    }
+    var sc = document.getElementById("wf-container");
+    if (sc) renderStep4(sc);
+  }
   if(msg.type==="pages-data"){
     try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
     catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
@@ -3158,16 +3495,32 @@ window.onmessage=function(event){
   if(msg.type==="promo-generated"){
     wfPromoGenerating = false;
     wfPromoGenerated = true;
+    wfFormState.step3Open = false;
+    wfAuditData = null;
+    wfFormState.step4Open = true;
+    wfDevReady = false;
+    wfDevReadyDate = null;
+    wfFormState.step5Open = true;
+    clearAuditDisplay();
+    saveSettings();
     var pc = document.getElementById("wf-container");
     if (pc) renderStep3(pc);
   }
   if(msg.type==="wireframes-deleted"){
     wfPromoGenerated = false;
+    wfAuditData = null;
+    clearAuditDisplay();
+    saveSettings();
     var pc2 = document.getElementById("wf-container");
     if (pc2) renderStep3(pc2);
   }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
+  if(msg.type==="cover-status-updated"){
+    if (wfDevReady) wfFormState.step5Open = false;
+    var sc5 = document.getElementById("wf-container");
+    if (sc5) renderStep5(sc5);
+  }
 };
 </script>
 </body>

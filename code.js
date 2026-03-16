@@ -85,6 +85,56 @@ figma.ui.onmessage = async function(msg) {
     await generateCover(msg);
     figma.ui.postMessage({ type: "cover-generated" });
   }
+  if (msg.type === "update-cover-status") {
+    try {
+      await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+      var STATUS_COLORS = {
+        "In Progress":       { bg: { r:0.988, g:0.886, b:0.686 }, text: { r:0.541, g:0.361, b:0.000 } },
+        "Ready for Review":  { bg: { r:0.537, g:0.706, b:0.980 }, text: { r:0.067, g:0.251, b:0.620 } },
+        "Dev Ready":         { bg: { r:0.651, g:0.890, b:0.631 }, text: { r:0.067, g:0.392, b:0.114 } },
+      };
+      var statusCol = STATUS_COLORS[msg.status] || STATUS_COLORS["In Progress"];
+      var coverPage = figma.root.children.filter(function(p) {
+        return p.name.replace(/[^a-zA-Z]/g, "").toLowerCase().indexOf("cover") !== -1;
+      })[0];
+      if (coverPage) {
+        var coverFrame = coverPage.children.filter(function(n) { return n.name === "Cover"; })[0];
+        if (coverFrame) {
+          var badgeBg = null, badgeText = null;
+          coverFrame.children.forEach(function(n) {
+            if (n.name === "status-badge-bg") badgeBg = n;
+            if (n.type === "TEXT" && n.characters && STATUS_COLORS[n.characters]) badgeText = n;
+          });
+          // Find badge text by checking all text nodes if not found by content
+          if (!badgeText) {
+            coverFrame.children.forEach(function(n) {
+              if (n.type === "TEXT" && n.y === (badgeBg ? badgeBg.y + (badgeBg.height - n.height) / 2 : -1)) badgeText = n;
+            });
+          }
+          if (badgeBg) {
+            badgeBg.fills = [{ type: "SOLID", color: statusCol.bg }];
+          }
+          if (badgeText) {
+            badgeText.characters = msg.status;
+            badgeText.fills = [{ type: "SOLID", color: statusCol.text }];
+            if (badgeBg) {
+              badgeText.x = badgeBg.x + (badgeBg.width - badgeText.width) / 2;
+            }
+          }
+        }
+      }
+      // Set Figma's built-in dev status on Desktop & Mobile top-level frames
+      var auditPages = getAuditPages();
+      var devStatus = msg.status === "Dev Ready" ? { type: "READY_FOR_DEV" } : null;
+      auditPages.forEach(function(pg) {
+        pg.children.forEach(function(frame) {
+          if (frame.type !== "FRAME" && frame.type !== "SECTION") return;
+          try { frame.devStatus = devStatus; } catch(e) {}
+        });
+      });
+    } catch(e) {}
+    figma.ui.postMessage({ type: "cover-status-updated", status: msg.status });
+  }
   if (msg.type === "import-tokens") {
     try {
       var result = await importTokens(msg.filename, msg.data);

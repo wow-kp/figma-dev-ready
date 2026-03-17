@@ -1,5 +1,5 @@
 // components-complex.ts — Complex Components page generator (reads directly from Figma variables)
-import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, ensureBackgroundImageVar, createPlaceholderImageHash, cxResolveVar, cxColorToHex, cxFindCol, cxGetFloats } from './utils';
+import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, createPlaceholderImageHash, cxResolveVar, cxColorToHex, cxFindCol, cxGetFloats } from './utils';
 
 export async function generateComponentsPageComplex() {
   var allVars = figma.variables.getLocalVariables();
@@ -32,8 +32,14 @@ export async function generateComponentsPageComplex() {
   var frame = figma.createFrame();
   frame.name = "Components";
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
+  frame.layoutMode = "VERTICAL";
+  frame.primaryAxisSizingMode = "AUTO";
+  frame.counterAxisSizingMode = "FIXED";
+  frame.resize(W, 100);
+  frame.paddingTop = PAD; frame.paddingBottom = PAD;
+  frame.paddingLeft = PAD; frame.paddingRight = PAD;
+  frame.itemSpacing = 24;
   page.appendChild(frame);
-  var y = PAD;
 
   // Detect brand color
   var brandHex = "#3B82F6";
@@ -69,11 +75,12 @@ export async function generateComponentsPageComplex() {
   }
 
   function sectionTitle(title) {
-    var t = createSpecText(frame, title, PAD, y, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
-    y += t.height + 8;
-    var div = figma.createRectangle(); div.resize(W - PAD * 2, 1);
-    div.x = PAD; div.y = y; div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
-    frame.appendChild(div); y += 24;
+    createSpecText(frame, title, 0, 0, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
+    var div = figma.createRectangle();
+    div.resize(100, 1);
+    div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
+    frame.appendChild(div);
+    div.layoutSizingHorizontal = "FILL";
   }
 
   function findStyle(group, name) {
@@ -208,7 +215,6 @@ export async function generateComponentsPageComplex() {
 
   var btnSet = figma.combineAsVariants(allBtnComps, frame);
   btnSet.name = "Button";
-  btnSet.x = PAD; btnSet.y = y;
   btnSet.layoutMode = "HORIZONTAL";
   btnSet.layoutWrap = "WRAP";
   btnSet.itemSpacing = 16;
@@ -222,7 +228,6 @@ export async function generateComponentsPageComplex() {
   btnSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   btnSet.strokeWeight = 1;
   bindCompSpacing(btnSet);
-  y += btnSet.height + SECTION_GAP;
 
   // ══════════════════════════════════════════════════════════════════════════
   // INPUTS — 3 component sets (one per type), stacked vertically with titles
@@ -264,8 +269,6 @@ export async function generateComponentsPageComplex() {
     typeTitle.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
     bindFill(typeTitle, "text/primary");
     frame.appendChild(typeTitle);
-    typeTitle.x = PAD; typeTitle.y = y;
-    y += typeTitle.height + 12;
 
     for (var isi = 0; isi < inputStates.length; isi++) {
       var ist = inputStates[isi];
@@ -474,16 +477,13 @@ export async function generateComponentsPageComplex() {
       typeComps.push(inputComp);
     }
 
-    var INPUT_SET_W = 4 * 260 + 3 * 24 + 2 * 24;
     var typeSet = figma.combineAsVariants(typeComps, frame);
     typeSet.name = "Input / " + itype.type;
-    typeSet.x = PAD; typeSet.y = y;
-    typeSet.resize(INPUT_SET_W, typeSet.height);
     typeSet.layoutMode = "HORIZONTAL";
     typeSet.itemSpacing = 24;
     typeSet.paddingTop = 24; typeSet.paddingBottom = 24;
     typeSet.paddingLeft = 24; typeSet.paddingRight = 24;
-    typeSet.primaryAxisSizingMode = "FIXED";
+    typeSet.primaryAxisSizingMode = "AUTO";
     typeSet.counterAxisSizingMode = "AUTO";
     typeSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
     typeSet.cornerRadius = 12;
@@ -493,9 +493,8 @@ export async function generateComponentsPageComplex() {
     for (var vi = 0; vi < typeSet.children.length; vi++) {
       typeSet.children[vi].layoutSizingHorizontal = "FILL";
     }
-    y += typeSet.height + 24;
+    typeSet.layoutSizingHorizontal = "FILL";
   }
-  y += SECTION_GAP - 24;
 
   // ══════════════════════════════════════════════════════════════════════════
   // LABELS (component set with State property)
@@ -530,7 +529,6 @@ export async function generateComponentsPageComplex() {
 
     var lblSet = figma.combineAsVariants(allLblComps, frame);
     lblSet.name = "Label";
-    lblSet.x = PAD; lblSet.y = y;
     lblSet.layoutMode = "HORIZONTAL";
     lblSet.itemSpacing = 24;
     lblSet.paddingTop = 24; lblSet.paddingBottom = 24;
@@ -542,9 +540,7 @@ export async function generateComponentsPageComplex() {
     lblSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     lblSet.strokeWeight = 1;
     bindCompSpacing(lblSet);
-    y += lblSet.height + 30;
   }
-  y += SECTION_GAP;
 
   // ══════════════════════════════════════════════════════════════════════════
   // DROPDOWN (component set with State property)
@@ -645,14 +641,11 @@ export async function generateComponentsPageComplex() {
 
   var dropSet = figma.combineAsVariants(allDropComps, frame);
   dropSet.name = "Dropdown";
-  dropSet.x = PAD; dropSet.y = y;
-  var DROP_SET_W = 4 * 260 + 3 * 24 + 2 * 24;
-  dropSet.resize(DROP_SET_W, dropSet.height);
   dropSet.layoutMode = "HORIZONTAL";
   dropSet.itemSpacing = 24;
   dropSet.paddingTop = 24; dropSet.paddingBottom = 24;
   dropSet.paddingLeft = 24; dropSet.paddingRight = 24;
-  dropSet.primaryAxisSizingMode = "FIXED";
+  dropSet.primaryAxisSizingMode = "AUTO";
   dropSet.counterAxisSizingMode = "AUTO";
   dropSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
   dropSet.cornerRadius = 12;
@@ -662,7 +655,7 @@ export async function generateComponentsPageComplex() {
   for (var dvi = 0; dvi < dropSet.children.length; dvi++) {
     dropSet.children[dvi].layoutSizingHorizontal = "FILL";
   }
-  y += dropSet.height + SECTION_GAP;
+  dropSet.layoutSizingHorizontal = "FILL";
 
   // ══════════════════════════════════════════════════════════════════════════
   // IMAGE WRAPPERS (component set with Radius property)
@@ -740,7 +733,6 @@ export async function generateComponentsPageComplex() {
   if (allImgComps.length > 0) {
     var imgSet = figma.combineAsVariants(allImgComps, frame);
     imgSet.name = "Image";
-    imgSet.x = PAD; imgSet.y = y;
     imgSet.layoutMode = "HORIZONTAL";
     imgSet.itemSpacing = 24;
     imgSet.paddingTop = 24; imgSet.paddingBottom = 24;
@@ -752,7 +744,6 @@ export async function generateComponentsPageComplex() {
     imgSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     imgSet.strokeWeight = 1;
     bindCompSpacing(imgSet);
-    y += imgSet.height + SECTION_GAP;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -760,46 +751,13 @@ export async function generateComponentsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   sectionTitle("Background Image");
 
-  var bgImgVar = ensureBackgroundImageVar();
+  var bgImgPlaceholder2 = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
   var bgImgComp = figma.createComponent();
   bgImgComp.name = "Background Image";
+  bgImgComp.setPluginData("role", "background-image");
   bgImgComp.resize(400, 300);
   bgImgComp.clipsContent = true;
-  bgImgComp.fills = [];
-  bgImgComp.layoutMode = "VERTICAL";
-  bgImgComp.primaryAxisSizingMode = "FIXED";
-  bgImgComp.counterAxisSizingMode = "FIXED";
+  bgImgComp.fills = [{ type: "IMAGE", imageHash: bgImgPlaceholder2, scaleMode: "FILL" }];
 
-  // Bind background-image boolean variable
-  try { bgImgComp.setBoundVariable("visible", bgImgVar); } catch(e) {}
-
-  // Child rectangle with placeholder image
-  var bgImgPlaceholder2 = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
-  var bgImgRect2 = figma.createRectangle();
-  bgImgRect2.name = "image";
-  bgImgRect2.resize(400, 300);
-  bgImgRect2.x = 0; bgImgRect2.y = 0;
-  bgImgRect2.fills = [{ type: "IMAGE", imageHash: bgImgPlaceholder2, scaleMode: "FILL" }];
-  bgImgRect2.constraints = { horizontal: "SCALE", vertical: "SCALE" };
-  bgImgRect2.layoutPositioning = "ABSOLUTE";
-  bgImgComp.appendChild(bgImgRect2);
-
-  var bgImgSet2 = figma.combineAsVariants([bgImgComp], frame);
-  bgImgSet2.name = "Background Image";
-  bgImgSet2.x = PAD; bgImgSet2.y = y;
-  bgImgSet2.layoutMode = "HORIZONTAL";
-  bgImgSet2.itemSpacing = 24;
-  bgImgSet2.paddingTop = 24; bgImgSet2.paddingBottom = 24;
-  bgImgSet2.paddingLeft = 24; bgImgSet2.paddingRight = 24;
-  bgImgSet2.primaryAxisSizingMode = "AUTO";
-  bgImgSet2.counterAxisSizingMode = "AUTO";
-  bgImgSet2.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-  bgImgSet2.cornerRadius = 12;
-  bgImgSet2.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
-  bgImgSet2.strokeWeight = 1;
-  bindCompSpacing(bgImgSet2);
-  y += bgImgSet2.height + SECTION_GAP;
-
-  y += PAD;
-  frame.resize(W, y);
+  frame.appendChild(bgImgComp);
 }

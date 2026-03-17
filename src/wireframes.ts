@@ -282,6 +282,16 @@ export async function generatePromoStructure(msg) {
     }
   }
 
+  // Also search standalone components (not inside a component set) — match by pluginData or name
+  if (!bgImageVariant) {
+    var allComps = figma.root.findAll(function(n) { return n.type === "COMPONENT" && (!n.parent || n.parent.type !== "COMPONENT_SET"); });
+    for (var sci = 0; sci < allComps.length; sci++) {
+      var sc = allComps[sci];
+      if (sc.getPluginData && sc.getPluginData("role") === "background-image") { bgImageVariant = sc; break; }
+      if (sc.name === "Background Image") { bgImageVariant = sc; break; }
+    }
+  }
+
   var BREAKPOINTS = [
     { hint: "desktop", width: 1920 },
     { hint: "mobile",  width: 567 }
@@ -1054,7 +1064,19 @@ export async function generatePromoStructure(msg) {
       var innerBanner = figma.createFrame();
       innerBanner.name = "inner-banner";
       innerBanner.resize(innerW, innerH);
-      innerBanner.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
+      innerBanner.clipsContent = true;
+      if (bgImageVariant) {
+        innerBanner.fills = [];
+        var bannerBg = bgImageVariant.createInstance();
+        bannerBg.name = "banner-bg-image";
+        bannerBg.resize(innerW, innerH);
+        innerBanner.appendChild(bannerBg);
+        bannerBg.layoutPositioning = "ABSOLUTE";
+        bannerBg.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
+        bannerBg.x = 0; bannerBg.y = 0;
+      } else {
+        innerBanner.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
+      }
       innerBanner.cornerRadius = defaultRadius;
       bindRadius(innerBanner, "md");
       innerBanner.layoutMode = isMobile ? "VERTICAL" : "HORIZONTAL";

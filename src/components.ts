@@ -1,5 +1,5 @@
 // components.ts — Components page generator (simple / msg-based)
-import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, ensureBackgroundImageVar, createPlaceholderImageHash, cxResolveVar } from './utils';
+import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, createPlaceholderImageHash, cxResolveVar } from './utils';
 
 export async function generateComponentsPage(msg) {
   var page = findPageByHint("components");
@@ -29,9 +29,15 @@ export async function generateComponentsPage(msg) {
   var frame = figma.createFrame();
   frame.name = "Components";
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
+  frame.layoutMode = "VERTICAL";
+  frame.primaryAxisSizingMode = "AUTO";
+  frame.counterAxisSizingMode = "FIXED";
+  frame.resize(W, 100);
+  frame.paddingTop = PAD; frame.paddingBottom = PAD;
+  frame.paddingLeft = PAD; frame.paddingRight = PAD;
+  frame.itemSpacing = 24;
   page.appendChild(frame);
 
-  var y = PAD;
   var brandColor = hexToFigma(msg.brandColor || "#3B82F6");
 
   // ── Look up color variables for binding ──
@@ -55,14 +61,12 @@ export async function generateComponentsPage(msg) {
   }
 
   function sectionTitle(title) {
-    var t = createSpecText(frame, title, PAD, y, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
-    y += t.height + 8;
+    createSpecText(frame, title, 0, 0, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
     var div = figma.createRectangle();
-    div.resize(W - PAD * 2, 1);
-    div.x = PAD; div.y = y;
+    div.resize(100, 1);
     div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
     frame.appendChild(div);
-    y += 24;
+    div.layoutSizingHorizontal = "FILL";
   }
 
   // Find text styles by group/name
@@ -215,7 +219,6 @@ export async function generateComponentsPage(msg) {
 
   var btnSet = figma.combineAsVariants(allBtnComps, frame);
   btnSet.name = "Button";
-  btnSet.x = PAD; btnSet.y = y;
   btnSet.layoutMode = "HORIZONTAL";
   btnSet.layoutWrap = "WRAP";
   btnSet.itemSpacing = 16;
@@ -229,7 +232,6 @@ export async function generateComponentsPage(msg) {
   btnSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   btnSet.strokeWeight = 1;
   bindCompSpacing(btnSet);
-  y += btnSet.height + SECTION_GAP;
 
   // ══════════════════════════════════════════════════════════════════════════
   // INPUTS — 3 component sets (one per type), stacked vertically with titles
@@ -271,8 +273,6 @@ export async function generateComponentsPage(msg) {
     typeTitle.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
     bindFill(typeTitle, "text/primary");
     frame.appendChild(typeTitle);
-    typeTitle.x = PAD; typeTitle.y = y;
-    y += typeTitle.height + 12;
 
     for (var isi = 0; isi < inputStates.length; isi++) {
       var ist = inputStates[isi];
@@ -487,16 +487,13 @@ export async function generateComponentsPage(msg) {
       typeComps.push(inputComp);
     }
 
-    var INPUT_SET_W = 4 * 260 + 3 * 24 + 2 * 24;  // 1160
     var typeSet = figma.combineAsVariants(typeComps, frame);
     typeSet.name = "Input / " + itype.type;
-    typeSet.x = PAD; typeSet.y = y;
-    typeSet.resize(INPUT_SET_W, typeSet.height);
     typeSet.layoutMode = "HORIZONTAL";
     typeSet.itemSpacing = 24;
     typeSet.paddingTop = 24; typeSet.paddingBottom = 24;
     typeSet.paddingLeft = 24; typeSet.paddingRight = 24;
-    typeSet.primaryAxisSizingMode = "FIXED";
+    typeSet.primaryAxisSizingMode = "AUTO";
     typeSet.counterAxisSizingMode = "AUTO";
     typeSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
     typeSet.cornerRadius = 12;
@@ -506,9 +503,8 @@ export async function generateComponentsPage(msg) {
     for (var vi = 0; vi < typeSet.children.length; vi++) {
       typeSet.children[vi].layoutSizingHorizontal = "FILL";
     }
-    y += typeSet.height + 24;
+    typeSet.layoutSizingHorizontal = "FILL";
   }
-  y += SECTION_GAP - 24;
 
   // ══════════════════════════════════════════════════════════════════════════
   // LABELS (component set with State property)
@@ -543,7 +539,6 @@ export async function generateComponentsPage(msg) {
 
     var lblSet = figma.combineAsVariants(allLblComps, frame);
     lblSet.name = "Label";
-    lblSet.x = PAD; lblSet.y = y;
     lblSet.layoutMode = "HORIZONTAL";
     lblSet.itemSpacing = 24;
     lblSet.paddingTop = 24; lblSet.paddingBottom = 24;
@@ -555,9 +550,7 @@ export async function generateComponentsPage(msg) {
     lblSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     lblSet.strokeWeight = 1;
     bindCompSpacing(lblSet);
-    y += lblSet.height + 30;
   }
-  y += SECTION_GAP;
 
   // ══════════════════════════════════════════════════════════════════════════
   // DROPDOWN (component set with State property)
@@ -663,14 +656,11 @@ export async function generateComponentsPage(msg) {
 
   var dropSet = figma.combineAsVariants(allDropComps, frame);
   dropSet.name = "Dropdown";
-  dropSet.x = PAD; dropSet.y = y;
-  var DROP_SET_W = 4 * 260 + 3 * 24 + 2 * 24;
-  dropSet.resize(DROP_SET_W, dropSet.height);
   dropSet.layoutMode = "HORIZONTAL";
   dropSet.itemSpacing = 24;
   dropSet.paddingTop = 24; dropSet.paddingBottom = 24;
   dropSet.paddingLeft = 24; dropSet.paddingRight = 24;
-  dropSet.primaryAxisSizingMode = "FIXED";
+  dropSet.primaryAxisSizingMode = "AUTO";
   dropSet.counterAxisSizingMode = "AUTO";
   dropSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
   dropSet.cornerRadius = 12;
@@ -680,7 +670,7 @@ export async function generateComponentsPage(msg) {
   for (var dvi = 0; dvi < dropSet.children.length; dvi++) {
     dropSet.children[dvi].layoutSizingHorizontal = "FILL";
   }
-  y += dropSet.height + SECTION_GAP;
+  dropSet.layoutSizingHorizontal = "FILL";
 
   // ══════════════════════════════════════════════════════════════════════════
   // IMAGE WRAPPERS (component set with Radius property)
@@ -776,7 +766,6 @@ export async function generateComponentsPage(msg) {
   if (allImgComps.length > 0) {
     var imgSet = figma.combineAsVariants(allImgComps, frame);
     imgSet.name = "Image";
-    imgSet.x = PAD; imgSet.y = y;
     imgSet.layoutMode = "HORIZONTAL";
     imgSet.itemSpacing = 24;
     imgSet.paddingTop = 24; imgSet.paddingBottom = 24;
@@ -788,7 +777,6 @@ export async function generateComponentsPage(msg) {
     imgSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     imgSet.strokeWeight = 1;
     bindCompSpacing(imgSet);
-    y += imgSet.height + SECTION_GAP;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -796,47 +784,13 @@ export async function generateComponentsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   sectionTitle("Background Image");
 
-  var bgImgVar = ensureBackgroundImageVar();
+  var bgImgPlaceholder = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
   var bgImgComp = figma.createComponent();
   bgImgComp.name = "Background Image";
+  bgImgComp.setPluginData("role", "background-image");
   bgImgComp.resize(400, 300);
   bgImgComp.clipsContent = true;
-  bgImgComp.fills = [];
-  bgImgComp.layoutMode = "VERTICAL";
-  bgImgComp.primaryAxisSizingMode = "FIXED";
-  bgImgComp.counterAxisSizingMode = "FIXED";
+  bgImgComp.fills = [{ type: "IMAGE", imageHash: bgImgPlaceholder, scaleMode: "FILL" }];
 
-  // Bind background-image boolean variable
-  try { bgImgComp.setBoundVariable("visible", bgImgVar); } catch(e) {}
-
-  // Child rectangle with placeholder image
-  var bgImgPlaceholder = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
-  var bgImgRect = figma.createRectangle();
-  bgImgRect.name = "image";
-  bgImgRect.resize(400, 300);
-  bgImgRect.x = 0; bgImgRect.y = 0;
-  bgImgRect.fills = [{ type: "IMAGE", imageHash: bgImgPlaceholder, scaleMode: "FILL" }];
-  bgImgRect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
-  bgImgRect.layoutPositioning = "ABSOLUTE";
-  bgImgComp.appendChild(bgImgRect);
-
-  var bgImgSet = figma.combineAsVariants([bgImgComp], frame);
-  bgImgSet.name = "Background Image";
-  bgImgSet.x = PAD; bgImgSet.y = y;
-  bgImgSet.layoutMode = "HORIZONTAL";
-  bgImgSet.itemSpacing = 24;
-  bgImgSet.paddingTop = 24; bgImgSet.paddingBottom = 24;
-  bgImgSet.paddingLeft = 24; bgImgSet.paddingRight = 24;
-  bgImgSet.primaryAxisSizingMode = "AUTO";
-  bgImgSet.counterAxisSizingMode = "AUTO";
-  bgImgSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-  bgImgSet.cornerRadius = 12;
-  bgImgSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
-  bgImgSet.strokeWeight = 1;
-  bindCompSpacing(bgImgSet);
-  y += bgImgSet.height + SECTION_GAP;
-
-  y += PAD;
-
-  frame.resize(W, y);
+  frame.appendChild(bgImgComp);
 }

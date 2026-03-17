@@ -303,6 +303,7 @@ export function runAudit(){
     namingFormat:  mk("Naming Convention",       "Names not in kebab-case (spaces, caps, underscores)",       "📝",  "Naming & Structure"),
     deepNesting:   mk("Deep Nesting",            "Frames or groups nested 6+ levels deep",                    "🪆",  "Naming & Structure"),
     autoLayout:    mk("Auto Layout",           "Frames with 2+ children not using Auto Layout",     "⬜",  "Layout"),
+    fixedSize:     mk("Fixed Sizing",          "Layout containers using fixed width instead of fill", "📏",  "Layout"),
     colors:        mk("Color Variables",       "Solid fills/strokes not bound to a variable",       "🎨",  "Variables & Styles"),
     spacingVars:   mk("Spacing Variables",     "Auto layout padding/gap not bound to a variable",   "📐",  "Variables & Styles"),
     radiusVars:    mk("Radius Variables",      "Corner radius not bound to a variable",             "◻️",  "Variables & Styles"),
@@ -392,6 +393,16 @@ export function runAudit(){
     // ── Deep nesting (skip inside instances — component internals don't count) ──
     if(!insideInst && depth>=6&&(node.type==="FRAME"||node.type==="GROUP"))checks.deepNesting.issues.push({id:node.id,label:"Depth "+depth+': "'+trunc(node.name)+'"',path:path});
     if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode==="NONE"&&"children"in node&&node.children.length>=2)checks.autoLayout.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.children.length+' children',path:path});
+    // ── Fixed sizing: flag layout containers with FIXED width inside auto-layout parents ──
+    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT") && node.parent && "layoutMode" in node.parent && node.parent.layoutMode !== "NONE") {
+      var parentDir = node.parent.layoutMode;
+      // Check horizontal sizing: should be FILL in horizontal parent, or always for vertical parent children
+      if ("layoutSizingHorizontal" in node && node.layoutSizingHorizontal === "FIXED") {
+        // Skip small elements: buttons, icons, images, inputs (width < 200 and not a section-level frame)
+        var isSmallElement = node.width < 200 || (node.name && /button|btn|icon|img|image|input|field|logo/i.test(node.name));
+        if (!isSmallElement) checks.fixedSize.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — fixed width '+Math.round(node.width)+'px',path:path});
+      }
+    }
     // ── Variables & styles (resolve from component when inside instance) ──
     var bv=getBV(node, insideInst);
     if("fills"in node&&Array.isArray(node.fills)){node.fills.forEach(function(fill,i){if(fill.type==="SOLID"&&fill.visible!==false){var b=bv.fills&&bv.fills[i];if(!b)checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" fill: '+rgbToHex(fill.color),path:path});}});}
@@ -406,7 +417,7 @@ export function runAudit(){
     if("children"in node&&node.children)node.children.forEach(function(child){walk(child,depth+1,isInst);});
   }
   auditPages.forEach(function(pg){pg.children.forEach(function(n){walk(n,0,false);});});
-  var WEIGHTS={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+  var WEIGHTS={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
   function issuePenalty(count,weight){if(!count)return 0;var s=count<=2?.12:count<=5?.30:count<=10?.52:count<=20?.72:.95;return s*weight;}
   var keys=Object.keys(checks);
   var totalWeight=keys.reduce(function(s,k){return s+(WEIGHTS[k]||1);},0);

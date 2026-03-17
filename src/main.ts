@@ -11,7 +11,8 @@ import { importTokens } from './tokens-import';
 import { generateTokenData } from './tokens-generate';
 import {
   _htmlImageNameCount, htmlWalkNode, htmlCountImages, htmlCollectImages,
-  htmlRenderCSS, htmlSanitizeName, htmlRenderNodeClean
+  htmlRenderCSS, htmlSanitizeName, htmlRenderNodeClean,
+  htmlBuildUtilityMap, htmlBuildSpacingLookup, htmlAddColorUtilities, htmlAssignUtilities
 } from './html-export';
 
 figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for Designers by wowbrands" });
@@ -24,6 +25,14 @@ figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for De
       figma.ui.postMessage({ type: "load-settings", settings: saved });
     }
   } catch(e) {}
+  // Send Figma user info for proxy auth
+  if (figma.currentUser) {
+    figma.ui.postMessage({
+      type: "user-info",
+      userId: figma.currentUser.id || "",
+      userName: figma.currentUser.name || ""
+    });
+  }
 })();
 
 figma.on("selectionchange", function() { pushDebugData(); });
@@ -298,6 +307,7 @@ figma.ui.onmessage = async function(msg) {
     try {
       var opts = msg.options || {};
       var includeMobile = opts.includeMobile !== false;
+      var pageType = opts.pageType || "promo";
 
       // Phase 1: Scan
       figma.ui.postMessage({ type: "build-html-progress", phase: "Scanning node tree…", percent: 10 });
@@ -325,7 +335,7 @@ figma.ui.onmessage = async function(msg) {
       for (var dci = 0; dci < desktopPage.children.length; dci++) {
         var dChild = desktopPage.children[dci];
         if (dChild.visible === false) continue;
-        var dTree = htmlWalkNode(dChild, cssVars, images, 0, classCounter);
+        var dTree = htmlWalkNode(dChild, cssVars, images, 0, classCounter, pageType);
         if (dTree) desktopTrees.push(dTree);
       }
 
@@ -339,8 +349,22 @@ figma.ui.onmessage = async function(msg) {
         for (var mci = 0; mci < mobilePage.children.length; mci++) {
           var mChild = mobilePage.children[mci];
           if (mChild.visible === false) continue;
-          var mTree = htmlWalkNode(mChild, cssVars, images, 0, mobileClassCounter);
+          var mTree = htmlWalkNode(mChild, cssVars, images, 0, mobileClassCounter, pageType);
           if (mTree) mobileTrees.push(mTree);
+        }
+      }
+
+      // Phase 2b: Assign utility classes
+      var tokens = opts.tokens || null;
+      var utilMap = htmlBuildUtilityMap(tokens);
+      var spacingLookup = htmlBuildSpacingLookup(tokens);
+      htmlAddColorUtilities(utilMap, cssVars);
+      for (var uti = 0; uti < desktopTrees.length; uti++) {
+        htmlAssignUtilities(desktopTrees[uti], utilMap, spacingLookup);
+      }
+      if (mobileTrees) {
+        for (var muti = 0; muti < mobileTrees.length; muti++) {
+          htmlAssignUtilities(mobileTrees[muti], utilMap, spacingLookup);
         }
       }
 
@@ -355,20 +379,34 @@ figma.ui.onmessage = async function(msg) {
         }, counter);
       }
 
-      // Phase 4: Compile — one HTML file per top-level frame
+      // Phase 4: Compile
       figma.ui.postMessage({ type: "build-html-progress", phase: "Generating HTML…", percent: 80 });
 
       var combinedDesktop = { className: "", styles: {}, children: desktopTrees, tag: "body", text: null, isImage: false, imageName: null, nodeName: "body", nodeId: null };
       var combinedMobile = mobileTrees ? { className: "", styles: {}, children: mobileTrees, tag: "body", text: null, isImage: false, imageName: null, nodeName: "body", nodeId: null } : null;
-      var css = htmlRenderCSS(cssVars, combinedDesktop, combinedMobile);
+      var css = htmlRenderCSS(cssVars, combinedDesktop, combinedMobile, tokens);
 
       var htmlFiles = [];
-      for (var bri = 0; bri < desktopTrees.length; bri++) {
-        var frameTree = desktopTrees[bri];
-        var frameName = htmlSanitizeName(frameTree.nodeName || ("section-" + bri));
-        var frameBody = htmlRenderNodeClean(frameTree, 2);
-        var frameHtml = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>' + (frameTree.nodeName || "Page") + '</title>\n  <link rel="stylesheet" href="styles.css" />\n</head>\n<body>\n' + frameBody + '\n</body>\n</html>';
-        htmlFiles.push({ name: frameName + ".html", content: frameHtml, frameName: frameTree.nodeName || frameName });
+      if (pageType === "promo") {
+        // Promo: one HTML file per top-level frame (each is a <section>)
+        for (var bri = 0; bri < desktopTrees.length; bri++) {
+          var frameTree = desktopTrees[bri];
+          var frameName = htmlSanitizeName(frameTree.nodeName || ("section-" + bri));
+          var frameBody = htmlRenderNodeClean(frameTree, 2);
+          var frameHtml = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>' + (frameTree.nodeName || "Page") + '</title>\n  <link rel="stylesheet" href="styles.css" />\n</head>\n<body>\n' + frameBody + '\n</body>\n</html>';
+          htmlFiles.push({ name: frameName + ".html", content: frameHtml, frameName: frameTree.nodeName || frameName });
+        }
+      } else {
+        // Landing / Full Site: top-level frames represent <body>, render children directly
+        // All frames go into a single index.html
+        var bodyContent = "";
+        for (var bri = 0; bri < desktopTrees.length; bri++) {
+          // htmlRenderNodeClean unwraps "body" tags automatically
+          bodyContent += htmlRenderNodeClean(desktopTrees[bri], 2) + "\n";
+        }
+        var pageTitle = desktopTrees.length > 0 ? (desktopTrees[0].nodeName || "Page") : "Page";
+        var indexHtml = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>' + pageTitle + '</title>\n  <link rel="stylesheet" href="styles.css" />\n</head>\n<body>\n' + bodyContent + '</body>\n</html>';
+        htmlFiles.push({ name: "index.html", content: indexHtml, frameName: pageTitle });
       }
 
       figma.ui.postMessage({ type: "build-html-progress", phase: "Done!", percent: 100 });
@@ -381,6 +419,21 @@ figma.ui.onmessage = async function(msg) {
       });
     } catch(e) {
       figma.ui.postMessage({ type: "build-html-error", error: String(e) });
+    }
+  }
+
+  if (msg.type === "save-api-key") {
+    try {
+      await figma.clientStorage.setAsync("wf-ai-api-key", msg.key || "");
+    } catch(e) {}
+  }
+
+  if (msg.type === "load-api-key") {
+    try {
+      var key = await figma.clientStorage.getAsync("wf-ai-api-key");
+      figma.ui.postMessage({ type: "api-key-loaded", key: key || "" });
+    } catch(e) {
+      figma.ui.postMessage({ type: "api-key-loaded", key: "" });
     }
   }
 

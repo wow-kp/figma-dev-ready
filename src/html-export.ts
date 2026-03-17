@@ -268,9 +268,16 @@ export function htmlExtractNodeCSS(node, cssVars) {
   return styles;
 }
 
-export function htmlGetSemanticTag(node) {
+export function htmlGetSemanticTag(node, depth, pageType) {
   var name = (node.name || "").toLowerCase();
   var type = node.type;
+
+  // Top-level frame tag depends on page type
+  if (depth === 0 && (type === "FRAME" || type === "SECTION")) {
+    if (pageType === "promo") return "section";
+    // landing/fullsite: top-level represents <body>, handled by skipping wrapper in main.ts
+    if (pageType === "landing" || pageType === "fullsite") return "body";
+  }
 
   if (type === "TEXT") {
     var fs = typeof node.fontSize === "number" ? node.fontSize : 14;
@@ -326,10 +333,23 @@ export function htmlGetSemanticTag(node) {
   return "div";
 }
 
-export function htmlGetSemanticClass(node) {
-  var name = (node.name || "").toLowerCase();
-  // Convert node name to a CSS class
-  return htmlSanitizeName(node.name || "element");
+export function htmlGetSemanticClass(node, tag) {
+  // Semantic tags use tag-based short names
+  if (tag === "nav" || tag === "header" || tag === "footer" || tag === "main") return tag;
+  if (tag === "section") {
+    var sn = htmlAbbreviateName(node.name || "");
+    return sn || "section";
+  }
+  if (tag === "button") return "btn";
+  if (tag === "input") return "input";
+  if (tag === "select") return "select";
+  if (tag === "a") return "link";
+  if (/^h[1-6]$/.test(tag)) return tag;
+  if (tag === "p") return "text";
+  if (tag === "img") return "img";
+  // For divs: try abbreviated name from node
+  var abbr = htmlAbbreviateName(node.name || "");
+  return abbr || "box";
 }
 
 export function htmlNodeIsExportableImage(node) {
@@ -351,21 +371,37 @@ export function htmlNodeIsExportableImage(node) {
 }
 
 export function htmlNodeHasBgImageVar(node) {
-  // Check if the node (or its main component) has the "background-image" boolean variable bound
+  // Check if the node (or its main component) is marked as a background image.
+  // Detection priority: pluginData "role" → variable binding → component name fallback
   try {
+    // 1. Direct pluginData check
+    if (node.getPluginData && node.getPluginData("role") === "background-image") return true;
+
+    // 2. For instances, check the main component's pluginData
+    if (node.type === "INSTANCE" && node.mainComponent) {
+      if (node.mainComponent.getPluginData && node.mainComponent.getPluginData("role") === "background-image") return true;
+
+      // Also check the component set
+      var parentSet = node.mainComponent.parent;
+      if (parentSet && parentSet.type === "COMPONENT_SET" && parentSet.getPluginData && parentSet.getPluginData("role") === "background-image") return true;
+    }
+
+    // 3. Legacy: variable binding check
     var bv = node.boundVariables || {};
     if (bv.visible) {
       var v = figma.variables.getVariableById(bv.visible.id);
       if (v && v.name === "background-image") return true;
     }
-    // For instances, check the main component's binding
     if (node.type === "INSTANCE" && node.mainComponent) {
       var compBv = node.mainComponent.boundVariables || {};
       if (compBv.visible) {
         var cv = figma.variables.getVariableById(compBv.visible.id);
         if (cv && cv.name === "background-image") return true;
       }
-      // Also check component set name
+    }
+
+    // 4. Fallback: name-based detection
+    if (node.type === "INSTANCE" && node.mainComponent) {
       var setName = node.mainComponent.parent && node.mainComponent.parent.type === "COMPONENT_SET"
         ? node.mainComponent.parent.name : node.mainComponent.name;
       if (setName.toLowerCase().indexOf("background image") !== -1 || setName.toLowerCase().indexOf("background-image") !== -1) return true;
@@ -419,13 +455,13 @@ export async function htmlExportImage(node, progressCb) {
   }
 }
 
-export function htmlWalkNode(node, cssVars, images, depth, classCounter) {
+export function htmlWalkNode(node, cssVars, images, depth, classCounter, pageType) {
   if (!node || node.visible === false) return null;
   if (depth > 20) return null; // safety limit
   if (!classCounter) classCounter = {};
 
-  var tag = htmlGetSemanticTag(node);
-  var rawClass = htmlGetSemanticClass(node);
+  var tag = htmlGetSemanticTag(node, depth, pageType);
+  var rawClass = htmlGetSemanticClass(node, tag);
   // Deduplicate class names — append index if already seen
   if (!classCounter[rawClass]) classCounter[rawClass] = 0;
   classCounter[rawClass]++;
@@ -467,7 +503,7 @@ export function htmlWalkNode(node, cssVars, images, depth, classCounter) {
   // Walk children (skip for exportable images — they're leaf <img> tags)
   if ("children" in node && node.children && !isExportableImage) {
     for (var i = 0; i < node.children.length; i++) {
-      var child = htmlWalkNode(node.children[i], cssVars, images, depth + 1, classCounter);
+      var child = htmlWalkNode(node.children[i], cssVars, images, depth + 1, classCounter, pageType);
       if (child) children.push(child);
     }
   }
@@ -510,6 +546,7 @@ export function htmlWalkNode(node, cssVars, images, depth, classCounter) {
   return {
     tag: tag,
     className: className,
+    utilityClasses: [],
     styles: styles,
     text: text,
     imageName: imageName,
@@ -522,7 +559,7 @@ export function htmlWalkNode(node, cssVars, images, depth, classCounter) {
   };
 }
 
-export function htmlRenderCSS(cssVars, desktopTree, mobileTree) {
+export function htmlRenderCSS(cssVars, desktopTree, mobileTree, tokens) {
   var lines = [];
 
   // CSS custom properties
@@ -542,6 +579,15 @@ export function htmlRenderCSS(cssVars, desktopTree, mobileTree) {
   lines.push("input, select { font: inherit; display: block; width: 100%; }");
   lines.push("a { text-decoration: none; color: inherit; }");
   lines.push("");
+
+  // Utility classes
+  var utilCSS = htmlGenerateUtilityCSS(tokens, cssVars);
+  if (utilCSS) {
+    lines.push(utilCSS);
+    lines.push("");
+  }
+
+  lines.push("/* ── Component Styles ─────────────────────────────────── */");
 
   // Component styles from tree
   var classStyles = {};
@@ -627,7 +673,20 @@ export function htmlRenderNodeClean(tree, indent) {
   var lines = [];
 
   var attrs = "";
-  if (tree.className) attrs += ' class="' + tree.className + '"';
+  var allClasses = [];
+  if (tree.className) allClasses.push(tree.className);
+  if (tree.utilityClasses) {
+    for (var ui = 0; ui < tree.utilityClasses.length; ui++) allClasses.push(tree.utilityClasses[ui]);
+  }
+  if (allClasses.length > 0) attrs += ' class="' + allClasses.join(" ") + '"';
+
+  // "body" tag from landing/fullsite: skip wrapper, render children directly
+  if (tree.tag === "body" && tree.children && tree.children.length > 0) {
+    for (var bi = 0; bi < tree.children.length; bi++) {
+      lines.push(htmlRenderNodeClean(tree.children[bi], indent));
+    }
+    return lines.join("\n");
+  }
 
   if (tree.tag === "img") {
     var src = tree.imageName ? "assets/" + tree.imageName : "assets/placeholder.png";
@@ -702,4 +761,251 @@ export function htmlCountImages(tree) {
     count += htmlCountImages(tree.children[i]);
   }
   return count;
+}
+
+// ── Utility CSS Class System ──────────────────────────────────────────────
+
+export function htmlAbbreviateName(name) {
+  var words = name.toLowerCase().replace(/[^a-zA-Z0-9]/g, " ").trim().split(/\s+/).filter(function(w) { return w.length > 0; });
+  var skip = ["the","a","an","and","or","that","this","is","of","for","in","on","to","with",
+    "frame","group","auto","layout","wrapper","container","component","instance",
+    "section","page","div","block","element","item","default","variant","property"];
+  var meaningful = words.filter(function(w) { return skip.indexOf(w) === -1; });
+  if (meaningful.length === 0) return "";
+  var result = meaningful.slice(0, 2).join("-");
+  if (result.length > 20) result = result.substring(0, 20).replace(/-$/, "");
+  return result.replace(/[^a-zA-Z0-9-]/g, "");
+}
+
+export function htmlBuildUtilityMap(tokens) {
+  var map = {};
+  // Layout
+  map["display:flex"] = "flex";
+  map["flex-direction:column"] = "flex-col";
+  map["flex-direction:row"] = "flex-row";
+  map["flex-wrap:wrap"] = "flex-wrap";
+  map["align-items:flex-start"] = "items-start";
+  map["align-items:center"] = "items-center";
+  map["align-items:flex-end"] = "items-end";
+  map["align-items:baseline"] = "items-baseline";
+  map["justify-content:flex-start"] = "justify-start";
+  map["justify-content:center"] = "justify-center";
+  map["justify-content:flex-end"] = "justify-end";
+  map["justify-content:space-between"] = "justify-between";
+  map["width:100%"] = "w-full";
+  map["height:100%"] = "h-full";
+  map["flex:1 1 0"] = "flex-1";
+  map["overflow:hidden"] = "overflow-hidden";
+  map["position:relative"] = "relative";
+  map["position:absolute"] = "absolute";
+  map["text-align:left"] = "text-left";
+  map["text-align:center"] = "text-center";
+  map["text-align:right"] = "text-right";
+  map["text-align:justify"] = "text-justify";
+  map["flex-shrink:0"] = "shrink-0";
+
+  // Spacing (gap)
+  if (tokens && tokens.spacing) {
+    for (var si = 0; si < tokens.spacing.length; si++) {
+      var sp = tokens.spacing[si];
+      if (sp.value === "0") continue;
+      var val = sp.value + "px";
+      map["gap:" + val] = "gap-" + sp.name;
+    }
+  }
+
+  // Font weight
+  var wn = {"100":"thin","200":"extralight","300":"light","400":"normal","500":"medium","600":"semibold","700":"bold","800":"extrabold","900":"black"};
+  for (var w in wn) { if (wn.hasOwnProperty(w)) map["font-weight:" + w] = "font-" + wn[w]; }
+
+  // Font size
+  if (tokens && tokens.typography && tokens.typography.sizes) {
+    for (var tsi = 0; tsi < tokens.typography.sizes.length; tsi++) {
+      var ts = tokens.typography.sizes[tsi];
+      map["font-size:" + ts.value + "px"] = "text-" + ts.name;
+    }
+  }
+
+  // Line height
+  if (tokens && tokens.typography && tokens.typography.lineHeights) {
+    for (var li = 0; li < tokens.typography.lineHeights.length; li++) {
+      var lh = tokens.typography.lineHeights[li];
+      map["line-height:" + lh.value] = "leading-" + lh.name;
+    }
+  }
+
+  // Border radius
+  if (tokens && tokens.radius) {
+    for (var ri = 0; ri < tokens.radius.length; ri++) {
+      var rad = tokens.radius[ri];
+      map["border-radius:" + rad.value + "px"] = "rounded-" + rad.name;
+    }
+  }
+
+  return map;
+}
+
+export function htmlBuildSpacingLookup(tokens) {
+  var lookup = {};
+  if (tokens && tokens.spacing) {
+    for (var i = 0; i < tokens.spacing.length; i++) {
+      var sp = tokens.spacing[i];
+      if (sp.value === "0") continue;
+      var val = sp.value + "px";
+      lookup[val] = sp.name;
+    }
+  }
+  return lookup;
+}
+
+export function htmlAddColorUtilities(utilMap, cssVars) {
+  var varKeys = Object.keys(cssVars);
+  for (var i = 0; i < varKeys.length; i++) {
+    var varName = varKeys[i];
+    var val = cssVars[varName];
+    if (typeof val === "string" && (val.indexOf("rgb") === 0 || val.indexOf("#") === 0)) {
+      var shortName = varName.replace(/^--/, "");
+      utilMap["background-color:var(" + varName + ")"] = "bg-" + shortName;
+      utilMap["color:var(" + varName + ")"] = "text-" + shortName;
+    }
+  }
+}
+
+export function htmlGenerateUtilityCSS(tokens, cssVars) {
+  var lines = [];
+  lines.push("/* ── Layout Utilities ─────────────────────────────────── */");
+  lines.push(".flex { display: flex; }");
+  lines.push(".flex-col { flex-direction: column; }");
+  lines.push(".flex-row { flex-direction: row; }");
+  lines.push(".flex-wrap { flex-wrap: wrap; }");
+  lines.push(".flex-1 { flex: 1 1 0; }");
+  lines.push(".shrink-0 { flex-shrink: 0; }");
+  lines.push(".items-start { align-items: flex-start; }");
+  lines.push(".items-center { align-items: center; }");
+  lines.push(".items-end { align-items: flex-end; }");
+  lines.push(".items-baseline { align-items: baseline; }");
+  lines.push(".justify-start { justify-content: flex-start; }");
+  lines.push(".justify-center { justify-content: center; }");
+  lines.push(".justify-end { justify-content: flex-end; }");
+  lines.push(".justify-between { justify-content: space-between; }");
+  lines.push(".w-full { width: 100%; }");
+  lines.push(".h-full { height: 100%; }");
+  lines.push(".overflow-hidden { overflow: hidden; }");
+  lines.push(".relative { position: relative; }");
+  lines.push(".absolute { position: absolute; }");
+  lines.push(".text-left { text-align: left; }");
+  lines.push(".text-center { text-align: center; }");
+  lines.push(".text-right { text-align: right; }");
+  lines.push(".text-justify { text-align: justify; }");
+  lines.push("");
+
+  // Spacing
+  if (tokens && tokens.spacing) {
+    lines.push("/* ── Spacing Utilities ────────────────────────────────── */");
+    for (var si = 0; si < tokens.spacing.length; si++) {
+      var sp = tokens.spacing[si];
+      if (sp.value === "0") continue;
+      var v = sp.value + "px";
+      lines.push(".gap-" + sp.name + " { gap: " + v + "; }");
+    }
+    for (var si2 = 0; si2 < tokens.spacing.length; si2++) {
+      var sp2 = tokens.spacing[si2];
+      if (sp2.value === "0") continue;
+      var v2 = sp2.value + "px";
+      lines.push(".p-" + sp2.name + " { padding: " + v2 + "; }");
+      lines.push(".px-" + sp2.name + " { padding-left: " + v2 + "; padding-right: " + v2 + "; }");
+      lines.push(".py-" + sp2.name + " { padding-top: " + v2 + "; padding-bottom: " + v2 + "; }");
+    }
+    lines.push("");
+  }
+
+  // Typography
+  lines.push("/* ── Typography Utilities ─────────────────────────────── */");
+  var wn = {"100":"thin","200":"extralight","300":"light","400":"normal","500":"medium","600":"semibold","700":"bold","800":"extrabold","900":"black"};
+  for (var w in wn) { if (wn.hasOwnProperty(w)) lines.push(".font-" + wn[w] + " { font-weight: " + w + "; }"); }
+  if (tokens && tokens.typography && tokens.typography.sizes) {
+    for (var tsi = 0; tsi < tokens.typography.sizes.length; tsi++) {
+      var ts = tokens.typography.sizes[tsi];
+      lines.push(".text-" + ts.name + " { font-size: " + ts.value + "px; }");
+    }
+  }
+  if (tokens && tokens.typography && tokens.typography.lineHeights) {
+    for (var li = 0; li < tokens.typography.lineHeights.length; li++) {
+      var lh = tokens.typography.lineHeights[li];
+      lines.push(".leading-" + lh.name + " { line-height: " + lh.value + "; }");
+    }
+  }
+  lines.push("");
+
+  // Border radius
+  if (tokens && tokens.radius) {
+    lines.push("/* ── Border Radius Utilities ──────────────────────────── */");
+    for (var ri = 0; ri < tokens.radius.length; ri++) {
+      var rad = tokens.radius[ri];
+      lines.push(".rounded-" + rad.name + " { border-radius: " + rad.value + "px; }");
+    }
+    lines.push("");
+  }
+
+  // Color utilities from collected CSS vars
+  if (cssVars) {
+    var colorLines = [];
+    var varKeys = Object.keys(cssVars).sort();
+    for (var ci = 0; ci < varKeys.length; ci++) {
+      var varName = varKeys[ci];
+      var cval = cssVars[varName];
+      if (typeof cval === "string" && (cval.indexOf("rgb") === 0 || cval.indexOf("#") === 0)) {
+        var shortName = varName.replace(/^--/, "");
+        colorLines.push(".bg-" + shortName + " { background-color: var(" + varName + "); }");
+        colorLines.push(".text-" + shortName + " { color: var(" + varName + "); }");
+      }
+    }
+    if (colorLines.length > 0) {
+      lines.push("/* ── Color Utilities ──────────────────────────────────── */");
+      for (var cli = 0; cli < colorLines.length; cli++) lines.push(colorLines[cli]);
+      lines.push("");
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
+  if (!tree) return;
+  var utils = [];
+  var remaining = {};
+
+  var keys = Object.keys(tree.styles);
+  for (var i = 0; i < keys.length; i++) {
+    var prop = keys[i];
+    var val = tree.styles[prop];
+    var lookup = prop + ":" + val;
+
+    if (utilMap[lookup]) {
+      utils.push(utilMap[lookup]);
+    } else if (prop === "padding" && spacingLookup) {
+      var parts = val.split(" ");
+      // Skip var() padding — already references design system
+      var hasVar = val.indexOf("var(") !== -1;
+      if (!hasVar && parts.length === 1 && spacingLookup[parts[0]]) {
+        utils.push("p-" + spacingLookup[parts[0]]);
+      } else if (!hasVar && parts.length === 2 && spacingLookup[parts[0]] && spacingLookup[parts[1]]) {
+        utils.push("py-" + spacingLookup[parts[0]]);
+        utils.push("px-" + spacingLookup[parts[1]]);
+      } else {
+        remaining[prop] = val;
+      }
+    } else {
+      remaining[prop] = val;
+    }
+  }
+
+  tree.utilityClasses = utils;
+  tree.styles = remaining;
+
+  if (tree.children) {
+    for (var ci = 0; ci < tree.children.length; ci++) {
+      htmlAssignUtilities(tree.children[ci], utilMap, spacingLookup);
+    }
+  }
 }

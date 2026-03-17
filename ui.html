@@ -445,6 +445,27 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
         Include mobile responsive styles
       </label>
     </div>
+    <!-- AI Enhancement -->
+    <div style="margin-bottom:12px;padding:10px;background:#181825;border:1px solid #313244;border-radius:8px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#a6adc8;cursor:pointer;margin-bottom:0;">
+        <input type="checkbox" id="bh-ai-enhance" checked style="accent-color:#cba6f7;" />
+        Enhance with Claude AI
+      </label>
+      <div id="bh-ai-details" style="margin-top:8px;">
+        <div style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.4;">Claude refines semantics, accessibility, and CSS quality.</div>
+        <div id="bh-ai-key-section" style="display:none;">
+          <label style="display:block;font-size:10px;color:#a6adc8;margin-bottom:4px;">Anthropic API Key</label>
+          <div style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.5;">To get an API key: 1. Go to <a href="https://console.anthropic.com/" target="_blank" style="color:#89b4fa;text-decoration:underline;">console.anthropic.com</a> 2. Sign up or log in 3. Navigate to API Keys 4. Create a new key</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+            <input type="password" id="bh-api-key" placeholder="sk-ant-..."
+              style="flex:1;padding:6px 8px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;" />
+            <button id="bh-key-toggle" style="padding:4px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;font-size:10px;color:#a6adc8;cursor:pointer;">Show</button>
+          </div>
+          <div id="bh-key-status" style="font-size:10px;min-height:14px;"></div>
+        </div>
+        <div id="bh-ai-mode-info" style="font-size:10px;color:#6c7086;margin-top:4px;"></div>
+      </div>
+    </div>
     <button id="bh-generate-btn" style="width:100%;padding:10px 16px;background:#89b4fa;color:#1e1e2e;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;">Generate HTML</button>
     <!-- Progress -->
     <div id="bh-progress" style="display:none;margin-top:12px;">
@@ -457,6 +478,12 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
     <div id="bh-error" style="display:none;margin-top:12px;padding:10px;background:#45273a;border-radius:8px;font-size:11px;color:#f38ba8;"></div>
     <!-- Results -->
     <div id="bh-results" style="display:none;margin-top:16px;">
+      <div id="bh-version-toggle" style="display:none;margin-bottom:10px;">
+        <div style="display:flex;gap:4px;background:#181825;border-radius:6px;padding:3px;">
+          <button id="bh-view-raw" style="flex:1;padding:5px 8px;font-size:11px;font-weight:600;border:none;border-radius:4px;cursor:pointer;background:#313244;color:#cdd6f4;">Raw</button>
+          <button id="bh-view-ai" style="flex:1;padding:5px 8px;font-size:11px;font-weight:600;border:none;border-radius:4px;cursor:pointer;background:#cba6f7;color:#1e1e2e;">AI Enhanced</button>
+        </div>
+      </div>
       <div id="bh-stats" style="font-size:11px;color:#a6adc8;margin-bottom:10px;text-align:center;"></div>
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <button id="bh-save-btn" style="flex:1;padding:8px 12px;background:#a6e3a1;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;">Save to Folder</button>
@@ -539,12 +566,12 @@ document.getElementById("run-btn").addEventListener("click",function(){
 });
 var GROUPS_ORDER=[
   {label:"Naming & Structure",keys:["naming","namingFormat","deepNesting"]},
-  {label:"Layout",            keys:["autoLayout"]},
+  {label:"Layout",            keys:["autoLayout","fixedSize"]},
   {label:"Variables & Styles",keys:["colors","spacingVars","radiusVars","opacityVars"]},
   {label:"Typography",        keys:["textStyles","mixedText"]},
   {label:"Hygiene",           keys:["hidden","empty","unsavedStyles"]},
 ];
-var WEIGHTS_UI={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+var WEIGHTS_UI={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
 function priorityBadge(key){var w=WEIGHTS_UI[key]||1;if(w>=5)return"<span class='priority p-critical'>Critical</span>";if(w>=4)return"<span class='priority p-high'>High</span>";if(w>=3)return"<span class='priority p-medium'>Medium</span>";return"<span class='priority p-low'>Low</span>";}
 // Returns true when all Critical + High priority audit checks have 0 issues
 function auditCritHighPass(data) {
@@ -3624,31 +3651,369 @@ window.onmessage=function(event){
     if (genBtn) { genBtn.disabled = false; genBtn.textContent = "Generate HTML"; }
   }
   if(msg.type==="build-html-result"){
-    _bhLastResult = msg;
-    var progR = document.getElementById("bh-progress");
-    if (progR) progR.style.display = "none";
-    var results = document.getElementById("bh-results");
-    if (results) results.style.display = "";
-    var stats = document.getElementById("bh-stats");
-    if (stats) stats.textContent = msg.stats.files + " HTML files, " + msg.stats.images + " images, " + msg.stats.variables + " CSS variables";
-    var preview = document.getElementById("bh-preview");
-    if (preview) {
-      var previewText = "";
-      var hf = msg.htmlFiles || [];
-      for (var phi = 0; phi < hf.length; phi++) {
-        previewText += "/* ── " + hf[phi].name + " ── */\n" + hf[phi].content + "\n\n";
-      }
-      preview.textContent = previewText;
+    _bhLastRawResult = JSON.parse(JSON.stringify(msg));
+    var aiEnabled = document.getElementById("bh-ai-enhance").checked;
+    if (aiEnabled) {
+      var bar = document.getElementById("bh-progress-bar");
+      if (bar) bar.style.width = "90%";
+      var txt = document.getElementById("bh-progress-text");
+      if (txt) txt.textContent = "Enhancing with Claude AI…";
+      bhCallClaudeAPI(msg.htmlFiles, msg.css, function(err, refined) {
+        var progR = document.getElementById("bh-progress");
+        if (progR) progR.style.display = "none";
+        if (err) {
+          var errDiv = document.getElementById("bh-error");
+          if (errDiv) { errDiv.style.display = ""; errDiv.textContent = "AI enhancement failed: " + err + " — showing raw output."; }
+          _bhLastEnhancedResult = null;
+          bhShowResults(_bhLastRawResult, null);
+        } else {
+          _bhLastEnhancedResult = {
+            htmlFiles: refined.htmlFiles,
+            css: refined.css,
+            images: msg.images,
+            stats: msg.stats
+          };
+          bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
+        }
+        var genBtn2 = document.getElementById("bh-generate-btn");
+        if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
+      });
+    } else {
+      var progR = document.getElementById("bh-progress");
+      if (progR) progR.style.display = "none";
+      _bhLastEnhancedResult = null;
+      bhShowResults(msg, null);
+      var genBtn2 = document.getElementById("bh-generate-btn");
+      if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
     }
-    var cssPreview = document.getElementById("bh-css-preview");
-    if (cssPreview) cssPreview.textContent = msg.css || "";
-    var genBtn2 = document.getElementById("bh-generate-btn");
-    if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
+  }
+  if(msg.type==="user-info"){
+    _figmaUserId = msg.userId || "";
+    _figmaUserName = msg.userName || "";
+  }
+  if(msg.type==="api-key-loaded"){
+    _bhApiKey = msg.key || "";
+    var inp = document.getElementById("bh-api-key");
+    if (inp) inp.value = _bhApiKey;
+    bhUpdateAiModeUI();
   }
 };
 
 // ── Build HTML button handlers ──
 var _bhLastResult = null;
+var _bhLastRawResult = null;
+var _bhLastEnhancedResult = null;
+var _bhViewingEnhanced = false;
+var _figmaUserId = "";
+var _figmaUserName = "";
+var _bhApiKey = "";
+
+// Proxy URL — update this after deploying the Cloudflare Worker
+// Set to empty string "" to disable proxy mode (API key only)
+var _bhProxyUrl = "https://figma-dev-ready-proxy.wow-kp.workers.dev";
+
+var _bhProxyHealthy = false;
+var _bhProxyChecked = false;
+
+function bhHasProxy() {
+  return _bhProxyUrl && _bhProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhProxyUrl.indexOf("workers.dev") !== -1;
+}
+
+function bhCheckProxyHealth() {
+  if (!bhHasProxy()) { _bhProxyChecked = true; _bhProxyHealthy = false; parent.postMessage({ pluginMessage: { type: "load-api-key" } }, "*"); bhUpdateAiModeUI(); return; }
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", _bhProxyUrl + "/health", true);
+  xhr.timeout = 5000;
+  xhr.onload = function() {
+    _bhProxyChecked = true;
+    _bhProxyHealthy = (xhr.status === 200);
+    if (!_bhProxyHealthy) {
+      // Proxy down — load saved API key as fallback
+      parent.postMessage({ pluginMessage: { type: "load-api-key" } }, "*");
+    }
+    bhUpdateAiModeUI();
+  };
+  xhr.onerror = function() {
+    _bhProxyChecked = true;
+    _bhProxyHealthy = false;
+    parent.postMessage({ pluginMessage: { type: "load-api-key" } }, "*");
+    bhUpdateAiModeUI();
+  };
+  xhr.ontimeout = function() {
+    _bhProxyChecked = true;
+    _bhProxyHealthy = false;
+    parent.postMessage({ pluginMessage: { type: "load-api-key" } }, "*");
+    bhUpdateAiModeUI();
+  };
+  xhr.send();
+}
+
+function bhUpdateAiModeUI() {
+  var keySection = document.getElementById("bh-ai-key-section");
+  var modeInfo = document.getElementById("bh-ai-mode-info");
+  var details = document.getElementById("bh-ai-details");
+  var checked = document.getElementById("bh-ai-enhance").checked;
+  if (details) details.style.display = checked ? "" : "none";
+  if (!checked) return;
+
+  if (bhHasProxy() && _bhProxyHealthy) {
+    // Proxy available and healthy
+    if (keySection) keySection.style.display = "none";
+    if (modeInfo) { modeInfo.style.display = ""; modeInfo.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Using secure proxy. <a href='#' id='bh-switch-to-key' style='color:#89b4fa;text-decoration:underline;'>Use own API key instead</a>"; }
+    var switchLink = document.getElementById("bh-switch-to-key");
+    if (switchLink) {
+      switchLink.addEventListener("click", function(e) {
+        e.preventDefault();
+        if (keySection) keySection.style.display = "";
+        parent.postMessage({ pluginMessage: { type: "load-api-key" } }, "*");
+        if (modeInfo) modeInfo.innerHTML = "API key mode. <a href='#' id='bh-switch-to-proxy' style='color:#89b4fa;text-decoration:underline;'>Switch back to proxy</a>";
+        var backLink = document.getElementById("bh-switch-to-proxy");
+        if (backLink) backLink.addEventListener("click", function(ev) { ev.preventDefault(); _bhApiKey = ""; var inp = document.getElementById("bh-api-key"); if (inp) inp.value = ""; bhUpdateAiModeUI(); });
+      });
+    }
+  } else if (bhHasProxy() && !_bhProxyChecked) {
+    // Still checking proxy
+    if (keySection) keySection.style.display = "none";
+    if (modeInfo) { modeInfo.style.display = ""; modeInfo.textContent = "Checking proxy connection…"; modeInfo.style.color = "#6c7086"; }
+  } else if (bhHasProxy() && !_bhProxyHealthy) {
+    // Proxy configured but down — show warning and API key input
+    if (keySection) keySection.style.display = "";
+    if (modeInfo) { modeInfo.style.display = ""; modeInfo.innerHTML = "<span style='color:#fab387;'>&#9888;</span> <span style='color:#fab387;'>Proxy unavailable.</span> Enter your own API key to use AI enhancement."; }
+  } else {
+    // No proxy configured — API key required
+    if (keySection) keySection.style.display = "";
+    if (modeInfo) modeInfo.style.display = "none";
+  }
+}
+
+document.getElementById("bh-ai-enhance").addEventListener("change", function() {
+  bhUpdateAiModeUI();
+  if (this.checked && !bhHasProxy() && !_bhApiKey) {
+    parent.postMessage({ pluginMessage: { type: "load-api-key" } }, "*");
+  }
+});
+
+document.getElementById("bh-key-toggle").addEventListener("click", function() {
+  var inp = document.getElementById("bh-api-key");
+  if (inp.type === "password") { inp.type = "text"; this.textContent = "Hide"; }
+  else { inp.type = "password"; this.textContent = "Show"; }
+});
+
+document.getElementById("bh-api-key").addEventListener("change", function() {
+  var key = this.value.trim();
+  _bhApiKey = key;
+  parent.postMessage({ pluginMessage: { type: "save-api-key", key: key } }, "*");
+  var status = document.getElementById("bh-key-status");
+  if (key && key.indexOf("sk-ant-") === 0) {
+    status.textContent = "Key saved.";
+    status.style.color = "#a6e3a1";
+  } else if (key) {
+    status.textContent = "Key saved (does not look like a standard Anthropic key).";
+    status.style.color = "#fab387";
+  } else {
+    status.textContent = "";
+  }
+});
+
+// Initialize AI mode — check proxy health, then update UI
+setTimeout(function() { bhCheckProxyHealth(); }, 100);
+
+function bhBuildDesignContext() {
+  var ctx = "## Design System Context\n";
+  // Colors
+  ctx += "- Primary color: " + (wfColors.primary || "#3B82F6");
+  if (wfColors.secondary) ctx += ", Secondary: " + wfColors.secondary;
+  if (wfColors.tertiary) ctx += ", Tertiary: " + wfColors.tertiary;
+  ctx += ", Text: " + (wfColors.textColor || "#1A1A1A") + "\n";
+  // Custom colors
+  if (wfCustomColors && wfCustomColors.length) {
+    var ccNames = [];
+    for (var cci = 0; cci < wfCustomColors.length; cci++) {
+      ccNames.push(wfCustomColors[cci].name + ": " + wfCustomColors[cci].hex);
+    }
+    ctx += "- Custom colors: " + ccNames.join(", ") + "\n";
+  }
+  // Fonts
+  ctx += "- Primary font: " + (wfFonts.primary || "Inter");
+  if (wfFonts.secondary) ctx += ", Secondary: " + wfFonts.secondary;
+  if (wfFonts.tertiary) ctx += ", Tertiary: " + wfFonts.tertiary;
+  ctx += "\n";
+  // Text styles
+  if (wfTextStyles && wfTextStyles.length) {
+    ctx += "- Text styles: ";
+    var tsNames = [];
+    for (var tsi = 0; tsi < wfTextStyles.length; tsi++) {
+      var ts = wfTextStyles[tsi];
+      tsNames.push(ts.name + " (" + ts.fontSize + "px/" + ts.fontWeight + ")");
+    }
+    ctx += tsNames.join(", ") + "\n";
+  }
+  // Spacing
+  if (wfSpacing && wfSpacing.length) {
+    var spVals = [];
+    for (var spi = 0; spi < wfSpacing.length; spi++) {
+      spVals.push(wfSpacing[spi].name + ": " + wfSpacing[spi].value + "px");
+    }
+    ctx += "- Spacing scale: " + spVals.join(", ") + "\n";
+  }
+  // Page structure
+  ctx += "- Page type: " + (wfPageType || "promo") + "\n";
+  var activeSections = [];
+  for (var sk in wfPromoSections) {
+    if (wfPromoSections[sk]) activeSections.push(sk);
+  }
+  if (activeSections.length) ctx += "- Active sections: " + activeSections.join(", ") + "\n";
+  // Utility classes
+  ctx += "- Utility CSS classes are included (Tailwind-inspired): layout (.flex, .flex-col, .items-center, .justify-center, etc.), spacing (.gap-{n}, .p-{n}, .px-{n}, .py-{n}), typography (.text-{size}, .font-{weight}, .leading-{name}), colors (.bg-{name}, .text-{name}), radius (.rounded-{name})\n";
+  ctx += "- Component classes hold only unique properties not covered by utilities. Prefer utility classes where possible.\n";
+  return ctx;
+}
+
+function bhCallClaudeAPI(htmlFiles, css, callback) {
+  var useProxy = _bhProxyHealthy && !_bhApiKey;
+  if (useProxy && !_figmaUserId) { callback("Unable to identify Figma user. Please reload the plugin.", null); return; }
+  if (!useProxy && !_bhApiKey) { callback("No API key configured. Enter your Anthropic API key to use AI enhancement.", null); return; }
+
+  var htmlSummary = "";
+  for (var i = 0; i < htmlFiles.length; i++) {
+    htmlSummary += "<!-- FILE: " + htmlFiles[i].name + " -->\n" + htmlFiles[i].content + "\n\n";
+  }
+
+  var designContext = bhBuildDesignContext();
+
+  var systemPrompt = "You are an expert frontend developer refining auto-generated HTML/CSS from a Figma design tool. "
+    + "Your job is to improve the code while keeping it functionally and visually identical.\n\n"
+    + designContext + "\n"
+    + "Rules:\n"
+    + "1. PRESERVE all class names exactly — both component classes and utility classes connect HTML to CSS and must not change.\n"
+    + "2. PRESERVE all asset paths (assets/*.png etc) exactly.\n"
+    + "3. Improve semantic HTML: replace generic divs with section, article, main, nav, header, footer, aside, figure, figcaption, ul/li, etc. where appropriate.\n"
+    + "4. Add ARIA attributes (aria-label, role) and meaningful alt text for accessibility.\n"
+    + "5. Clean up CSS: merge duplicate rules, use shorthand properties, remove redundant declarations. If a property is already covered by a utility class, remove it from the component CSS.\n"
+    + "6. Add CSS comments grouping logical sections.\n"
+    + "7. Keep all CSS custom properties (var(--...)) and utility class definitions as-is.\n"
+    + "8. Do NOT add new features, animations, hover effects, or JavaScript.\n"
+    + "9. Do NOT change the visual appearance or layout.\n"
+    + "10. Keep the link to styles.css as an external reference.\n"
+    + "11. Return valid JSON only. No markdown fences, no explanation text outside the JSON.\n"
+    + "12. You may add additional utility classes from the available set if they reduce component CSS duplication.\n"
+    + "13. Do NOT derive class names from text content (e.g. no '.get-50-off-today' or '.sign-up-now'). Use short semantic names (btn, text, card, hero, etc.) and utility classes instead.";
+
+  var userMessage = "Here is the raw HTML and CSS generated from a Figma design.\n\n"
+    + "## HTML Files\n```html\n" + htmlSummary + "```\n\n"
+    + "## CSS (styles.css)\n```css\n" + css + "```\n\n"
+    + "Please refine this code. Return ONLY a JSON object with this exact structure:\n"
+    + "{\"htmlFiles\":[{\"name\":\"filename.html\",\"content\":\"...full refined HTML...\"}],\"css\":\"...full refined CSS...\"}\n"
+    + "Return one entry in htmlFiles for each input file, preserving the file names.";
+
+  var body = JSON.stringify({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 16384,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userMessage }]
+  });
+
+  var xhr = new XMLHttpRequest();
+  if (useProxy) {
+    xhr.open("POST", _bhProxyUrl + "/v1/messages", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.open("POST", "https://api.anthropic.com/v1/messages", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("x-api-key", _bhApiKey);
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        // Strip markdown fences if Claude wrapped the JSON
+        text = text.replace(/^```json\s*/i, "").replace(/\s*```\s*$/, "").trim();
+        var refined = JSON.parse(text);
+        callback(null, refined);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else if (xhr.status === 401) {
+      callback("Authentication failed. Please reload the plugin.", null);
+    } else if (xhr.status === 403) {
+      callback("User not authorized for AI enhancement.", null);
+    } else if (xhr.status === 429) {
+      callback("Rate limit exceeded. Please wait and try again.", null);
+    } else if (xhr.status === 529) {
+      callback("AI service is overloaded. Please try again later.", null);
+    } else {
+      try {
+        var errBody = JSON.parse(xhr.responseText);
+        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
+      } catch(e2) {
+        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
+      }
+    }
+  };
+  xhr.onerror = function() {
+    callback("Network error. Check your connection.", null);
+  };
+  xhr.timeout = 120000;
+  xhr.ontimeout = function() {
+    callback("AI request timed out (120s). The design may be too large for a single request.", null);
+  };
+  xhr.send(body);
+}
+
+function bhShowResults(rawResult, enhancedResult) {
+  var results = document.getElementById("bh-results");
+  if (results) results.style.display = "";
+
+  var toggle = document.getElementById("bh-version-toggle");
+  if (toggle) toggle.style.display = enhancedResult ? "" : "none";
+  if (enhancedResult) _bhViewingEnhanced = true;
+
+  var active = (_bhViewingEnhanced && enhancedResult) ? enhancedResult : rawResult;
+  _bhLastResult = active;
+
+  var label = enhancedResult ? (_bhViewingEnhanced ? " (AI Enhanced)" : " (Raw)") : "";
+  var stats = document.getElementById("bh-stats");
+  if (stats) stats.textContent = active.stats.files + " HTML files, " + active.stats.images + " images, " + active.stats.variables + " CSS variables" + label;
+
+  var preview = document.getElementById("bh-preview");
+  if (preview) {
+    var previewText = "";
+    var hf = active.htmlFiles || [];
+    for (var phi = 0; phi < hf.length; phi++) {
+      previewText += "/* \u2500\u2500 " + hf[phi].name + " \u2500\u2500 */\n" + hf[phi].content + "\n\n";
+    }
+    preview.textContent = previewText;
+  }
+  var cssPreview = document.getElementById("bh-css-preview");
+  if (cssPreview) cssPreview.textContent = active.css || "";
+
+  // Update toggle button styles
+  var rawBtn = document.getElementById("bh-view-raw");
+  var aiBtn = document.getElementById("bh-view-ai");
+  if (rawBtn && aiBtn) {
+    rawBtn.style.background = _bhViewingEnhanced ? "#313244" : "#89b4fa";
+    rawBtn.style.color = _bhViewingEnhanced ? "#cdd6f4" : "#1e1e2e";
+    aiBtn.style.background = _bhViewingEnhanced ? "#cba6f7" : "#313244";
+    aiBtn.style.color = _bhViewingEnhanced ? "#1e1e2e" : "#cdd6f4";
+  }
+}
+
+document.getElementById("bh-view-raw").addEventListener("click", function() {
+  _bhViewingEnhanced = false;
+  bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
+});
+document.getElementById("bh-view-ai").addEventListener("click", function() {
+  _bhViewingEnhanced = true;
+  bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
+});
 
 document.getElementById("bh-generate-btn").addEventListener("click", function() {
   var btn = this;
@@ -3660,7 +4025,7 @@ document.getElementById("bh-generate-btn").addEventListener("click", function() 
   document.getElementById("bh-progress-bar").style.width = "0%";
   document.getElementById("bh-progress-text").textContent = "Starting…";
   var includeMobile = document.getElementById("bh-include-mobile").checked;
-  parent.postMessage({ pluginMessage: { type: "build-html", options: { includeMobile: includeMobile } } }, "*");
+  parent.postMessage({ pluginMessage: { type: "build-html", options: { includeMobile: includeMobile, pageType: wfPageType || "promo", tokens: { spacing: wfSpacing, typography: wfTypography, radius: wfRadius } } } }, "*");
 });
 
 document.getElementById("bh-copy-btn").addEventListener("click", function() {

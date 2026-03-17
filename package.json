@@ -1,0 +1,12 @@
+{
+  "name": "figma-dev-ready",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --outfile=code.js --format=iife --target=es2020",
+    "watch": "esbuild src/main.ts --bundle --outfile=code.js --format=iife --target=es2020 --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "@figma/plugin-typings": "^1.100.0"
+  }
+}

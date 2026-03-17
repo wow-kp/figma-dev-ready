@@ -351,6 +351,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 <div id="tabs">
   <button class="tab-btn active" data-tab="workflow">🗂 Workflow</button>
   <button class="tab-btn"        data-tab="tools">🛠 Tools</button>
+  <button class="tab-btn"        data-tab="buildhtml" id="tab-buildhtml" style="display:none;">🏗 Build HTML</button>
 </div>
 
 <!-- ── TOOLS (container with sub-tabs) ── -->
@@ -430,6 +431,49 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
   </div>
 </div>
 
+<!-- ── BUILD HTML ──────────────────────── -->
+<div class="pane" id="pane-buildhtml" style="overflow-y:auto;">
+  <div style="padding:20px 16px;text-align:center;">
+    <div style="font-size:28px;margin-bottom:8px;">🏗</div>
+    <div style="font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;">Build HTML</div>
+    <div style="font-size:11px;color:#6c7086;line-height:1.4;">Generate production-ready HTML from your dev-ready wireframes.</div>
+  </div>
+  <div id="buildhtml-content" style="padding:0 16px 20px;">
+    <div style="margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#a6adc8;cursor:pointer;">
+        <input type="checkbox" id="bh-include-mobile" checked style="accent-color:#89b4fa;" />
+        Include mobile responsive styles
+      </label>
+    </div>
+    <button id="bh-generate-btn" style="width:100%;padding:10px 16px;background:#89b4fa;color:#1e1e2e;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;">Generate HTML</button>
+    <!-- Progress -->
+    <div id="bh-progress" style="display:none;margin-top:12px;">
+      <div style="background:#313244;border-radius:6px;overflow:hidden;height:6px;margin-bottom:6px;">
+        <div id="bh-progress-bar" style="height:100%;background:#89b4fa;width:0%;transition:width 0.3s;"></div>
+      </div>
+      <div id="bh-progress-text" style="font-size:11px;color:#6c7086;text-align:center;"></div>
+    </div>
+    <!-- Error -->
+    <div id="bh-error" style="display:none;margin-top:12px;padding:10px;background:#45273a;border-radius:8px;font-size:11px;color:#f38ba8;"></div>
+    <!-- Results -->
+    <div id="bh-results" style="display:none;margin-top:16px;">
+      <div id="bh-stats" style="font-size:11px;color:#a6adc8;margin-bottom:10px;text-align:center;"></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button id="bh-save-btn" style="flex:1;padding:8px 12px;background:#a6e3a1;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;">Save to Folder</button>
+        <button id="bh-copy-btn" style="flex:1;padding:8px 12px;background:#313244;color:#cdd6f4;font-size:12px;font-weight:500;border:1px solid #45475a;border-radius:6px;cursor:pointer;">Copy HTML</button>
+      </div>
+      <details style="margin-top:8px;">
+        <summary style="font-size:11px;color:#6c7086;cursor:pointer;margin-bottom:6px;">Preview HTML</summary>
+        <pre id="bh-preview" style="background:#181825;border:1px solid #313244;border-radius:6px;padding:10px;font-size:10px;color:#a6adc8;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
+      </details>
+      <details style="margin-top:8px;">
+        <summary style="font-size:11px;color:#6c7086;cursor:pointer;margin-bottom:6px;">Preview CSS</summary>
+        <pre id="bh-css-preview" style="background:#181825;border:1px solid #313244;border-radius:6px;padding:10px;font-size:10px;color:#a6adc8;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
 <!-- ── WORKFLOW ────────────────────────── -->
 <div class="pane active" id="pane-workflow" style="overflow-y:auto;">
   <div id="wf-container">
@@ -470,6 +514,21 @@ document.querySelectorAll(".sub-tab-btn").forEach(function(btn){
     if(btn.dataset.subtab==="debug")parent.postMessage({pluginMessage:{type:"request-debug"}},"*");
   });
 });
+// Show/hide Build HTML top-level tab based on dev-ready status
+function updateBuildHtmlTab() {
+  var tab = document.getElementById("tab-buildhtml");
+  if (tab) tab.style.display = wfDevReady ? "" : "none";
+  // If Build HTML tab was active but dev-ready revoked, switch back to workflow
+  if (!wfDevReady && tab && tab.classList.contains("active")) {
+    tab.classList.remove("active");
+    document.getElementById("pane-buildhtml").classList.remove("active");
+    var wfBtn = document.querySelector('.tab-btn[data-tab="workflow"]');
+    if (wfBtn) wfBtn.classList.add("active");
+    var wfPane = document.getElementById("pane-workflow");
+    if (wfPane) wfPane.classList.add("active");
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+  }
+}
 // Workflow is the first tab — load it immediately on plugin open
 parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
 
@@ -831,7 +890,10 @@ var wfGenerated = false;
 var wfStep2Color = "red";
 var wfStep3Color = "red";
 var wfStep4Color = "red";
-var wfAuditData = null; // last audit results for Step 4
+var wfAuditData = null; // last audit results for Step 4 (in-memory, not persisted)
+var wfAuditPassed = false; // persisted: crit+high all passed
+var wfAuditScore = -1; // persisted: last audit score
+var wfAuditIssues = 0; // persisted: last total issue count
 var wfDevReady = false; // Step 5 handoff
 var wfDevReadyDate = null;
 
@@ -974,7 +1036,10 @@ function collectSettings() {
     promoFormGrid: JSON.parse(JSON.stringify(wfPromoFormGrid)),
     _promoFieldsMigratedV2: true,
     devReady: wfDevReady,
-    devReadyDate: wfDevReadyDate
+    devReadyDate: wfDevReadyDate,
+    auditPassed: wfAuditPassed,
+    auditScore: wfAuditScore,
+    auditIssues: wfAuditIssues
   };
 }
 
@@ -1038,6 +1103,9 @@ function applyLoadedSettings(s) {
   }
   if (s.devReady !== undefined) wfDevReady = s.devReady;
   if (s.devReadyDate) wfDevReadyDate = s.devReadyDate;
+  if (s.auditPassed !== undefined) wfAuditPassed = s.auditPassed;
+  if (s.auditScore !== undefined) wfAuditScore = s.auditScore;
+  if (s.auditIssues !== undefined) wfAuditIssues = s.auditIssues;
 }
 
 function getWfColors() {
@@ -2927,9 +2995,11 @@ function renderStep4(container) {
 
   var locked = wfStep3Color === "red";
   var hasResults = wfAuditData && !wfAuditData.noPages;
-  var score = hasResults ? wfAuditData.score : -1;
-  var critHighOk = hasResults && auditCritHighPass(wfAuditData);
-  var indicatorColor = locked ? "red" : (!hasResults ? "yellow" : (critHighOk ? "green" : (score >= 50 ? "yellow" : "red")));
+  var hasPersistedResults = !hasResults && wfAuditScore >= 0;
+  var score = hasResults ? wfAuditData.score : wfAuditScore;
+  var critHighOk = hasResults ? auditCritHighPass(wfAuditData) : wfAuditPassed;
+  var hasAnyResults = hasResults || hasPersistedResults;
+  var indicatorColor = locked ? "red" : (!hasAnyResults ? "yellow" : (critHighOk ? "green" : (score >= 50 ? "yellow" : "red")));
   var stepOpen = locked ? false : wfFormState.step4Open;
 
   var step = document.createElement("div");
@@ -2942,7 +3012,7 @@ function renderStep4(container) {
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
       "<div class='wf-step-num'>Step 4</div>" +
-      "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : (hasResults ? " — " + score + "/100" : "")) + "</div>" +
+      "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : ((hasResults || hasPersistedResults) ? " — " + score + "/100" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Generate wireframes first</div>" :
        (stepOpen ? "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>" : "")) +
     "</div>" +
@@ -3025,7 +3095,7 @@ function renderStep4(container) {
     var runBtn = document.createElement("button");
     runBtn.className = "wf-gen-btn";
     runBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
-    runBtn.textContent = hasResults ? "Re-run Audit" : "Run Audit";
+    runBtn.textContent = (hasResults || hasPersistedResults) ? "Re-run Audit" : "Run Audit";
     runBtn.addEventListener("click", function() {
       runBtn.disabled = true; runBtn.textContent = "Scanning…";
       parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
@@ -3098,7 +3168,7 @@ function renderStep5(container) {
       { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
       { label: "Design tokens generated", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
       { label: "Wireframes built", done: wfStep3Color === "green" || wfPromoGenerated, detail: "Desktop & mobile page structures" },
-      { label: "Audit — all critical & high passed", done: auditCritHighPass(wfAuditData), detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : "Not run yet" }
+      { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
     ];
 
     checks.forEach(function(c) {
@@ -3344,6 +3414,10 @@ window.onmessage=function(event){
   var msg=event.data.pluginMessage; if(!msg)return;
   if(msg.type==="load-settings"){
     applyLoadedSettings(msg.settings);
+    // Collapse completed steps by default on load
+    if (wfPromoGenerated) wfFormState.step3Open = false;
+    if (wfAuditPassed) wfFormState.step4Open = false;
+    updateBuildHtmlTab();
     // Re-render workflow if it's visible
     var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
   }
@@ -3441,22 +3515,28 @@ window.onmessage=function(event){
       { cols: 2, colSpans: [6, 6], fields: [2, 3] },
       { cols: 1, colSpans: [12], fields: [4] }
     ];
-    wfAuditData = null;
+    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfFormState.step2Open = true;
     wfFormState.step2Toggled = false;
     wfFormState.step4Open = true;
     wfFormState.step5Open = true;
     wfDevReady = false;
     wfDevReadyDate = null;
+    updateBuildHtmlTab();
     // Re-render workflow
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
   if(msg.type==="audit-results"){
     renderAudit(msg.results);
     wfAuditData = msg.results;
-    if (msg.results && msg.results.score === 100) {
+    // Persist audit summary
+    wfAuditPassed = auditCritHighPass(msg.results);
+    wfAuditScore = (msg.results && !msg.results.noPages) ? msg.results.score : -1;
+    wfAuditIssues = (msg.results && msg.results.totalIssues !== undefined) ? msg.results.totalIssues : 0;
+    if (wfAuditPassed) {
       wfFormState.step4Open = false;
     }
+    saveSettings();
     var sc = document.getElementById("wf-container");
     if (sc) renderStep4(sc);
   }
@@ -3496,20 +3576,24 @@ window.onmessage=function(event){
     wfPromoGenerating = false;
     wfPromoGenerated = true;
     wfFormState.step3Open = false;
-    wfAuditData = null;
+    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfFormState.step4Open = true;
     wfDevReady = false;
     wfDevReadyDate = null;
     wfFormState.step5Open = true;
     clearAuditDisplay();
+    updateBuildHtmlTab();
     saveSettings();
     var pc = document.getElementById("wf-container");
     if (pc) renderStep3(pc);
   }
   if(msg.type==="wireframes-deleted"){
     wfPromoGenerated = false;
-    wfAuditData = null;
+    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
+    wfDevReady = false;
+    wfDevReadyDate = null;
     clearAuditDisplay();
+    updateBuildHtmlTab();
     saveSettings();
     var pc2 = document.getElementById("wf-container");
     if (pc2) renderStep3(pc2);
@@ -3518,10 +3602,259 @@ window.onmessage=function(event){
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
   if(msg.type==="cover-status-updated"){
     if (wfDevReady) wfFormState.step5Open = false;
+    updateBuildHtmlTab();
     var sc5 = document.getElementById("wf-container");
     if (sc5) renderStep5(sc5);
   }
+  // ── Build HTML messages ──
+  if(msg.type==="build-html-progress"){
+    var prog = document.getElementById("bh-progress");
+    if (prog) prog.style.display = "";
+    var bar = document.getElementById("bh-progress-bar");
+    if (bar) bar.style.width = (msg.percent || 0) + "%";
+    var txt = document.getElementById("bh-progress-text");
+    if (txt) txt.textContent = msg.phase || "";
+  }
+  if(msg.type==="build-html-error"){
+    var errDiv = document.getElementById("bh-error");
+    if (errDiv) { errDiv.style.display = ""; errDiv.textContent = msg.error || "Unknown error"; }
+    var progE = document.getElementById("bh-progress");
+    if (progE) progE.style.display = "none";
+    var genBtn = document.getElementById("bh-generate-btn");
+    if (genBtn) { genBtn.disabled = false; genBtn.textContent = "Generate HTML"; }
+  }
+  if(msg.type==="build-html-result"){
+    _bhLastResult = msg;
+    var progR = document.getElementById("bh-progress");
+    if (progR) progR.style.display = "none";
+    var results = document.getElementById("bh-results");
+    if (results) results.style.display = "";
+    var stats = document.getElementById("bh-stats");
+    if (stats) stats.textContent = msg.stats.files + " HTML files, " + msg.stats.images + " images, " + msg.stats.variables + " CSS variables";
+    var preview = document.getElementById("bh-preview");
+    if (preview) {
+      var previewText = "";
+      var hf = msg.htmlFiles || [];
+      for (var phi = 0; phi < hf.length; phi++) {
+        previewText += "/* ── " + hf[phi].name + " ── */\n" + hf[phi].content + "\n\n";
+      }
+      preview.textContent = previewText;
+    }
+    var cssPreview = document.getElementById("bh-css-preview");
+    if (cssPreview) cssPreview.textContent = msg.css || "";
+    var genBtn2 = document.getElementById("bh-generate-btn");
+    if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
+  }
 };
+
+// ── Build HTML button handlers ──
+var _bhLastResult = null;
+
+document.getElementById("bh-generate-btn").addEventListener("click", function() {
+  var btn = this;
+  btn.disabled = true;
+  btn.textContent = "Generating…";
+  document.getElementById("bh-error").style.display = "none";
+  document.getElementById("bh-results").style.display = "none";
+  document.getElementById("bh-progress").style.display = "";
+  document.getElementById("bh-progress-bar").style.width = "0%";
+  document.getElementById("bh-progress-text").textContent = "Starting…";
+  var includeMobile = document.getElementById("bh-include-mobile").checked;
+  parent.postMessage({ pluginMessage: { type: "build-html", options: { includeMobile: includeMobile } } }, "*");
+});
+
+document.getElementById("bh-copy-btn").addEventListener("click", function() {
+  if (_bhLastResult && _bhLastResult.htmlFiles && _bhLastResult.htmlFiles.length) {
+    var allHtml = "";
+    for (var ci = 0; ci < _bhLastResult.htmlFiles.length; ci++) {
+      allHtml += "/* ── " + _bhLastResult.htmlFiles[ci].name + " ── */\n" + _bhLastResult.htmlFiles[ci].content + "\n\n";
+    }
+    var ta = document.createElement("textarea");
+    ta.value = allHtml;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    this.textContent = "Copied!";
+    var self = this;
+    setTimeout(function() { self.textContent = "Copy HTML"; }, 1500);
+  }
+});
+
+document.getElementById("bh-save-btn").addEventListener("click", async function() {
+  if (!_bhLastResult) return;
+  var btn = this;
+  try {
+    // Try File System Access API
+    if (window.showDirectoryPicker) {
+      var dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      // Write each HTML file
+      var hFiles = _bhLastResult.htmlFiles || [];
+      for (var hi = 0; hi < hFiles.length; hi++) {
+        var hf = await dirHandle.getFileHandle(hFiles[hi].name, { create: true });
+        var hw = await hf.createWritable();
+        await hw.write(hFiles[hi].content || "");
+        await hw.close();
+      }
+      // Write styles.css
+      var cssFile = await dirHandle.getFileHandle("styles.css", { create: true });
+      var cssWritable = await cssFile.createWritable();
+      await cssWritable.write(_bhLastResult.css || "");
+      await cssWritable.close();
+      // Write images to assets/
+      if (_bhLastResult.images && _bhLastResult.images.length > 0) {
+        var assetsDir = await dirHandle.getDirectoryHandle("assets", { create: true });
+        for (var ii = 0; ii < _bhLastResult.images.length; ii++) {
+          var img = _bhLastResult.images[ii];
+          var imgFile = await assetsDir.getFileHandle(img.name, { create: true });
+          var imgWritable = await imgFile.createWritable();
+          await imgWritable.write(new Uint8Array(img.bytes));
+          await imgWritable.close();
+        }
+      }
+      btn.textContent = "Saved!";
+      setTimeout(function() { btn.textContent = "Save to Folder"; }, 2000);
+    } else {
+      // Fallback: download as zip
+      bhDownloadAsZip(_bhLastResult);
+      btn.textContent = "Downloaded!";
+      setTimeout(function() { btn.textContent = "Save to Folder"; }, 2000);
+    }
+  } catch(e) {
+    if (e.name !== "AbortError") {
+      var errDiv = document.getElementById("bh-error");
+      if (errDiv) { errDiv.style.display = ""; errDiv.textContent = "Save failed: " + e.message; }
+    }
+  }
+});
+
+function bhDownloadAsZip(result) {
+  var files = [];
+  var hFiles = result.htmlFiles || [];
+  for (var hi = 0; hi < hFiles.length; hi++) {
+    files.push({ name: hFiles[hi].name, data: bhStrToBytes(hFiles[hi].content || "") });
+  }
+  files.push({ name: "styles.css", data: bhStrToBytes(result.css || "") });
+  if (result.images) {
+    for (var i = 0; i < result.images.length; i++) {
+      var img = result.images[i];
+      files.push({ name: "assets/" + img.name, data: new Uint8Array(img.bytes) });
+    }
+  }
+  var zipBytes = bhBuildZip(files);
+  var blob = new Blob([zipBytes], { type: "application/zip" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "build-html.zip";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function bhStrToBytes(str) {
+  var enc = new TextEncoder();
+  return enc.encode(str);
+}
+
+// Minimal ZIP builder (store method, no compression — simple & reliable)
+function bhBuildZip(files) {
+  var localHeaders = [];
+  var centralHeaders = [];
+  var offset = 0;
+
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var nameBytes = bhStrToBytes(f.name);
+    var data = f.data;
+    var crc = bhCrc32(data);
+
+    // Local file header (30 + nameLen + dataLen)
+    var lh = new Uint8Array(30 + nameBytes.length + data.length);
+    var lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true);  // signature
+    lv.setUint16(4, 20, true);           // version needed
+    lv.setUint16(6, 0, true);            // flags
+    lv.setUint16(8, 0, true);            // compression: store
+    lv.setUint16(10, 0, true);           // mod time
+    lv.setUint16(12, 0, true);           // mod date
+    lv.setUint32(14, crc, true);         // crc32
+    lv.setUint32(18, data.length, true); // compressed size
+    lv.setUint32(22, data.length, true); // uncompressed size
+    lv.setUint16(26, nameBytes.length, true); // name length
+    lv.setUint16(28, 0, true);           // extra length
+    lh.set(nameBytes, 30);
+    lh.set(data, 30 + nameBytes.length);
+    localHeaders.push(lh);
+
+    // Central directory header (46 + nameLen)
+    var ch = new Uint8Array(46 + nameBytes.length);
+    var cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);  // signature
+    cv.setUint16(4, 20, true);           // version made by
+    cv.setUint16(6, 20, true);           // version needed
+    cv.setUint16(8, 0, true);            // flags
+    cv.setUint16(10, 0, true);           // compression: store
+    cv.setUint16(12, 0, true);           // mod time
+    cv.setUint16(14, 0, true);           // mod date
+    cv.setUint32(16, crc, true);         // crc32
+    cv.setUint32(20, data.length, true); // compressed size
+    cv.setUint32(24, data.length, true); // uncompressed size
+    cv.setUint16(28, nameBytes.length, true); // name length
+    cv.setUint16(30, 0, true);           // extra length
+    cv.setUint16(32, 0, true);           // comment length
+    cv.setUint16(34, 0, true);           // disk number
+    cv.setUint16(36, 0, true);           // internal attrs
+    cv.setUint32(38, 0, true);           // external attrs
+    cv.setUint32(42, offset, true);      // local header offset
+    ch.set(nameBytes, 46);
+    centralHeaders.push(ch);
+
+    offset += lh.length;
+  }
+
+  // End of central directory
+  var cdOffset = offset;
+  var cdSize = 0;
+  for (var ci = 0; ci < centralHeaders.length; ci++) cdSize += centralHeaders[ci].length;
+
+  var eocd = new Uint8Array(22);
+  var ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);           // signature
+  ev.setUint16(4, 0, true);                     // disk number
+  ev.setUint16(6, 0, true);                     // cd disk
+  ev.setUint16(8, files.length, true);           // cd entries on disk
+  ev.setUint16(10, files.length, true);          // cd entries total
+  ev.setUint32(12, cdSize, true);                // cd size
+  ev.setUint32(16, cdOffset, true);              // cd offset
+  ev.setUint16(20, 0, true);                     // comment length
+
+  // Combine all parts
+  var total = offset + cdSize + 22;
+  var zip = new Uint8Array(total);
+  var pos = 0;
+  for (var li = 0; li < localHeaders.length; li++) { zip.set(localHeaders[li], pos); pos += localHeaders[li].length; }
+  for (var di = 0; di < centralHeaders.length; di++) { zip.set(centralHeaders[di], pos); pos += centralHeaders[di].length; }
+  zip.set(eocd, pos);
+  return zip;
+}
+
+// CRC32 lookup table
+var _bhCrcTable = null;
+function bhCrc32(data) {
+  if (!_bhCrcTable) {
+    _bhCrcTable = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); }
+      _bhCrcTable[n] = c;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < data.length; i++) { crc = _bhCrcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8); }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
 </script>
 </body>
 </html>

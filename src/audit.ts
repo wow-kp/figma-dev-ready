@@ -90,6 +90,66 @@ export function getKebabViolation(node) {
   return null;
 }
 
+// Serialize a node's context for AI naming — compact representation (~100-150 tokens)
+export function serializeNodeForNaming(node) {
+  var result: any = {
+    id: node.id,
+    type: node.type,
+    currentName: node.name,
+    w: Math.round(node.width || 0),
+    h: Math.round(node.height || 0)
+  };
+  if (node.layoutMode && node.layoutMode !== "NONE") result.layout = node.layoutMode;
+  if (node.cornerRadius && node.cornerRadius !== figma.mixed && node.cornerRadius > 0) result.radius = node.cornerRadius;
+  if (node.opacity !== undefined && node.opacity < 1) result.opacity = Math.round(node.opacity * 100) / 100;
+
+  // Parent context
+  if (node.parent && node.parent.type !== "PAGE") {
+    result.parent = { name: node.parent.name, type: node.parent.type };
+    if (node.parent.layoutMode && node.parent.layoutMode !== "NONE") result.parent.layout = node.parent.layoutMode;
+  }
+
+  // Sibling names (hints at list/grid context)
+  if (node.parent && "children" in node.parent && node.parent.children.length > 1) {
+    var sibs = [];
+    for (var si = 0; si < node.parent.children.length && sibs.length < 5; si++) {
+      var sib = node.parent.children[si];
+      if (sib.id !== node.id) sibs.push(sib.name);
+    }
+    if (sibs.length) result.siblings = sibs;
+  }
+
+  // Children (first level only, up to 8)
+  if ("children" in node && node.children && node.children.length) {
+    result.children = [];
+    for (var ci = 0; ci < node.children.length && ci < 8; ci++) {
+      var c = node.children[ci];
+      var child: any = { type: c.type };
+      if (c.name && !isDefaultName(c.name)) child.name = c.name;
+      if (c.type === "TEXT" && c.characters) {
+        child.text = c.characters.trim().substring(0, 32);
+        if (c.fontSize !== figma.mixed) child.fontSize = c.fontSize;
+      }
+      if (c.type === "INSTANCE" && c.mainComponent) {
+        child.componentName = c.mainComponent.name;
+      }
+      // Check for image fill
+      if (c.fills && Array.isArray(c.fills) && c.fills.some(function(f) { return f.type === "IMAGE"; })) {
+        child.hasImage = true;
+      }
+      result.children.push(child);
+    }
+    if (node.children.length > 8) result.moreChildren = node.children.length - 8;
+  }
+
+  // Check if this node itself has an image fill
+  if (node.fills && Array.isArray(node.fills) && node.fills.some(function(f) { return f.type === "IMAGE"; })) {
+    result.hasImage = true;
+  }
+
+  return result;
+}
+
 // Suggest a proper kebab-case name based on layer content, structure and context
 export function generateName(node) {
   var parentIsPage = node.parent && node.parent.type === "PAGE";

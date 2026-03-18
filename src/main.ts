@@ -1,6 +1,6 @@
 // Main entry point — plugin init, selection listener, and message router
 import { countTokensByCategory, ensureEssentialColors, ensureComponentTextStyles, getAuditPages, hexToFigma } from './utils';
-import { pushDebugData, runAudit, runFixes, findNearestColorVar, findNearestFloatVar } from './audit';
+import { pushDebugData, runAudit, runFixes, findNearestColorVar, findNearestFloatVar, serializeNodeForNaming } from './audit';
 import { generateCover, updateCoverStatus } from './cover';
 import { generatePromoStructure } from './wireframes';
 import { generateFoundationsPage } from './foundations';
@@ -249,6 +249,30 @@ figma.ui.onmessage = async function(msg) {
           }
         }
       } catch(e) {}
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  // ── AI Naming: serialize node context for AI ───────────────────────────────
+  if (msg.type === "ai-name-suggest") {
+    var nodeIds = msg.nodeIds || [];
+    var serialized = [];
+    for (var ni = 0; ni < nodeIds.length; ni++) {
+      var node = figma.getNodeById(nodeIds[ni]);
+      if (node) serialized.push(serializeNodeForNaming(node));
+    }
+    figma.ui.postMessage({ type: "ai-name-context", nodes: serialized });
+  }
+  // ── AI Naming: apply AI-suggested names ────────────────────────────────────
+  if (msg.type === "apply-ai-names") {
+    var names = msg.names || [];
+    for (var ani = 0; ani < names.length; ani++) {
+      var entry = names[ani];
+      if (entry.id && entry.name) {
+        var node = figma.getNodeById(entry.id);
+        if (node && node.type !== "TEXT") {
+          try { node.name = entry.name; } catch(e) {}
+        }
+      }
     }
     figma.ui.postMessage({ type:"audit-results", results:runAudit() });
   }

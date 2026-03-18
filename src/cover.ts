@@ -35,7 +35,7 @@ export async function generateCover(info) {
 
   var W = 1440, H = 960;
   var frame = figma.createFrame();
-  frame.name = "Cover";
+  frame.name = "cover";
   frame.resize(W, H);
   frame.fills = [{ type: "SOLID", color: { r: 0.067, g: 0.067, b: 0.094 } }];
   coverPage.appendChild(frame);

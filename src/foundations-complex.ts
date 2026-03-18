@@ -47,7 +47,7 @@ export async function generateFoundationsPageComplex() {
 
   var W = 1440, PAD = 80, SECTION_GAP = 60;
   var frame = figma.createFrame();
-  frame.name = "Foundations";
+  frame.name = "foundations";
   frame.clipsContent = false;
   frame.resize(W, 20000);
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];

@@ -28,7 +28,7 @@ export async function generateComponentsPage(msg) {
 
   var W = DESKTOP_WIDTH, PAD = PAGE_PADDING, SECTION_GAP = 80;
   var frame = figma.createFrame();
-  frame.name = "Components";
+  frame.name = "components";
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
   frame.layoutMode = "VERTICAL";
   frame.primaryAxisSizingMode = "AUTO";

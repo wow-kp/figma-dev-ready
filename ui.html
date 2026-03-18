@@ -64,6 +64,12 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .ai-review-panel ul { margin: 4px 0 8px 0; padding-left: 18px; }
 .ai-review-panel li { margin: 3px 0; }
 .ai-review-panel strong { color: #cba6f7; }
+.ai-name-btn { min-width: 28px; padding: 2px 6px; font-size: 11px; background: #cba6f710; border: 1px solid #cba6f730; color: #cba6f7; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+.ai-name-btn:hover { background: #cba6f725; border-color: #cba6f750; }
+.ai-name-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ai-name-all-btn { border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+.ai-name-all-btn:hover { background: #cba6f725 !important; border-color: #cba6f760 !important; }
+.ai-name-all-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Check cards ── */
 /* FIX: use display:block (not flex) so cards render at natural height without flex-shrink compression */
@@ -629,6 +635,7 @@ function makeIssueRow(key, issue, fixable) {
     action.addEventListener("click", function(e){ e.stopPropagation(); });
     var input = action.querySelector(".rename-input");
     var btn   = action.querySelector(".apply-btn");
+    if (key === "naming") _namingInputsByNodeId[issue.id] = input;
     function doRename() {
       var name = input.value.trim();
       if (!name) { input.focus(); return; }
@@ -637,6 +644,21 @@ function makeIssueRow(key, issue, fixable) {
     }
     btn.addEventListener("click", doRename);
     input.addEventListener("keydown", function(e){ if(e.key==="Enter") doRename(); });
+    // AI suggest button (single node)
+    if (key === "naming" && (_bhProxyHealthy || _bhApiKey)) {
+      var aiBtn = document.createElement("button");
+      aiBtn.className = "action-btn ai-name-btn";
+      aiBtn.textContent = "✨";
+      aiBtn.title = "AI suggest name";
+      (function(nodeId, inp, ab) {
+        ab.addEventListener("click", function() {
+          ab.disabled = true; ab.textContent = "…";
+          _aiNamingPendingSingle = { nodeId: nodeId, input: inp, btn: ab };
+          parent.postMessage({pluginMessage:{type:"ai-name-suggest",nodeIds:[nodeId]}},"*");
+        });
+      })(issue.id, input, aiBtn);
+      action.appendChild(aiBtn);
+    }
     row.appendChild(action);
 
   } else if (key === "hidden" || key === "empty") {
@@ -809,6 +831,7 @@ function clearAuditDisplay(){
   var btn=document.getElementById("run-btn"); if(btn){btn.disabled=false;btn.textContent="Run audit on current page";}
 }
 var _auditOpenChecks = {};
+var _namingInputsByNodeId = {}; // maps nodeId → input element for AI naming
 function renderAudit(data){
   var btn=document.getElementById("run-btn"); btn.disabled=false; btn.textContent="Re-run audit";
   if(data.noPages){
@@ -826,6 +849,7 @@ function renderAudit(data){
   document.getElementById("score-verdict").textContent=data.score>=80?"✅ Looking good!":data.score>=50?"⚠️ Needs some work":"❌ Not ready yet";
   document.getElementById("score-sub").textContent=data.totalIssues+" issue"+(data.totalIssues!==1?"s":"")+" · "+Object.keys(data.checks).filter(function(k){return data.checks[k].issues.length===0;}).length+"/"+Object.keys(data.checks).length+" passing";
   document.getElementById("score-bar").style.display="flex";
+  _namingInputsByNodeId = {};
 
   var container=document.getElementById("results"); container.innerHTML=""; container.style.display="block";
 
@@ -891,6 +915,26 @@ function renderAudit(data){
             });
           })(key);
           header.appendChild(fixAllBtn);
+        }
+        // AI Name All button for naming checks
+        if (key === "naming" && (_bhProxyHealthy || _bhApiKey)) {
+          var aiNameAllBtn = document.createElement("button");
+          aiNameAllBtn.className = "action-btn ai-name-all-btn";
+          aiNameAllBtn.textContent = "✨ AI Name All (" + count + ")";
+          aiNameAllBtn.style.cssText = "margin-right:8px;font-size:11px;padding:2px 8px;background:#cba6f715;border-color:#cba6f740;color:#cba6f7;";
+          (function(ch) {
+            aiNameAllBtn.addEventListener("click", function(e) {
+              e.stopPropagation();
+              this.disabled = true; this.textContent = "✨ Asking AI…";
+              var ids = [];
+              for (var ai = 0; ai < ch.issues.length; ai++) {
+                if (ids.indexOf(ch.issues[ai].id) === -1) ids.push(ch.issues[ai].id);
+              }
+              _aiNamingPendingBatch = true;
+              parent.postMessage({pluginMessage:{type:"ai-name-suggest",nodeIds:ids}},"*");
+            });
+          })(check);
+          header.appendChild(aiNameAllBtn);
         }
         // Issue list — group duplicate node IDs
         var list = document.createElement("div"); list.className = "issue-list";
@@ -2653,6 +2697,39 @@ function renderStep3(container) {
   var body = document.createElement("div");
   body.className = "wf-step-body";
 
+  // Helper: append skip/unskip button to a container
+  function appendSkipBtn(container) {
+    if (!wfPromoGenerated && !wfStep3Skipped) {
+      var skipBtn = document.createElement("button");
+      skipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#6c7086;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+      skipBtn.textContent = "Skip — I'll design my own pages";
+      skipBtn.addEventListener("mouseenter", function() { skipBtn.style.borderColor = "#89b4fa"; skipBtn.style.color = "#89b4fa"; });
+      skipBtn.addEventListener("mouseleave", function() { skipBtn.style.borderColor = "#45475a"; skipBtn.style.color = "#6c7086"; });
+      skipBtn.addEventListener("click", function() {
+        wfStep3Skipped = true;
+        wfFormState.step3Open = false;
+        wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
+        wfFormState.step4Open = true;
+        saveSettings();
+        renderWorkflow();
+      });
+      container.appendChild(skipBtn);
+    }
+    if (wfStep3Skipped && !wfPromoGenerated) {
+      var unskipBtn = document.createElement("button");
+      unskipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+      unskipBtn.textContent = "Undo skip";
+      unskipBtn.addEventListener("mouseenter", function() { unskipBtn.style.borderColor = "#f9e2af"; unskipBtn.style.color = "#f9e2af"; });
+      unskipBtn.addEventListener("mouseleave", function() { unskipBtn.style.borderColor = "#45475a"; unskipBtn.style.color = "#a6adc8"; });
+      unskipBtn.addEventListener("click", function() {
+        wfStep3Skipped = false;
+        saveSettings();
+        renderWorkflow();
+      });
+      container.appendChild(unskipBtn);
+    }
+  }
+
   if (!locked) {
     var list = document.createElement("div");
     list.className = "wf-token-list";
@@ -3213,6 +3290,9 @@ function renderStep3(container) {
     });
     btnWrap.appendChild(delBtn);
 
+    // Skip / Unskip button — right below delete
+    appendSkipBtn(btnWrap);
+
     list.appendChild(btnWrap);
     } else {
       // Landing Page / Full Site Build — coming soon
@@ -3231,44 +3311,16 @@ function renderStep3(container) {
       csDesc.textContent = "Coming soon — this page type is under development.";
       csPanel.appendChild(csDesc);
       list.appendChild(csPanel);
+
+      // Skip / Unskip button — below coming soon
+      var skipWrapCs = document.createElement("div");
+      skipWrapCs.style.cssText = "padding:0 10px 8px;";
+      appendSkipBtn(skipWrapCs);
+      list.appendChild(skipWrapCs);
     }
 
     body.appendChild(list);
   }
-
-  // Skip step button — always visible (even when locked)
-  var skipWrap = document.createElement("div");
-  skipWrap.style.cssText = "padding:4px 10px 8px;";
-  if (!wfPromoGenerated && !wfStep3Skipped) {
-    var skipBtn = document.createElement("button");
-    skipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#6c7086;border-radius:6px;cursor:pointer;transition:all .15s;";
-    skipBtn.textContent = "Skip — I'll design my own pages";
-    skipBtn.addEventListener("mouseenter", function() { skipBtn.style.borderColor = "#89b4fa"; skipBtn.style.color = "#89b4fa"; });
-    skipBtn.addEventListener("mouseleave", function() { skipBtn.style.borderColor = "#45475a"; skipBtn.style.color = "#6c7086"; });
-    skipBtn.addEventListener("click", function() {
-      wfStep3Skipped = true;
-      wfFormState.step3Open = false;
-      wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
-      wfFormState.step4Open = true;
-      saveSettings();
-      renderWorkflow();
-    });
-    skipWrap.appendChild(skipBtn);
-  }
-  if (wfStep3Skipped && !wfPromoGenerated) {
-    var unskipBtn = document.createElement("button");
-    unskipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;";
-    unskipBtn.textContent = "Undo skip";
-    unskipBtn.addEventListener("mouseenter", function() { unskipBtn.style.borderColor = "#f9e2af"; unskipBtn.style.color = "#f9e2af"; });
-    unskipBtn.addEventListener("mouseleave", function() { unskipBtn.style.borderColor = "#45475a"; unskipBtn.style.color = "#a6adc8"; });
-    unskipBtn.addEventListener("click", function() {
-      wfStep3Skipped = false;
-      saveSettings();
-      renderWorkflow();
-    });
-    skipWrap.appendChild(unskipBtn);
-  }
-  body.appendChild(skipWrap);
 
   body.addEventListener("change", function() { saveSettings(); });
 
@@ -3391,6 +3443,26 @@ function renderStep4(container) {
                 });
               })(key);
               chdr.appendChild(fixAllBtnWf);
+            }
+            // AI Name All button for naming checks (workflow tab)
+            if (key === "naming" && (_bhProxyHealthy || _bhApiKey)) {
+              var aiNameAllBtnWf = document.createElement("button");
+              aiNameAllBtnWf.className = "action-btn ai-name-all-btn";
+              aiNameAllBtnWf.textContent = "✨ AI Name All (" + count + ")";
+              aiNameAllBtnWf.style.cssText = "margin-right:8px;font-size:11px;padding:2px 8px;background:#cba6f715;border-color:#cba6f740;color:#cba6f7;";
+              (function(ch) {
+                aiNameAllBtnWf.addEventListener("click", function(e) {
+                  e.stopPropagation();
+                  this.disabled = true; this.textContent = "✨ Asking AI…";
+                  var ids = [];
+                  for (var ai = 0; ai < ch.issues.length; ai++) {
+                    if (ids.indexOf(ch.issues[ai].id) === -1) ids.push(ch.issues[ai].id);
+                  }
+                  _aiNamingPendingBatch = true;
+                  parent.postMessage({pluginMessage:{type:"ai-name-suggest",nodeIds:ids}},"*");
+                });
+              })(check);
+              chdr.appendChild(aiNameAllBtnWf);
             }
             var list = document.createElement("div"); list.className = "issue-list";
             var seenIdsWf = {};
@@ -3905,6 +3977,61 @@ window.onmessage=function(event){
     // Re-render workflow
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
+  // ── AI Naming response: serialized nodes came back, call AI ──────────────
+  if (msg.type === "ai-name-context") {
+    var nodes = msg.nodes || [];
+    if (nodes.length === 0) {
+      _aiNamingPendingSingle = null;
+      _aiNamingPendingBatch = false;
+      return;
+    }
+    bhCallNamingAI(nodes, function(err, names) {
+      if (err) {
+        // Reset UI state on error
+        if (_aiNamingPendingSingle) {
+          _aiNamingPendingSingle.btn.disabled = false;
+          _aiNamingPendingSingle.btn.textContent = "✨";
+          _aiNamingPendingSingle = null;
+        }
+        _aiNamingPendingBatch = false;
+        console.error("AI naming error:", err);
+        return;
+      }
+      if (_aiNamingPendingSingle && names.length > 0) {
+        // Single node — update the input field with the AI suggestion
+        var match = names.filter(function(n) { return n.id === _aiNamingPendingSingle.nodeId; })[0];
+        if (match && match.name) {
+          _aiNamingPendingSingle.input.value = match.name;
+          _aiNamingPendingSingle.btn.textContent = "✨";
+          _aiNamingPendingSingle.btn.disabled = false;
+        } else {
+          _aiNamingPendingSingle.btn.textContent = "✨";
+          _aiNamingPendingSingle.btn.disabled = false;
+        }
+        _aiNamingPendingSingle = null;
+      } else if (_aiNamingPendingBatch && names.length > 0) {
+        // Batch — update all input fields with AI suggestions (user reviews before applying)
+        for (var bi = 0; bi < names.length; bi++) {
+          var entry = names[bi];
+          if (entry.id && entry.name && _namingInputsByNodeId[entry.id]) {
+            _namingInputsByNodeId[entry.id].value = entry.name;
+            _namingInputsByNodeId[entry.id].style.borderColor = "#cba6f750";
+          }
+        }
+        // Re-enable AI Name All buttons
+        var aiAllBtns = document.querySelectorAll(".ai-name-all-btn");
+        for (var abi = 0; abi < aiAllBtns.length; abi++) {
+          aiAllBtns[abi].disabled = false;
+          aiAllBtns[abi].textContent = "✨ AI Name All (" + names.length + ")";
+        }
+        _aiNamingPendingBatch = false;
+      } else {
+        _aiNamingPendingBatch = false;
+        _aiNamingPendingSingle = null;
+      }
+    });
+    return;
+  }
   if(msg.type==="audit-results"){
     window._auditAllTextStyles = (msg.results && msg.results.fixable && msg.results.fixable.allTextStyles) || [];
     renderAudit(msg.results);
@@ -4417,6 +4544,80 @@ function bhSerializeAuditForAI(data) {
     lines.push("Available auto-fixes: " + fixInfo.join("; "));
   }
   return lines.join("\n");
+}
+
+// ── AI Naming ─────────────────────────────────────────────────────────────────
+var _aiNamingPendingSingle = null; // { nodeId, input, btn }
+var _aiNamingPendingBatch = false;
+
+function bhCallNamingAI(serializedNodes, callback) {
+  var useProxy = _bhProxyHealthy && !_bhApiKey;
+  if (useProxy && !_figmaUserId) { callback("Unable to identify Figma user.", null); return; }
+  if (!useProxy && !_bhApiKey) { callback("No API key or proxy configured.", null); return; }
+
+  var systemPrompt = "You are a Figma layer naming expert. Given a JSON array of unnamed UI layers with their context (type, size, children, parent, siblings), suggest semantic kebab-case names.\n\n"
+    + "Rules:\n"
+    + "1. Names MUST be kebab-case (lowercase, hyphens only), 2-4 words max.\n"
+    + "2. Names should reflect the UI purpose: hero-cta-btn, pricing-card, testimonial-section, nav-link-list, search-input, footer-social-icons.\n"
+    + "3. Use text content inside the node as the primary signal for naming.\n"
+    + "4. Consider parent and sibling context to understand the node's role.\n"
+    + "5. If siblings have similar structure, use a consistent naming pattern (e.g. feature-card-1, feature-card-2 or just feature-card if they are instances).\n"
+    + "6. Avoid generic names like container, wrapper, group, frame unless the node is truly generic.\n"
+    + "7. Common patterns: *-section (page-level), *-card, *-btn, *-input, *-icon, *-list, *-item, *-heading, *-text, *-image, *-badge, *-nav, *-link, *-divider.\n\n"
+    + "Return ONLY a valid JSON array: [{\"id\":\"nodeId\",\"name\":\"suggested-name\"}, ...]\n"
+    + "No markdown, no explanation, no extra text — just the JSON array.";
+
+  var body = JSON.stringify({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [{ role: "user", content: JSON.stringify(serializedNodes) }]
+  });
+
+  var xhr = new XMLHttpRequest();
+  if (useProxy) {
+    xhr.open("POST", _bhProxyUrl + "/v1/messages", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.open("POST", "https://api.anthropic.com/v1/messages", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("x-api-key", _bhApiKey);
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        // Strip markdown code fences if present
+        text = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        var names = JSON.parse(text);
+        if (!Array.isArray(names)) throw new Error("Expected JSON array");
+        callback(null, names);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else if (xhr.status === 429) {
+      callback("Rate limit exceeded. Please wait and try again.", null);
+    } else {
+      try {
+        var errBody = JSON.parse(xhr.responseText);
+        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
+      } catch(e2) {
+        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
+      }
+    }
+  };
+  xhr.onerror = function() { callback("Network error.", null); };
+  xhr.timeout = 30000;
+  xhr.ontimeout = function() { callback("AI naming request timed out.", null); };
+  xhr.send(body);
 }
 
 function bhCallAuditAI(data, callback) {

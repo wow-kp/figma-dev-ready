@@ -1,6 +1,7 @@
 // Promo wireframe generation
 import { hexToFigma, findPageByHint, loadFontWithFallback, createPlaceholderImageHash, cxResolveVar, cxFindCol } from './utils';
 import { findNearestColorVar } from './audit';
+import { MOBILE_BREAKPOINT, STANDARD_EXPORT_SETTINGS } from './constants';
 
 export async function generatePromoStructure(msg) {
   var sections = msg.sections || {};
@@ -69,6 +70,9 @@ export async function generatePromoStructure(msg) {
   var radiusVarMap = {};
   var opacityVarMap = {};
   var borderWidthVarMap = {};
+  var opacityColId = null;
+  var opacityValueModeId = null;   // decimal 0-1 (for resolving / CSS)
+  var opacityPctModeId = null;     // percentage 0-100 (for Figma "Opacity" binding)
   var allFloatVars = figma.variables.getLocalVariables().filter(function(v) { return v.resolvedType === "FLOAT"; });
   var allColls = figma.variables.getLocalVariableCollections();
   for (var fvi = 0; fvi < allFloatVars.length; fvi++) {
@@ -81,6 +85,20 @@ export async function generatePromoStructure(msg) {
     if (collName.indexOf("spacing") !== -1 || collName.indexOf("gap") !== -1) {
       spacingVarMap[shortName] = fv;
     } else if (collName.indexOf("opacity") !== -1) {
+      // Save collection info for explicit mode binding
+      if (!opacityColId) {
+        for (var oci2 = 0; oci2 < allColls.length; oci2++) {
+          if (allColls[oci2].id === fv.variableCollectionId) {
+            opacityColId = allColls[oci2].id;
+            var opModes = allColls[oci2].modes || [];
+            if (opModes.length) opacityValueModeId = opModes[0].modeId;
+            for (var omi = 0; omi < opModes.length; omi++) {
+              if (opModes[omi].name === "Percentage") { opacityPctModeId = opModes[omi].modeId; break; }
+            }
+            break;
+          }
+        }
+      }
       var opModeId2 = null;
       for (var oci = 0; oci < allColls.length; oci++) { if (allColls[oci].id === fv.variableCollectionId) { if (allColls[oci].modes && allColls[oci].modes.length) { opModeId2 = allColls[oci].modes[0].modeId; } break; } }
       if (opModeId2) { try { var opVal2 = cxResolveVar(fv, opModeId2, allColls); if (typeof opVal2 === "number") opacityVarMap[Math.round(opVal2 * 100)] = fv; } catch(e) {} }
@@ -253,6 +271,12 @@ export async function generatePromoStructure(msg) {
     var v = promoColorVarMap[varName]; if (!v) return;
     try { node.fills = [figma.variables.setBoundVariableForPaint(node.fills[0], "color", v)]; } catch(e) {}
   }
+  function promoBindStroke(node, varName) {
+    var v = promoColorVarMap[varName]; if (!v) return;
+    try { node.strokes = [figma.variables.setBoundVariableForPaint(node.strokes[0], "color", v)]; } catch(e) {}
+  }
+
+  var standardExportSettings = STANDARD_EXPORT_SETTINGS;
 
   // ── Find component sets created on the Components page ──
   var btnVariant = null;      // Button: Variant=Primary, Size=Default
@@ -309,7 +333,7 @@ export async function generatePromoStructure(msg) {
 
   var BREAKPOINTS = [
     { hint: "desktop", width: 1920 },
-    { hint: "mobile",  width: 567 }
+    { hint: "mobile",  width: MOBILE_BREAKPOINT }
   ];
 
   // Names of all frames we create — used for cleanup
@@ -349,6 +373,10 @@ export async function generatePromoStructure(msg) {
       f.clipsContent = true;
       // Set constraints so frame scales horizontally
       try { f.constraints = { horizontal: "SCALE", vertical: "MIN" }; } catch(e) {}
+      // Figma's "Opacity" property uses percentage values (0-100), so set Percentage mode
+      if (opacityColId && opacityPctModeId) {
+        try { f.setExplicitVariableModeForCollection(opacityColId, opacityPctModeId); } catch(e) {}
+      }
       page.appendChild(f);
       createdFrames.push(f);
       return f;
@@ -374,7 +402,6 @@ export async function generatePromoStructure(msg) {
       // Fallback if component not found
       var btn = figma.createFrame();
       btn.name = "cta-button";
-      btn.resize(isMobile ? 160 : 200, isMobile ? 44 : 52);
       btn.cornerRadius = defaultRadius;
       bindRadius(btn, "md");
       btn.fills = [{ type: "SOLID", color: brandFigma }];
@@ -382,13 +409,18 @@ export async function generatePromoStructure(msg) {
       btn.primaryAxisAlignItems = "CENTER";
       btn.counterAxisAlignItems = "CENTER";
       btn.primaryAxisSizingMode = "AUTO";
-      btn.counterAxisSizingMode = "FIXED";
-      var btnPadPx = isMobile ? 20 : 28;
-      btn.paddingLeft = btnPadPx; btn.paddingRight = btnPadPx;
-      btn.paddingTop = 0; btn.paddingBottom = 0;
-      var btnPadVar = findSpacingVar(btnPadPx);
-      if (btnPadVar) {
-        try { btn.setBoundVariable("paddingLeft", btnPadVar); btn.setBoundVariable("paddingRight", btnPadVar); } catch(e) {}
+      btn.counterAxisSizingMode = "AUTO";
+      var btnPadH = isMobile ? 20 : 28;
+      var btnPadV = isMobile ? 10 : 14;
+      btn.paddingLeft = btnPadH; btn.paddingRight = btnPadH;
+      btn.paddingTop = btnPadV; btn.paddingBottom = btnPadV;
+      var btnPadHVar = findSpacingVar(btnPadH);
+      if (btnPadHVar) {
+        try { btn.setBoundVariable("paddingLeft", btnPadHVar); btn.setBoundVariable("paddingRight", btnPadHVar); } catch(e) {}
+      }
+      var btnPadVVar = findSpacingVar(btnPadV);
+      if (btnPadVVar) {
+        try { btn.setBoundVariable("paddingTop", btnPadVVar); btn.setBoundVariable("paddingBottom", btnPadVVar); } catch(e) {}
       }
       var txt = figma.createText();
       var btnTxtStyle = findPromoTextStyle("buttons", isMobile ? "sm" : "default");
@@ -448,16 +480,22 @@ export async function generatePromoStructure(msg) {
       lbl.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
       promoBindFill(lbl, "text/primary");
       wrapper.appendChild(lbl);
-      var fld = figma.createRectangle();
+      var fld = figma.createFrame();
       fld.name = "field";
-      fld.resize(260, 44);
       fld.cornerRadius = defaultRadius;
       bindRadius(fld, "md");
       fld.fills = [{ type: "SOLID", color: { r: 0.97, g: 0.97, b: 0.98 } }];
       promoBindFill(fld, "white");
       fld.strokes = [{ type: "SOLID", color: { r: 0.82, g: 0.82, b: 0.82 } }];
+      promoBindStroke(fld, "border/default");
       fld.strokeWeight = 1;
       bindBorderWidth(fld);
+      fld.layoutMode = "HORIZONTAL";
+      fld.counterAxisAlignItems = "CENTER";
+      fld.primaryAxisSizingMode = "AUTO";
+      fld.counterAxisSizingMode = "AUTO";
+      fld.paddingLeft = 14; fld.paddingRight = 14;
+      fld.paddingTop = 10; fld.paddingBottom = 10;
       wrapper.appendChild(fld);
       fld.layoutSizingHorizontal = "FILL";
       parent.appendChild(wrapper);
@@ -503,14 +541,15 @@ export async function generatePromoStructure(msg) {
     // 1. HERO
     // ════════════════════════════════════════════════════════════════════
     if (sections.hero) {
-      var heroH = isMobile ? 520 : 700;
-      var hero = createSectionFrame("promo/hero", W, heroH);
+      var heroMinH = isMobile ? 400 : 500;
+      var hero = createSectionFrame("promo/hero", W, heroMinH);
       // Auto-layout: center children both axes
       hero.layoutMode = "VERTICAL";
       hero.primaryAxisAlignItems = "CENTER";
       hero.counterAxisAlignItems = "CENTER";
       hero.primaryAxisSizingMode = "AUTO";
       hero.counterAxisSizingMode = "FIXED";
+      hero.minHeight = heroMinH;
       bindPaddingXY(hero, 0, 128);
 
       // Background placeholder image (absolute, fills parent)
@@ -518,7 +557,7 @@ export async function generatePromoStructure(msg) {
       if (bgImageVariant) {
         heroBg = bgImageVariant.createInstance();
         heroBg.name = "hero-bg-image";
-        heroBg.resize(W, heroH);
+        heroBg.resize(W, heroMinH);
         hero.appendChild(heroBg);
         heroBg.layoutPositioning = "ABSOLUTE";
         heroBg.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
@@ -526,12 +565,13 @@ export async function generatePromoStructure(msg) {
       } else {
         heroBg = figma.createRectangle();
         heroBg.name = "hero-bg-image";
-        heroBg.resize(W, heroH);
+        heroBg.resize(W, heroMinH);
         hero.appendChild(heroBg);
         heroBg.layoutPositioning = "ABSOLUTE";
         heroBg.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
         heroBg.x = 0; heroBg.y = 0;
         heroBg.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
+        heroBg.exportSettings = standardExportSettings;
       }
 
       // Centered content frame (auto-layout vertical, centered, fills parent width)
@@ -573,6 +613,7 @@ export async function generatePromoStructure(msg) {
       heroImg.cornerRadius = defaultRadius;
       bindRadius(heroImg, "md");
       heroImg.fills = [{ type: "IMAGE", imageHash: contentImageHash, scaleMode: "FILL" }];
+      heroImg.exportSettings = standardExportSettings;
       content.appendChild(heroImg);
       try { heroImg.layoutSizingHorizontal = "FILL"; } catch(e) {}
       heroImg.maxWidth = isMobile ? W - 60 : 400;
@@ -610,8 +651,8 @@ export async function generatePromoStructure(msg) {
     // 2. POPUP (default screen — with or without form)
     // ════════════════════════════════════════════════════════════════════
     if (sections.popup) {
-      var popH = isMobile ? 700 : 900;
-      var popup = createSectionFrame("promo/popup", W, popH);
+      var popMinH = isMobile ? 400 : 420;
+      var popup = createSectionFrame("promo/popup", W, popMinH);
       popup.fills = [];
       // Auto-layout: center popup-content
       popup.layoutMode = "VERTICAL";
@@ -619,12 +660,13 @@ export async function generatePromoStructure(msg) {
       popup.counterAxisAlignItems = "CENTER";
       popup.primaryAxisSizingMode = "AUTO";
       popup.counterAxisSizingMode = "FIXED";
+      popup.minHeight = popMinH;
       bindPaddingXY(popup, 0, 128);
 
       // popup-overlay (absolute, fills parent, uses overlay variable)
       var overlay = figma.createRectangle();
       overlay.name = "popup-overlay";
-      overlay.resize(W, popH);
+      overlay.resize(W, popMinH);
       popup.appendChild(overlay);
       overlay.layoutPositioning = "ABSOLUTE";
       overlay.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
@@ -641,20 +683,21 @@ export async function generatePromoStructure(msg) {
         } catch(e) {}
       }
       var pcMaxW = isMobile ? 375 : 700;
-      var pcH = isMobile ? 520 : 500;
+      var pcMinH = isMobile ? 300 : 320;
       var pc = figma.createFrame();
       pc.name = "popup-content";
-      pc.resize(pcMaxW, pcH);
+      pc.resize(pcMaxW, pcMinH);
       pc.cornerRadius = defaultRadius * 2;
       bindRadius(pc, "lg");
       pc.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
       promoBindFill(pc, "white");
       applyPromoShadow(pc);
       pc.clipsContent = true;
-      // Auto-layout so popup-inner can FILL
+      // Auto-layout: content-driven height with minHeight
       pc.layoutMode = "VERTICAL";
-      pc.primaryAxisSizingMode = "FIXED";
+      pc.primaryAxisSizingMode = "AUTO";
       pc.counterAxisSizingMode = "FIXED";
+      pc.minHeight = pcMinH;
       popup.appendChild(pc);
       pc.layoutSizingHorizontal = "FILL";
       pc.maxWidth = pcMaxW;
@@ -664,7 +707,7 @@ export async function generatePromoStructure(msg) {
       if (bgImageVariant) {
         pcBg = bgImageVariant.createInstance();
         pcBg.name = "popup-bg-image";
-        pcBg.resize(pcMaxW, pcH);
+        pcBg.resize(pcMaxW, pcMinH);
         pc.appendChild(pcBg);
         pcBg.layoutPositioning = "ABSOLUTE";
         pcBg.constraints = { horizontal: "SCALE", vertical: "SCALE" };
@@ -674,12 +717,13 @@ export async function generatePromoStructure(msg) {
       } else {
         pcBg = figma.createRectangle();
         pcBg.name = "popup-bg-image";
-        pcBg.resize(pcMaxW, pcH);
+        pcBg.resize(pcMaxW, pcMinH);
         pc.appendChild(pcBg);
         pcBg.layoutPositioning = "ABSOLUTE";
         pcBg.constraints = { horizontal: "SCALE", vertical: "SCALE" };
         pcBg.x = 0; pcBg.y = 0;
         pcBg.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
+        pcBg.exportSettings = standardExportSettings;
         pcBg.opacity = 0.15;
         bindPromoOpacity(pcBg);
       }
@@ -687,6 +731,7 @@ export async function generatePromoStructure(msg) {
       if (popupIncludeForm) {
         // ── Popup with form — auto-layout popup-inner ──
         var fPad = 32;
+        var fGap = isMobile ? 12 : 16;
 
         var formInner = figma.createFrame();
         formInner.name = "popup-inner";
@@ -694,16 +739,16 @@ export async function generatePromoStructure(msg) {
         formInner.layoutMode = "VERTICAL";
         formInner.primaryAxisAlignItems = "CENTER";
         formInner.counterAxisAlignItems = "CENTER";
-        formInner.primaryAxisSizingMode = "FIXED";
-        formInner.counterAxisSizingMode = "FIXED";
+        formInner.primaryAxisSizingMode = "AUTO";
+        formInner.counterAxisSizingMode = "AUTO";
         formInner.paddingTop = fPad; formInner.paddingBottom = fPad;
         formInner.paddingLeft = fPad; formInner.paddingRight = fPad;
-        formInner.itemSpacing = 16;
-        bindSpacing(formInner, fPad, 16);
+        formInner.itemSpacing = fGap;
+        bindSpacing(formInner, fPad, fGap);
         pc.appendChild(formInner);
         try {
           formInner.layoutSizingHorizontal = "FILL";
-          formInner.layoutSizingVertical = "FILL";
+          formInner.layoutSizingVertical = "HUG";
         } catch(e) {}
 
         // Paragraph
@@ -846,22 +891,24 @@ export async function generatePromoStructure(msg) {
 
       } else {
         // ── Popup without form — text + CTA centered ──
+        var nfPad = 32;
+        var nfGap = isMobile ? 12 : 20;
         var innerFrame = figma.createFrame();
         innerFrame.name = "popup-inner";
         innerFrame.fills = [];
         innerFrame.layoutMode = "VERTICAL";
         innerFrame.primaryAxisAlignItems = "CENTER";
         innerFrame.counterAxisAlignItems = "CENTER";
-        innerFrame.primaryAxisSizingMode = "FIXED";
-        innerFrame.counterAxisSizingMode = "FIXED";
-        innerFrame.paddingLeft = 32; innerFrame.paddingRight = 32;
-        innerFrame.paddingTop = 32; innerFrame.paddingBottom = 32;
-        innerFrame.itemSpacing = 20;
-        bindSpacing(innerFrame, 32, 20);
+        innerFrame.primaryAxisSizingMode = "AUTO";
+        innerFrame.counterAxisSizingMode = "AUTO";
+        innerFrame.paddingLeft = nfPad; innerFrame.paddingRight = nfPad;
+        innerFrame.paddingTop = nfPad; innerFrame.paddingBottom = nfPad;
+        innerFrame.itemSpacing = nfGap;
+        bindSpacing(innerFrame, nfPad, nfGap);
         pc.appendChild(innerFrame);
         try {
           innerFrame.layoutSizingHorizontal = "FILL";
-          innerFrame.layoutSizingVertical = "FILL";
+          innerFrame.layoutSizingVertical = "HUG";
         } catch(e) {}
 
         var popTxt = figma.createText();
@@ -900,6 +947,7 @@ export async function generatePromoStructure(msg) {
       closeIcon.name = "close-icon";
       closeIcon.resize(closeSize, closeSize);
       closeIcon.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: closeImageHash }];
+      closeIcon.exportSettings = standardExportSettings;
       closeBtn.appendChild(closeIcon);
       pc.appendChild(closeBtn);
       closeBtn.layoutPositioning = "ABSOLUTE";
@@ -916,8 +964,8 @@ export async function generatePromoStructure(msg) {
       // 3. POPUP THANK-YOU (only when popup has a form)
       // ══════════════════════════════════════════════════════════════════
       if (popupIncludeForm) {
-        var tyPopH = popH;
-        var tyPopup = createSectionFrame("promo/popup-thankyou", W, tyPopH);
+        var tyPopMinH = popMinH;
+        var tyPopup = createSectionFrame("promo/popup-thankyou", W, tyPopMinH);
         tyPopup.fills = [];
         // Auto-layout: center popup-content
         tyPopup.layoutMode = "VERTICAL";
@@ -925,15 +973,16 @@ export async function generatePromoStructure(msg) {
         tyPopup.counterAxisAlignItems = "CENTER";
         tyPopup.primaryAxisSizingMode = "AUTO";
         tyPopup.counterAxisSizingMode = "FIXED";
+        tyPopup.minHeight = tyPopMinH;
         bindPaddingXY(tyPopup, 0, 128);
         if (isMobile) {
-          tyPopup.maxWidth = 567;
+          tyPopup.maxWidth = MOBILE_BREAKPOINT;
         }
 
         // overlay (absolute, fills parent)
         var tyOverlay = figma.createRectangle();
         tyOverlay.name = "popup-overlay";
-        tyOverlay.resize(W, tyPopH);
+        tyOverlay.resize(W, tyPopMinH);
         tyPopup.appendChild(tyOverlay);
         tyOverlay.layoutPositioning = "ABSOLUTE";
         tyOverlay.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
@@ -950,20 +999,21 @@ export async function generatePromoStructure(msg) {
           } catch(e) {}
         }
         var tyPcMaxW = isMobile ? 375 : 700;
-        var tyPcH = isMobile ? 520 : 500;
+        var tyPcMinH = isMobile ? 300 : 320;
         var tyPc = figma.createFrame();
         tyPc.name = "popup-content";
-        tyPc.resize(tyPcMaxW, tyPcH);
+        tyPc.resize(tyPcMaxW, tyPcMinH);
         tyPc.cornerRadius = defaultRadius * 2;
         bindRadius(tyPc, "lg");
         tyPc.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
         promoBindFill(tyPc, "white");
         applyPromoShadow(tyPc);
         tyPc.clipsContent = true;
-        // Auto-layout so popup-inner can FILL
+        // Auto-layout: content-driven height with minHeight
         tyPc.layoutMode = "VERTICAL";
-        tyPc.primaryAxisSizingMode = "FIXED";
+        tyPc.primaryAxisSizingMode = "AUTO";
         tyPc.counterAxisSizingMode = "FIXED";
+        tyPc.minHeight = tyPcMinH;
         tyPopup.appendChild(tyPc);
         tyPc.layoutSizingHorizontal = "FILL";
         tyPc.maxWidth = tyPcMaxW;
@@ -973,7 +1023,7 @@ export async function generatePromoStructure(msg) {
         if (bgImageVariant) {
           tyBg = bgImageVariant.createInstance();
           tyBg.name = "popup-bg-image";
-          tyBg.resize(tyPcMaxW, tyPcH);
+          tyBg.resize(tyPcMaxW, tyPcMinH);
           tyPc.appendChild(tyBg);
           tyBg.layoutPositioning = "ABSOLUTE";
           tyBg.constraints = { horizontal: "SCALE", vertical: "SCALE" };
@@ -983,33 +1033,36 @@ export async function generatePromoStructure(msg) {
         } else {
           tyBg = figma.createRectangle();
           tyBg.name = "popup-bg-image";
-          tyBg.resize(tyPcMaxW, tyPcH);
+          tyBg.resize(tyPcMaxW, tyPcMinH);
           tyPc.appendChild(tyBg);
           tyBg.layoutPositioning = "ABSOLUTE";
           tyBg.constraints = { horizontal: "SCALE", vertical: "SCALE" };
           tyBg.x = 0; tyBg.y = 0;
           tyBg.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
+          tyBg.exportSettings = standardExportSettings;
           tyBg.opacity = 0.15;
           bindPromoOpacity(tyBg);
         }
 
         // Centered text + CTA
+        var tyPad = 32;
+        var tyGap = isMobile ? 12 : 20;
         var tyInner = figma.createFrame();
         tyInner.name = "popup-inner";
         tyInner.fills = [];
         tyInner.layoutMode = "VERTICAL";
         tyInner.primaryAxisAlignItems = "CENTER";
         tyInner.counterAxisAlignItems = "CENTER";
-        tyInner.primaryAxisSizingMode = "FIXED";
-        tyInner.counterAxisSizingMode = "FIXED";
-        tyInner.paddingLeft = 32; tyInner.paddingRight = 32;
-        tyInner.paddingTop = 32; tyInner.paddingBottom = 32;
-        tyInner.itemSpacing = 20;
-        bindSpacing(tyInner, 32, 20);
+        tyInner.primaryAxisSizingMode = "AUTO";
+        tyInner.counterAxisSizingMode = "AUTO";
+        tyInner.paddingLeft = tyPad; tyInner.paddingRight = tyPad;
+        tyInner.paddingTop = tyPad; tyInner.paddingBottom = tyPad;
+        tyInner.itemSpacing = tyGap;
+        bindSpacing(tyInner, tyPad, tyGap);
         tyPc.appendChild(tyInner);
         try {
           tyInner.layoutSizingHorizontal = "FILL";
-          tyInner.layoutSizingVertical = "FILL";
+          tyInner.layoutSizingVertical = "HUG";
         } catch(e) {}
 
         var tyTxt = figma.createText();
@@ -1147,6 +1200,7 @@ export async function generatePromoStructure(msg) {
       bannerImg.cornerRadius = defaultRadius;
       bindRadius(bannerImg, "md");
       bannerImg.fills = [{ type: "IMAGE", imageHash: contentImageHash, scaleMode: "FILL" }];
+      bannerImg.exportSettings = standardExportSettings;
       innerBanner.appendChild(bannerImg);
       bannerImg.maxWidth = isMobile ? 100 : 200;
 

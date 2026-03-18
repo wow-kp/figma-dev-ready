@@ -444,20 +444,7 @@ figma.ui.onmessage = async function(msg) {
     }
   }
 
-  if (msg.type === "save-api-key") {
-    try {
-      await figma.clientStorage.setAsync("wf-ai-api-key", msg.key || "");
-    } catch(e) {}
-  }
-
-  if (msg.type === "load-api-key") {
-    try {
-      var key = await figma.clientStorage.getAsync("wf-ai-api-key");
-      figma.ui.postMessage({ type: "api-key-loaded", key: key || "" });
-    } catch(e) {
-      figma.ui.postMessage({ type: "api-key-loaded", key: "" });
-    }
-  }
+  // API key is session-only (not persisted) for security
 
   if (msg.type === "save-settings") {
     try {

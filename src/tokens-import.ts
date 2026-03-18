@@ -37,7 +37,7 @@ export async function importTokens(filename,data){
   if(type==="spacing")       return importFlat(data,"Spacing","spacing",true);
   if(type==="radius")        return importFlat(data,"Radius","radius",true);
   if(type==="border")        return importFlat(data,"Border Width","border",true);
-  if(type==="opacity")       return importFlat(data,"Opacity","opacity",false);
+  if(type==="opacity")       return importOpacity(data);
   if(type==="zindex")        return importFlat(data,"Z-Index","z-index",false);
   if(type==="breakpoints")   return importFlat(data,"Breakpoints","breakpoint",false);
   if(type==="grid")          return importGrid(data);
@@ -68,6 +68,28 @@ export function importPrimitives(data){var col=findOrCreateCollection("Primitive
 export function importColors(data,modeName){var col=findOrCreateCollection("Colors"),modeId=null;for(var i=0;i<col.modes.length;i++){if(col.modes[i].name===modeName){modeId=col.modes[i].modeId;break;}}if(!modeId){if(col.modes.length===1&&col.modes[0].name==="Mode 1"){col.renameMode(col.modes[0].modeId,modeName);modeId=col.modes[0].modeId;}else modeId=col.addMode(modeName);}var map=buildVarMap(col),count=0;Object.keys(data).forEach(function(gk){var g=data[gk];if(!g||typeof g!=="object")return;if(g["$value"]!==undefined&&g["$type"]==="color"){try{var v=getOrCreateVar(gk,col,"COLOR",map);v.setValueForMode(modeId,dtcgToFigmaColor(g["$value"]));count++;}catch(e){}return;}Object.keys(g).forEach(function(tk){var t=g[tk];if(!t||t["$value"]===undefined||t["$type"]!=="color")return;try{var v=getOrCreateVar(gk+"/"+tk,col,"COLOR",map);v.setValueForMode(modeId,dtcgToFigmaColor(t["$value"]));count++;}catch(e){}});});return"Imported "+count+" variables";}
 
 export function importFlat(data,colName,prefix,isDim){var col=findOrCreateCollection(colName),modeId=col.modes[0].modeId;col.renameMode(modeId,"Value");var map=buildVarMap(col),count=0;Object.keys(data).forEach(function(key){var t=data[key];if(!t||t["$value"]===undefined)return;try{var raw=t["$value"],num=isDim&&typeof raw==="object"?raw.value:parseFloat(raw)||0;var v=getOrCreateVar(prefix+"/"+key,col,"FLOAT",map);v.setValueForMode(modeId,num);count++;}catch(e){}});return"Imported "+count+" variables";}
+
+export function importOpacity(data){
+  var col=findOrCreateCollection("Opacity");
+  var valueModeId=col.modes[0].modeId;
+  col.renameMode(valueModeId,"Value");
+  // Find or create a second mode for percentage values
+  var pctModeId=null;
+  for(var mi=0;mi<col.modes.length;mi++){if(col.modes[mi].name==="Percentage"){pctModeId=col.modes[mi].modeId;break;}}
+  if(!pctModeId) pctModeId=col.addMode("Percentage");
+  var map=buildVarMap(col),count=0;
+  Object.keys(data).forEach(function(key){
+    var t=data[key];if(!t||t["$value"]===undefined)return;
+    try{
+      var num=parseFloat(t["$value"])||0;
+      var v=getOrCreateVar("opacity/"+key,col,"FLOAT",map);
+      v.setValueForMode(valueModeId,num);
+      v.setValueForMode(pctModeId,Math.round(num*100));
+      count++;
+    }catch(e){}
+  });
+  return"Imported "+count+" opacity variables (Value + Percentage)";
+}
 
 export function importShadows(data){
   var existingStyles = figma.getLocalEffectStyles();

@@ -1,5 +1,6 @@
 // components.ts — Components page generator (simple / msg-based)
 import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, createPlaceholderImageHash, cxResolveVar } from './utils';
+import { DESKTOP_WIDTH, PAGE_PADDING, STANDARD_EXPORT_SETTINGS } from './constants';
 
 export async function generateComponentsPage(msg) {
   var page = findPageByHint("components");
@@ -25,7 +26,7 @@ export async function generateComponentsPage(msg) {
   var existing = page.children.filter(function(n) { return n.name === "Components"; });
   existing.forEach(function(n) { try { n.remove(); } catch(e) {} });
 
-  var W = 1440, PAD = 80, SECTION_GAP = 80;
+  var W = DESKTOP_WIDTH, PAD = PAGE_PADDING, SECTION_GAP = 80;
   var frame = figma.createFrame();
   frame.name = "Components";
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
@@ -185,7 +186,14 @@ export async function generateComponentsPage(msg) {
   // ── Look up opacity variables for binding ──
   var opacityCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name.toLowerCase().indexOf("opacity") !== -1; });
   var opacityVarMapComp = {};
+  var opacityColIdComp = null;
+  var opacityPctModeIdComp = null;  // Percentage mode for Figma "Opacity" binding
   if (opacityCols.length > 0) {
+    opacityColIdComp = opacityCols[0].id;
+    var opModesComp = opacityCols[0].modes || [];
+    for (var omi = 0; omi < opModesComp.length; omi++) {
+      if (opModesComp[omi].name === "Percentage") { opacityPctModeIdComp = opModesComp[omi].modeId; break; }
+    }
     var opVars = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === opacityCols[0].id && v.resolvedType === "FLOAT"; });
     var opModeId = opacityCols[0].modes[0].modeId;
     var allColsBasicOp = figma.variables.getLocalVariableCollections();
@@ -201,6 +209,10 @@ export async function generateComponentsPage(msg) {
     var pct = Math.round(node.opacity * 100);
     var ov = opacityVarMapComp[pct];
     if (ov) { try { node.setBoundVariable("opacity", ov); } catch(e) {} }
+  }
+  // Figma's "Opacity" property uses percentage values — set Percentage mode on main frame
+  if (opacityColIdComp && opacityPctModeIdComp) {
+    try { frame.setExplicitVariableModeForCollection(opacityColIdComp, opacityPctModeIdComp); } catch(e) {}
   }
 
   // Bind the main frame spacing now that helpers are defined
@@ -706,6 +718,7 @@ export async function generateComponentsPage(msg) {
     chevron.name = "chevron";
     chevron.resize(17, 10);
     chevron.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: chevronImageHash }];
+    chevron.exportSettings = STANDARD_EXPORT_SETTINGS;
     if (dIsDisabled) { chevron.opacity = 0.5; bindOpacity(chevron); }
     dField.appendChild(chevron);
 
@@ -829,6 +842,7 @@ export async function generateComponentsPage(msg) {
     imgRect.x = 0; imgRect.y = 0;
     imgRect.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
     imgRect.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+    imgRect.exportSettings = STANDARD_EXPORT_SETTINGS;
     imgComp.appendChild(imgRect);
 
     allImgComps.push(imgComp);
@@ -865,6 +879,10 @@ export async function generateComponentsPage(msg) {
   bgImgComp.resize(400, 300);
   bgImgComp.clipsContent = true;
   bgImgComp.fills = [{ type: "IMAGE", imageHash: bgImgPlaceholder, scaleMode: "FILL" }];
+  bgImgComp.exportSettings = [
+    { format: "PNG", suffix: "", constraint: { type: "SCALE", value: 1 } },
+    { format: "PNG", suffix: "@2x", constraint: { type: "SCALE", value: 2 } }
+  ];
 
   frame.appendChild(bgImgComp);
 }

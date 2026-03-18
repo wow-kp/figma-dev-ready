@@ -1,6 +1,6 @@
 // Main entry point — plugin init, selection listener, and message router
-import { countTokensByCategory, ensureEssentialColors, ensureComponentTextStyles, getAuditPages } from './utils';
-import { pushDebugData, runAudit, runFixes, findNearestColorVar } from './audit';
+import { countTokensByCategory, ensureEssentialColors, ensureComponentTextStyles, getAuditPages, hexToFigma } from './utils';
+import { pushDebugData, runAudit, runFixes, findNearestColorVar, findNearestFloatVar } from './audit';
 import { generateCover, updateCoverStatus } from './cover';
 import { generatePromoStructure } from './wireframes';
 import { generateFoundationsPage } from './foundations';
@@ -43,7 +43,14 @@ figma.ui.onmessage = async function(msg) {
   }
   if (msg.type === "focus-node") {
     var node = figma.getNodeById(msg.id);
-    if (node) { figma.currentPage.selection=[node]; figma.viewport.scrollAndZoomIntoView([node]); }
+    if (node) {
+      // Switch to the node's page if needed
+      var pg = node;
+      while (pg && pg.type !== "PAGE") pg = pg.parent;
+      if (pg && pg.type === "PAGE" && figma.currentPage !== pg) figma.currentPage = pg;
+      figma.currentPage.selection = [node];
+      figma.viewport.scrollAndZoomIntoView([node]);
+    }
   }
   // ── Per-issue inline fixes ────────────────────────────────────────────────
   if (msg.type === "rename-node") {
@@ -70,6 +77,288 @@ figma.ui.onmessage = async function(msg) {
           return fill;
         });
         try { node.fills = newFills; } catch(e) {}
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "bind-stroke") {
+    var node = figma.getNodeById(msg.id);
+    if (node && "strokes" in node && Array.isArray(node.strokes)) {
+      var colorVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "COLOR"; });
+      if (colorVars.length > 0) {
+        var newStrokes = node.strokes.map(function(stroke, i) {
+          if (stroke.type !== "SOLID" || stroke.visible === false) return stroke;
+          var bv = node.boundVariables && node.boundVariables.strokes && node.boundVariables.strokes[i];
+          if (bv) return stroke;
+          var nearest = findNearestColorVar(stroke.color, colorVars);
+          if (nearest) { try { return figma.variables.setBoundVariableForPaint(stroke,"color",nearest); } catch(e) { return stroke; } }
+          return stroke;
+        });
+        try { node.strokes = newStrokes; } catch(e) {}
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "bind-spacing") {
+    var node = figma.getNodeById(msg.id);
+    if (node && "layoutMode" in node && node.layoutMode !== "NONE") {
+      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var spacingProps = ["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];
+      for (var spi = 0; spi < spacingProps.length; spi++) {
+        var prop = spacingProps[spi];
+        if (!(prop in node)) continue;
+        var val = node[prop];
+        if (val === figma.mixed || !val || val <= 0) continue;
+        var bv = node.boundVariables && node.boundVariables[prop];
+        if (bv) continue;
+        var nearest = findNearestFloatVar(val, floatVars);
+        if (nearest) { try { node.setBoundVariable(prop, nearest); } catch(e) {} }
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "bind-radius") {
+    var node = figma.getNodeById(msg.id);
+    if (node && "cornerRadius" in node) {
+      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var radiusProps = ["cornerRadius","topLeftRadius","topRightRadius","bottomLeftRadius","bottomRightRadius"];
+      for (var rpi = 0; rpi < radiusProps.length; rpi++) {
+        var prop = radiusProps[rpi];
+        if (!(prop in node)) continue;
+        var val = node[prop];
+        if (val === figma.mixed || !val || val <= 0) continue;
+        var bv = node.boundVariables && node.boundVariables[prop];
+        if (bv) continue;
+        var nearest = findNearestFloatVar(val, floatVars);
+        if (nearest) { try { node.setBoundVariable(prop, nearest); } catch(e) {} }
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "bind-opacity") {
+    var node = figma.getNodeById(msg.id);
+    if (node && "opacity" in node && node.opacity < 1 && node.opacity > 0) {
+      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var bv = node.boundVariables && node.boundVariables.opacity;
+      if (!bv) {
+        var nearest = findNearestFloatVar(node.opacity, floatVars);
+        if (nearest) { try { node.setBoundVariable("opacity", nearest); } catch(e) {} }
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "bind-border-width") {
+    var node = figma.getNodeById(msg.id);
+    if (node && "strokeWeight" in node && node.strokeWeight > 0) {
+      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var bv = node.boundVariables && node.boundVariables.strokeWeight;
+      if (!bv) {
+        var nearest = findNearestFloatVar(node.strokeWeight, floatVars);
+        if (nearest) { try { node.setBoundVariable("strokeWeight", nearest); } catch(e) {} }
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "bind-text-style") {
+    var node = figma.getNodeById(msg.id);
+    if (node && node.type === "TEXT" && msg.styleId) {
+      var ts = figma.getStyleById(msg.styleId);
+      if (ts) {
+        try {
+          await figma.loadFontAsync(ts.fontName);
+          node.textStyleId = ts.id;
+        } catch(e) {}
+      }
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "create-text-style") {
+    var node = figma.getNodeById(msg.id);
+    if (node && node.type === "TEXT" && msg.styleName) {
+      try {
+        var fn = node.fontName !== figma.mixed ? node.fontName : { family: "Inter", style: "Regular" };
+        await figma.loadFontAsync(fn);
+        var newTs = figma.createTextStyle();
+        newTs.name = msg.styleName;
+        newTs.fontName = fn;
+        newTs.fontSize = node.fontSize !== figma.mixed ? node.fontSize : 14;
+        if (node.lineHeight !== figma.mixed && node.lineHeight) newTs.lineHeight = node.lineHeight;
+        if (node.letterSpacing !== figma.mixed && node.letterSpacing) newTs.letterSpacing = node.letterSpacing;
+        node.textStyleId = newTs.id;
+      } catch(e) {}
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "create-and-bind") {
+    // Create a new variable and bind it to the node property
+    var node = figma.getNodeById(msg.nodeId);
+    if (node && msg.varName) {
+      try {
+        var cols = figma.variables.getLocalVariableCollections();
+        var targetCol = null;
+        var colName = msg.collection || "";
+        // Find or create the target collection
+        for (var ci = 0; ci < cols.length; ci++) {
+          if (cols[ci].name.toLowerCase() === colName.toLowerCase()) { targetCol = cols[ci]; break; }
+        }
+        if (!targetCol) {
+          targetCol = figma.variables.createVariableCollection(colName || "Variables");
+        }
+        var modeId = targetCol.modes[0].modeId;
+        if (msg.varType === "COLOR") {
+          var newVar = figma.variables.createVariable(msg.varName, targetCol, "COLOR");
+          var rgb = hexToFigma(msg.rawValue || "#000000");
+          newVar.setValueForMode(modeId, { r: rgb.r, g: rgb.g, b: rgb.b, a: 1 });
+          // Bind to the appropriate paint
+          if (msg.bindType === "fill" && "fills" in node && Array.isArray(node.fills)) {
+            var idx = msg.bindIndex || 0;
+            if (idx < node.fills.length) {
+              var nf = node.fills.slice();
+              try { nf[idx] = figma.variables.setBoundVariableForPaint(nf[idx], "color", newVar); node.fills = nf; } catch(e) {}
+            }
+          } else if (msg.bindType === "stroke" && "strokes" in node && Array.isArray(node.strokes)) {
+            var idx = msg.bindIndex || 0;
+            if (idx < node.strokes.length) {
+              var ns = node.strokes.slice();
+              try { ns[idx] = figma.variables.setBoundVariableForPaint(ns[idx], "color", newVar); node.strokes = ns; } catch(e) {}
+            }
+          }
+        } else {
+          // FLOAT variable
+          var newVar = figma.variables.createVariable(msg.varName, targetCol, "FLOAT");
+          newVar.setValueForMode(modeId, parseFloat(msg.rawValue) || 0);
+          // Bind based on type
+          if (msg.bindType === "spacing") {
+            ["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"].forEach(function(prop) {
+              if (!(prop in node)) return;
+              var val = node[prop];
+              if (val === figma.mixed || !val || val <= 0) return;
+              var b = node.boundVariables && node.boundVariables[prop];
+              if (b) return;
+              // Only bind props whose value is close to the new variable value
+              if (Math.abs(val - (parseFloat(msg.rawValue) || 0)) < Math.max(val * 0.1, 1)) {
+                try { node.setBoundVariable(prop, newVar); } catch(e) {}
+              }
+            });
+          } else if (msg.bindType === "radius") {
+            try { node.setBoundVariable("cornerRadius", newVar); } catch(e) {}
+          } else if (msg.bindType === "opacity") {
+            try { node.setBoundVariable("opacity", newVar); } catch(e) {}
+          } else if (msg.bindType === "borderWidth") {
+            try { node.setBoundVariable("strokeWeight", newVar); } catch(e) {}
+          }
+        }
+      } catch(e) {}
+    }
+    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+  }
+  if (msg.type === "fix-all-check") {
+    var checkKey = msg.checkKey;
+    var auditResult = runAudit();
+    var checkData = auditResult.checks[checkKey];
+    if (checkData && checkData.issues.length > 0) {
+      var ids = [];
+      for (var fai = 0; fai < checkData.issues.length; fai++) {
+        var fid = checkData.issues[fai].id;
+        if (ids.indexOf(fid) === -1) ids.push(fid);
+      }
+      for (var fi = 0; fi < ids.length; fi++) {
+        var fakeMsg = { id: ids[fi] };
+        if (checkKey === "naming") {
+          var n = figma.getNodeById(ids[fi]);
+          if (n && n.type !== "TEXT") {
+            var iss = checkData.issues.filter(function(is){ return is.id === ids[fi]; })[0];
+            if (iss && iss.suggestedName) n.name = iss.suggestedName;
+          }
+        } else if (checkKey === "namingFormat") {
+          var n = figma.getNodeById(ids[fi]);
+          if (n && n.type !== "TEXT") {
+            var iss = checkData.issues.filter(function(is){ return is.id === ids[fi]; })[0];
+            if (iss && iss.suggestedName) n.name = iss.suggestedName;
+          }
+        } else if (checkKey === "hidden") {
+          var n = figma.getNodeById(ids[fi]);
+          if (n) { try { n.remove(); } catch(e) {} }
+        } else if (checkKey === "empty") {
+          var n = figma.getNodeById(ids[fi]);
+          if (n) { try { n.remove(); } catch(e) {} }
+        } else if (checkKey === "colors") {
+          // Only bind issues that have a suggestedVar
+          var issuesForNode = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; });
+          if (issuesForNode.length === 0) continue;
+          var n = figma.getNodeById(ids[fi]);
+          if (n) {
+            for (var ii = 0; ii < issuesForNode.length; ii++) {
+              var iss = issuesForNode[ii];
+              var v = figma.variables.getVariableById(iss.suggestedVar.id);
+              if (!v) continue;
+              if (iss.bindType === "fill" && "fills" in n && Array.isArray(n.fills)) {
+                var idx = iss.bindIndex || 0;
+                if (n.fills[idx]) {
+                  try { var nf = n.fills.slice(); nf[idx] = figma.variables.setBoundVariableForPaint(nf[idx],"color",v); n.fills = nf; } catch(e) {}
+                }
+              } else if (iss.bindType === "stroke" && "strokes" in n && Array.isArray(n.strokes)) {
+                var idx = iss.bindIndex || 0;
+                if (n.strokes[idx]) {
+                  try { var ns = n.strokes.slice(); ns[idx] = figma.variables.setBoundVariableForPaint(ns[idx],"color",v); n.strokes = ns; } catch(e) {}
+                }
+              }
+            }
+          }
+        } else if (checkKey === "spacingVars") {
+          var issuesForNode = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; });
+          if (issuesForNode.length === 0) continue;
+          var n = figma.getNodeById(ids[fi]);
+          if (n) {
+            for (var ii = 0; ii < issuesForNode.length; ii++) {
+              var iss = issuesForNode[ii];
+              var v = figma.variables.getVariableById(iss.suggestedVar.id);
+              if (!v || !iss.bindType) continue;
+              try { n.setBoundVariable(iss.bindType, v); } catch(e) {}
+            }
+          }
+        } else if (checkKey === "radiusVars") {
+          var issuesForNode = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; });
+          if (issuesForNode.length === 0) continue;
+          var n = figma.getNodeById(ids[fi]);
+          if (n) {
+            for (var ii = 0; ii < issuesForNode.length; ii++) {
+              var iss = issuesForNode[ii];
+              var v = figma.variables.getVariableById(iss.suggestedVar.id);
+              if (!v || !iss.bindType) continue;
+              try { n.setBoundVariable(iss.bindType, v); } catch(e) {}
+            }
+          }
+        } else if (checkKey === "opacityVars") {
+          var iss = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; })[0];
+          if (!iss) continue;
+          var n = figma.getNodeById(ids[fi]);
+          if (n) {
+            var v = figma.variables.getVariableById(iss.suggestedVar.id);
+            if (v) { try { n.setBoundVariable("opacity", v); } catch(e) {} }
+          }
+        } else if (checkKey === "borderVars") {
+          var iss = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; })[0];
+          if (!iss) continue;
+          var n = figma.getNodeById(ids[fi]);
+          if (n) {
+            var v = figma.variables.getVariableById(iss.suggestedVar.id);
+            if (v) { try { n.setBoundVariable("strokeWeight", v); } catch(e) {} }
+          }
+        } else if (checkKey === "textStyles") {
+          var iss = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedStyle; })[0];
+          if (!iss) continue;
+          var n = figma.getNodeById(ids[fi]);
+          if (n && n.type === "TEXT" && iss.suggestedStyle.id) {
+            var ts = figma.getStyleById(iss.suggestedStyle.id);
+            if (ts && ts.type === "TEXT") {
+              try {
+                await figma.loadFontAsync(ts.fontName);
+                n.textStyleId = ts.id;
+              } catch(e) {}
+            }
+          }
+        }
       }
     }
     figma.ui.postMessage({ type:"audit-results", results:runAudit() });

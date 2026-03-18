@@ -35,7 +35,7 @@ export function isDefaultName(n){return DEFAULT_NAME_RE.test(n.trim());}
 
 function rgbToHex(c){return "#"+[c.r,c.g,c.b].map(function(v){return Math.round(v*255).toString(16).padStart(2,"0");}).join("");}
 
-export function getPath(node){var parts=[],n=node.parent;while(n&&n.type!=="PAGE"&&n.type!=="DOCUMENT"){parts.unshift(n.name);n=n.parent;}return parts.length?parts.join(" › "):"Page root";}
+export function getPath(node){var parts=[],n=node.parent;while(n&&n.type!=="PAGE"&&n.type!=="DOCUMENT"){parts.unshift(n.name);n=n.parent;}if(n&&n.type==="PAGE")parts.unshift("📄 "+n.name);return parts.length?parts.join(" › "):"Page root";}
 
 export function trunc(s,l){l=l||38;return s&&s.length>l?s.slice(0,l)+"…":(s||"");}
 
@@ -291,6 +291,24 @@ export function colorDist(a,b){var dr=a.r-b.r,dg=a.g-b.g,db=a.b-b.b;return Math.
 
 export function findNearestColorVar(color,vars){var best=null,bestDist=0.04;for(var i=0;i<vars.length;i++){var vc=getVarColor(vars[i]);if(!vc)continue;var d=colorDist(color,vc);if(d<bestDist){bestDist=d;best=vars[i];}}return best;}
 
+// Get the first-mode float value from a FLOAT variable
+export function getVarFloat(v){var col=figma.variables.getVariableCollectionById(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(typeof val==="number")return val;return null;}
+
+// Find nearest FLOAT variable to a given value (within 10% tolerance)
+export function findNearestFloatVar(value,vars){
+  if(!value||value<=0)return null;
+  var best=null,bestDist=Infinity;
+  for(var i=0;i<vars.length;i++){
+    var fv=getVarFloat(vars[i]);
+    if(fv===null||fv<=0)continue;
+    var d=Math.abs(fv-value);
+    // Must be within 10% or 1px, whichever is larger
+    var threshold=Math.max(fv*0.1,1);
+    if(d<threshold&&d<bestDist){bestDist=d;best=vars[i];}
+  }
+  return best;
+}
+
 function mk(label,desc,icon,group){return{label:label,description:desc,icon:icon,group:group,issues:[]};}
 
 // getAuditPages imported from utils
@@ -312,8 +330,56 @@ export function runAudit(){
     mixedText:     mk("Mixed Text Styles",     "Text layers with multiple conflicting styles",      "🔀",  "Typography"),
     hidden:        mk("Hidden Layers",         "Invisible layers that may be forgotten",            "🙈",  "Hygiene"),
     empty:         mk("Empty Containers",      "Frames or groups with no children",                 "📦",  "Hygiene"),
+    borderVars:    mk("Border Variables",     "Border width not bound to a variable",                  "🔲",  "Variables & Styles"),
+    inconsistentSpacing: mk("Inconsistent Spacing", "Spacing values not matching any token in the scale",  "📊",  "Variables & Styles"),
     unsavedStyles: mk("Unsaved Effect Styles", "Shadows/blurs not saved as an effect style",        "✨",  "Hygiene"),
   };
+  // Pre-load all variables for suggestions and binding checks
+  var allLocalVars = [];
+  try { allLocalVars = figma.variables.getLocalVariables(); } catch(e) {}
+  var colorVars = allLocalVars.filter(function(v){ return v.resolvedType === "COLOR"; });
+  var floatVars = allLocalVars.filter(function(v){ return v.resolvedType === "FLOAT"; });
+  // Build serializable var info for UI suggestions
+  function varInfo(v) {
+    if (!v) return null;
+    var col = figma.variables.getVariableCollectionById(v.variableCollectionId);
+    return { id: v.id, name: v.name, collection: col ? col.name : "" };
+  }
+  // Pre-load spacing variable values for inconsistent spacing check
+  var spacingVarValues = [];
+  for (var svi = 0; svi < floatVars.length; svi++) {
+    var svCol = figma.variables.getVariableCollectionById(floatVars[svi].variableCollectionId);
+    if (svCol && svCol.name === "Spacing") {
+      var svVal = getVarFloat(floatVars[svi]);
+      if (svVal !== null && svVal > 0) spacingVarValues.push(svVal);
+    }
+  }
+  // Pre-load text styles for suggestions
+  var localTextStyles = [];
+  try { localTextStyles = figma.getLocalTextStyles(); } catch(e) {}
+  function findNearestTextStyle(node) {
+    if (!localTextStyles.length) return null;
+    var fs = node.fontSize !== figma.mixed ? node.fontSize : null;
+    var fn = node.fontName !== figma.mixed ? node.fontName : null;
+    if (!fs) return null;
+    var best = null, bestScore = 0;
+    for (var tsi = 0; tsi < localTextStyles.length; tsi++) {
+      var ts = localTextStyles[tsi];
+      var score = 0;
+      // Exact font size match = 10 points, close = 5
+      if (ts.fontSize === fs) score += 10;
+      else if (Math.abs(ts.fontSize - fs) <= 1) score += 5;
+      else continue; // font size must be close
+      // Font family match
+      if (fn && ts.fontName.family === fn.family) { score += 5; if (ts.fontName.style === fn.style) score += 3; }
+      if (score > bestScore) { bestScore = score; best = ts; }
+    }
+    return best;
+  }
+  function tsInfo(ts) {
+    if (!ts) return null;
+    return { id: ts.id, name: ts.name };
+  }
   var totalNodes=0;
 
   // For nodes inside instances, find the corresponding main component node to check its bindings
@@ -392,39 +458,49 @@ export function runAudit(){
     }
     // ── Deep nesting (skip inside instances — component internals don't count) ──
     if(!insideInst && depth>=6&&(node.type==="FRAME"||node.type==="GROUP"))checks.deepNesting.issues.push({id:node.id,label:"Depth "+depth+': "'+trunc(node.name)+'"',path:path});
-    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode==="NONE"&&"children"in node&&node.children.length>=2)checks.autoLayout.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.children.length+' children',path:path});
-    // ── Fixed sizing: flag layout containers with FIXED width inside auto-layout parents ──
+    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT"||node.type==="GROUP")&&("layoutMode"in node?node.layoutMode==="NONE":true)&&"children"in node&&node.children.length>=2)checks.autoLayout.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.children.length+' children',path:path});
+    // ── Fixed sizing: flag layout containers with FIXED width/height inside auto-layout parents ──
     if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT"||node.type==="INSTANCE") && node.parent && "layoutMode" in node.parent && node.parent.layoutMode !== "NONE") {
-      // Check horizontal sizing: should be FILL in horizontal parent, or always for vertical parent children
-      if ("layoutSizingHorizontal" in node && node.layoutSizingHorizontal === "FIXED") {
-        // Skip small elements: buttons, icons, images, inputs (width < 200 and not a section-level frame)
-        var isSmallElement = node.width < 200 || (node.name && /button|btn|icon|img|image|input|field|logo|close|chevron|arrow|label|dropdown/i.test(node.name));
-        if (!isSmallElement) checks.fixedSize.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — fixed width '+Math.round(node.width)+'px',path:path});
+      var isSmallByName = node.name && /button|btn|icon|img|image|input|field|logo|close|chevron|arrow|label|dropdown|badge|tag|chip|avatar|dot|indicator|separator|divider/i.test(node.name);
+      // Check horizontal sizing
+      if (!isSmallByName && "layoutSizingHorizontal" in node && node.layoutSizingHorizontal === "FIXED") {
+        checks.fixedSize.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — fixed width '+Math.round(node.width)+'px',path:path});
+      }
+      // Check vertical sizing
+      if (!isSmallByName && "layoutSizingVertical" in node && node.layoutSizingVertical === "FIXED") {
+        checks.fixedSize.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — fixed height '+Math.round(node.height)+'px',path:path});
       }
     }
     // ── Variables & styles (resolve from component when inside instance) ──
     var bv=getBV(node, insideInst);
-    if("fills"in node&&Array.isArray(node.fills)){node.fills.forEach(function(fill,i){if(fill.type==="SOLID"&&fill.visible!==false){var b=bv.fills&&bv.fills[i];if(!b)checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" fill: '+rgbToHex(fill.color),path:path});}});}
-    if("strokes"in node&&Array.isArray(node.strokes)){node.strokes.forEach(function(stroke,i){if(stroke.type==="SOLID"&&stroke.visible!==false&&(node.strokeWeight||0)>0){var b=bv.strokes&&bv.strokes[i];if(!b)checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" stroke: '+rgbToHex(stroke.color),path:path});}});}
-    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode!=="NONE"){var unboundProps=[];["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"].forEach(function(prop){if(!(prop in node))return;var val=node[prop];if(val===figma.mixed||!val||val<=0)return;var b=bv[prop];if(!b)unboundProps.push(prop.replace(/([A-Z])/g," $1").toLowerCase());});if(unboundProps.length)checks.spacingVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+unboundProps.join(", "),path:path});}
-    if("cornerRadius"in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){var b=bv.cornerRadius||bv.topLeftRadius||bv.topRightRadius||bv.bottomLeftRadius||bv.bottomRightRadius;if(!b)checks.radiusVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.cornerRadius+'px',path:path});}
-    if("opacity"in node&&node.opacity<1&&node.opacity>0){var b=bv.opacity;if(!b)checks.opacityVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+Math.round(node.opacity*100)+'%',path:path});}
-    if(node.type==="TEXT"){var tsId=getTsId(node, insideInst);if(tsId===figma.mixed)checks.mixedText.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"',path:path});else if(!tsId)checks.textStyles.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"',path:path});}
+    if("fills"in node&&Array.isArray(node.fills)){node.fills.forEach(function(fill,i){if(fill.type==="SOLID"&&fill.visible!==false){var b=bv.fills&&bv.fills[i];if(!b){var nv=findNearestColorVar(fill.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" fill: '+rgbToHex(fill.color),path:path,suggestedVar:varInfo(nv),rawValue:rgbToHex(fill.color),bindType:"fill",bindIndex:i});}}});}
+    if("strokes"in node&&Array.isArray(node.strokes)){node.strokes.forEach(function(stroke,i){if(stroke.type==="SOLID"&&stroke.visible!==false&&(node.strokeWeight||0)>0){var b=bv.strokes&&bv.strokes[i];if(!b){var nv=findNearestColorVar(stroke.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" stroke: '+rgbToHex(stroke.color),path:path,suggestedVar:varInfo(nv),rawValue:rgbToHex(stroke.color),bindType:"stroke",bindIndex:i});}}});}
+    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode!=="NONE"){var unboundProps=[];var firstSpVal=0;["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"].forEach(function(prop){if(!(prop in node))return;var val=node[prop];if(val===figma.mixed||!val||val<=0)return;var b=bv[prop];if(!b){unboundProps.push(prop.replace(/([A-Z])/g," $1").toLowerCase());if(!firstSpVal)firstSpVal=val;}});if(unboundProps.length){var nv=findNearestFloatVar(firstSpVal,floatVars);checks.spacingVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+unboundProps.join(", "),path:path,suggestedVar:varInfo(nv),rawValue:firstSpVal,bindType:"spacing"});}}
+    if("cornerRadius"in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){var b=bv.cornerRadius||bv.topLeftRadius||bv.topRightRadius||bv.bottomLeftRadius||bv.bottomRightRadius;if(!b){var nv=findNearestFloatVar(node.cornerRadius,floatVars);checks.radiusVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.cornerRadius+'px',path:path,suggestedVar:varInfo(nv),rawValue:node.cornerRadius,bindType:"radius"});}}
+    if("opacity"in node&&node.opacity<1&&node.opacity>0){var b=bv.opacity;if(!b){var nv=findNearestFloatVar(node.opacity,floatVars);checks.opacityVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+Math.round(node.opacity*100)+'%',path:path,suggestedVar:varInfo(nv),rawValue:node.opacity,bindType:"opacity"});}}
+    if(node.type==="TEXT"){var tsId=getTsId(node, insideInst);if(tsId===figma.mixed)checks.mixedText.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"',path:path});else if(!tsId){var nts=findNearestTextStyle(node);var fSize=node.fontSize!==figma.mixed?node.fontSize:null;var fName=node.fontName!==figma.mixed?node.fontName:null;var fontDesc=(fName?fName.family+" "+fName.style:"")+(fSize?" / "+fSize+"px":"");checks.textStyles.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"'+(fontDesc?" — "+fontDesc:""),path:path,suggestedStyle:tsInfo(nts),fontDesc:fontDesc,bindType:"textStyle"});}}
     if("effects"in node&&node.effects&&node.effects.length>0){var esId=getEffectStyleId(node,insideInst);if(!esId)checks.unsavedStyles.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.effects.length+' effect(s)',path:path});}
-    if(depth<=6&&node.visible===false)checks.hidden.issues.push({id:node.id,label:node.type+': "'+trunc(node.name)+'"',path:path});
+    // ── Border width variable check (only when node has visible strokes) ──
+    if("strokes"in node&&Array.isArray(node.strokes)&&node.strokes.some(function(s){return s.visible!==false;})&&"strokeWeight"in node&&node.strokeWeight!==figma.mixed&&node.strokeWeight>0){var rawBV=node.boundVariables||{};var bwBound=rawBV.strokeWeight||rawBV.strokeTopWeight||rawBV.strokeBottomWeight||rawBV.strokeLeftWeight||rawBV.strokeRightWeight||bv.strokeWeight||bv.strokeTopWeight||bv.strokeBottomWeight||bv.strokeLeftWeight||bv.strokeRightWeight;if(!bwBound){var nv=findNearestFloatVar(node.strokeWeight,floatVars);checks.borderVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.strokeWeight+'px',path:path,suggestedVar:varInfo(nv),rawValue:node.strokeWeight,bindType:"borderWidth"});}}
+    // ── Inconsistent spacing check (raw values not in spacing scale) ──
+    if(!insideInst&&spacingVarValues.length>0&&"layoutMode"in node&&node.layoutMode!=="NONE"){var spacingProps=["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];for(var spi2=0;spi2<spacingProps.length;spi2++){var sp2=spacingProps[spi2];if(!(sp2 in node))continue;var sv2=node[sp2];if(sv2===figma.mixed||!sv2||sv2<=0)continue;var spBound=bv[sp2];if(spBound)continue;var matchesScale=false;for(var sci2=0;sci2<spacingVarValues.length;sci2++){if(Math.abs(spacingVarValues[sci2]-sv2)<0.5){matchesScale=true;break;}}if(!matchesScale)checks.inconsistentSpacing.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+sp2.replace(/([A-Z])/g," $1").toLowerCase()+': '+sv2+'px',path:path});}}
+    if(node.visible===false)checks.hidden.issues.push({id:node.id,label:node.type+': "'+trunc(node.name)+'"',path:path});
     if((node.type==="FRAME"||node.type==="GROUP")&&"children"in node&&node.children.length===0)checks.empty.issues.push({id:node.id,label:node.type+': "'+trunc(node.name)+'"',path:path});
     if("children"in node&&node.children)node.children.forEach(function(child){walk(child,depth+1,isInst);});
   }
   auditPages.forEach(function(pg){pg.children.forEach(function(n){walk(n,0,false);});});
-  var WEIGHTS={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+  var WEIGHTS={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,borderVars:3,inconsistentSpacing:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
   function issuePenalty(count,weight){if(!count)return 0;var s=count<=2?.12:count<=5?.30:count<=10?.52:count<=20?.72:.95;return s*weight;}
   var keys=Object.keys(checks);
   var totalWeight=keys.reduce(function(s,k){return s+(WEIGHTS[k]||1);},0);
   var totalPenalty=keys.reduce(function(s,k){return s+issuePenalty(checks[k].issues.length,WEIGHTS[k]||1);},0);
   var score=Math.max(0,Math.round(100-(totalPenalty/totalWeight)*100));
   var totalIssues=keys.reduce(function(s,k){return s+checks[k].issues.length;},0);
-  var hasColorVars=figma.variables.getLocalVariables().some(function(v){return v.resolvedType==="COLOR";});
-  var fixable={naming:checks.naming.issues.length,empty:checks.empty.issues.length,hidden:checks.hidden.issues.length,colors:checks.colors.issues.length,hasColorVars:hasColorVars};
+  var hasColorVars=colorVars.length>0;
+  var hasFloatVars=floatVars.length>0;
+  var hasTextStyles=localTextStyles.length>0;
+  var allTextStylesList=localTextStyles.map(function(ts){return tsInfo(ts);});
+  var fixable={naming:checks.naming.issues.length,empty:checks.empty.issues.length,hidden:checks.hidden.issues.length,colors:checks.colors.issues.length,spacingVars:checks.spacingVars.issues.length,radiusVars:checks.radiusVars.issues.length,opacityVars:checks.opacityVars.issues.length,borderVars:checks.borderVars.issues.length,textStyles:checks.textStyles.issues.length,hasColorVars:hasColorVars,hasFloatVars:hasFloatVars,hasTextStyles:hasTextStyles,allTextStyles:allTextStylesList};
   return{checks:checks,totalNodes:totalNodes,totalIssues:totalIssues,score:score,fixable:fixable};
 }
 

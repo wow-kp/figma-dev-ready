@@ -54,7 +54,7 @@ export function countTokensByCategory(allVars, allCols) {
 }
 
 export function getAuditPages(){
-  var hints=["mobile","desktop"];
+  var hints=["mobile","desktop","components"];
   var pages=[];
   for(var i=0;i<figma.root.children.length;i++){
     var p=figma.root.children[i];

@@ -48,6 +48,22 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .bind-btn   { background: transparent; color: #89b4fa; border: 1px solid #89b4fa30; }
 .bind-btn:hover   { background: #89b4fa15; }
 .bind-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.fix-all-btn { background: #a6e3a120; color: #a6e3a1; border: 1px solid #a6e3a130; }
+.fix-all-btn:hover { background: #a6e3a135; }
+.fix-all-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.bind-hint { font-size: 10px; color: #a6e3a1; margin-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; display: inline-block; vertical-align: middle; }
+.bind-no-match { font-size: 10px; color: #f9e2af; margin-right: 4px; white-space: nowrap; }
+.create-btn { background: #f9e2af20; color: #f9e2af; border: 1px solid #f9e2af30; }
+.create-btn:hover { background: #f9e2af35; }
+.create-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.ai-review-wrap { margin: 8px 0 12px 0; }
+.ai-review-btn { width: 100%; padding: 10px 16px; border-radius: 8px; border: 1px dashed #cba6f730; background: #cba6f708; color: #cba6f7; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.ai-review-btn:hover { background: #cba6f715; border-color: #cba6f750; }
+.ai-review-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ai-review-panel { background: #1e1e2e; border: 1px solid #cba6f725; border-radius: 8px; padding: 12px 16px; margin-top: 8px; font-size: 11px; line-height: 1.6; color: #cdd6f4; }
+.ai-review-panel ul { margin: 4px 0 8px 0; padding-left: 18px; }
+.ai-review-panel li { margin: 3px 0; }
+.ai-review-panel strong { color: #cba6f7; }
 
 /* ── Check cards ── */
 /* FIX: use display:block (not flex) so cards render at natural height without flex-shrink compression */
@@ -575,11 +591,11 @@ document.getElementById("run-btn").addEventListener("click",function(){
 var GROUPS_ORDER=[
   {label:"Naming & Structure",keys:["naming","namingFormat","deepNesting"]},
   {label:"Layout",            keys:["autoLayout","fixedSize"]},
-  {label:"Variables & Styles",keys:["colors","spacingVars","radiusVars","opacityVars"]},
+  {label:"Variables & Styles",keys:["colors","spacingVars","radiusVars","opacityVars","borderVars","inconsistentSpacing"]},
   {label:"Typography",        keys:["textStyles","mixedText"]},
   {label:"Hygiene",           keys:["hidden","empty","unsavedStyles"]},
 ];
-var WEIGHTS_UI={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+var WEIGHTS_UI={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,borderVars:3,inconsistentSpacing:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
 function priorityBadge(key){var w=WEIGHTS_UI[key]||1;if(w>=5)return"<span class='priority p-critical'>Critical</span>";if(w>=4)return"<span class='priority p-high'>High</span>";if(w>=3)return"<span class='priority p-medium'>Medium</span>";return"<span class='priority p-low'>Low</span>";}
 // Returns true when all Critical + High priority audit checks have 0 issues
 function auditCritHighPass(data) {
@@ -591,7 +607,7 @@ function auditCritHighPass(data) {
 }
 
 // Build one issue row with the appropriate inline action for its check type
-function makeIssueRow(key, issue, hasColorVars) {
+function makeIssueRow(key, issue, fixable) {
   var row = document.createElement("div");
   row.className = "issue-row";
 
@@ -634,19 +650,153 @@ function makeIssueRow(key, issue, hasColorVars) {
     });
     row.appendChild(action);
 
-  } else if (key === "colors") {
+  } else if (key === "colors" || key === "spacingVars" || key === "radiusVars" || key === "opacityVars" || key === "borderVars") {
     var action = document.createElement("div");
     action.className = "issue-action";
-    var bindBtn = document.createElement("button");
-    bindBtn.className = "action-btn bind-btn";
-    bindBtn.textContent = "Bind";
-    if (!hasColorVars) { bindBtn.disabled = true; bindBtn.title = "No color variables in this file"; }
     action.addEventListener("click", function(e){ e.stopPropagation(); });
-    bindBtn.addEventListener("click", function(){
-      this.disabled = true; this.textContent = "…";
-      parent.postMessage({pluginMessage:{type:"bind-fill",id:issue.id}},"*");
-    });
-    action.appendChild(bindBtn);
+
+    var hasVars = key === "colors" ? fixable.hasColorVars : fixable.hasFloatVars;
+    var sv = issue.suggestedVar;
+
+    if (sv) {
+      // Has a matching variable — show suggestion + Bind button
+      var hint = document.createElement("span");
+      hint.className = "bind-hint";
+      hint.textContent = "→ " + sv.name;
+      hint.title = sv.collection + " / " + sv.name;
+      action.appendChild(hint);
+
+      var bindBtn = document.createElement("button");
+      bindBtn.className = "action-btn bind-btn";
+      bindBtn.textContent = "Bind";
+      bindBtn.addEventListener("click", function(){
+        this.disabled = true; this.textContent = "…";
+        var msgMap = { colors: (issue.bindType === "stroke" ? "bind-stroke" : "bind-fill"), spacingVars: "bind-spacing", radiusVars: "bind-radius", opacityVars: "bind-opacity", borderVars: "bind-border-width" };
+        parent.postMessage({pluginMessage:{type:msgMap[key],id:issue.id}},"*");
+      });
+      action.appendChild(bindBtn);
+    } else {
+      // No matching variable — show create form
+      var defaultCol = { colors: "Colors", spacingVars: "Spacing", radiusVars: "Radius", opacityVars: "Opacity", borderVars: "Border" }[key] || "Variables";
+      var rawDisp = issue.rawValue != null ? String(issue.rawValue) : "";
+      if (key === "colors") rawDisp = issue.rawValue || "";
+      else if (key === "opacityVars") rawDisp = Math.round((issue.rawValue || 0) * 100) + "%";
+      else rawDisp = (issue.rawValue || 0) + "px";
+
+      var noMatch = document.createElement("span");
+      noMatch.className = "bind-no-match";
+      noMatch.textContent = "No match (" + rawDisp + ")";
+      action.appendChild(noMatch);
+
+      var createInput = document.createElement("input");
+      createInput.className = "rename-input";
+      createInput.placeholder = defaultCol.toLowerCase() + "/name";
+      createInput.style.width = "90px";
+      action.appendChild(createInput);
+
+      var createBtn = document.createElement("button");
+      createBtn.className = "action-btn create-btn";
+      createBtn.textContent = "+ Create & Bind";
+      (function(inp, btn, iss, defCol, ky) {
+        function doCreate() {
+          var name = inp.value.trim();
+          if (!name) { inp.focus(); return; }
+          btn.disabled = true; btn.textContent = "…";
+          parent.postMessage({pluginMessage:{
+            type: "create-and-bind",
+            nodeId: iss.id,
+            varName: name,
+            varType: ky === "colors" ? "COLOR" : "FLOAT",
+            rawValue: String(iss.rawValue || ""),
+            bindType: iss.bindType || "",
+            bindIndex: iss.bindIndex || 0,
+            collection: defCol
+          }},"*");
+        }
+        btn.addEventListener("click", doCreate);
+        inp.addEventListener("keydown", function(e){ if(e.key==="Enter") doCreate(); });
+      })(createInput, createBtn, issue, defaultCol, key);
+      action.appendChild(createBtn);
+    }
+
+    row.appendChild(action);
+
+  } else if (key === "textStyles") {
+    var action = document.createElement("div");
+    action.className = "issue-action";
+    action.addEventListener("click", function(e){ e.stopPropagation(); });
+
+    var ss = issue.suggestedStyle;
+    var allTS = (window._auditAllTextStyles || []);
+
+    if (ss) {
+      // Has a matching text style — show suggestion + Bind button
+      var hint = document.createElement("span");
+      hint.className = "bind-hint";
+      hint.textContent = "→ " + ss.name;
+      hint.title = "Text style: " + ss.name;
+      action.appendChild(hint);
+
+      var bindBtn = document.createElement("button");
+      bindBtn.className = "action-btn bind-btn";
+      bindBtn.textContent = "Apply";
+      bindBtn.addEventListener("click", function(){
+        this.disabled = true; this.textContent = "…";
+        parent.postMessage({pluginMessage:{type:"bind-text-style",id:issue.id,styleId:ss.id}},"*");
+      });
+      action.appendChild(bindBtn);
+    }
+
+    // Dropdown to pick from all existing styles
+    if (allTS.length > 0) {
+      var sel = document.createElement("select");
+      sel.className = "rename-input";
+      sel.style.cssText = "width:120px;margin-left:4px;font-size:10px;";
+      var defOpt = document.createElement("option");
+      defOpt.value = "";
+      defOpt.textContent = ss ? "or pick…" : "Pick style…";
+      sel.appendChild(defOpt);
+      for (var tsi = 0; tsi < allTS.length; tsi++) {
+        var opt = document.createElement("option");
+        opt.value = allTS[tsi].id;
+        opt.textContent = allTS[tsi].name;
+        if (ss && allTS[tsi].id === ss.id) opt.disabled = true;
+        sel.appendChild(opt);
+      }
+      (function(select, iss) {
+        select.addEventListener("change", function() {
+          if (!select.value) return;
+          select.disabled = true;
+          parent.postMessage({pluginMessage:{type:"bind-text-style",id:iss.id,styleId:select.value}},"*");
+        });
+      })(sel, issue);
+      action.appendChild(sel);
+    }
+
+    if (!ss) {
+      // No matching text style — also show create form
+      var createInput = document.createElement("input");
+      createInput.className = "rename-input";
+      createInput.placeholder = "style/name";
+      createInput.style.width = "90px";
+      action.appendChild(createInput);
+
+      var createBtn = document.createElement("button");
+      createBtn.className = "action-btn create-btn";
+      createBtn.textContent = "+ Create & Apply";
+      (function(inp, btn, iss) {
+        function doCreate() {
+          var name = inp.value.trim();
+          if (!name) { inp.focus(); return; }
+          btn.disabled = true; btn.textContent = "…";
+          parent.postMessage({pluginMessage:{type:"create-text-style",id:iss.id,styleName:name}},"*");
+        }
+        btn.addEventListener("click", doCreate);
+        inp.addEventListener("keydown", function(e){ if(e.key==="Enter") doCreate(); });
+      })(createInput, createBtn, issue);
+      action.appendChild(createBtn);
+    }
+
     row.appendChild(action);
   }
 
@@ -658,12 +808,13 @@ function clearAuditDisplay(){
   var sb=document.getElementById("score-bar"); if(sb) sb.style.display="none";
   var btn=document.getElementById("run-btn"); if(btn){btn.disabled=false;btn.textContent="Run audit on current page";}
 }
+var _auditOpenChecks = {};
 function renderAudit(data){
   var btn=document.getElementById("run-btn"); btn.disabled=false; btn.textContent="Re-run audit";
   if(data.noPages){
     var container=document.getElementById("results"); container.innerHTML=""; container.style.display="block";
     var msg=document.createElement("div"); msg.style.cssText="text-align:center;color:#a6adc8;padding:24px 12px;font-size:12px;";
-    msg.textContent="No \"Mobile\" or \"Desktop\" pages found. The audit runs only on those pages.";
+    msg.textContent="No \"Mobile\", \"Desktop\", or \"Components\" pages found. The audit runs on those pages.";
     container.appendChild(msg);
     document.getElementById("score-bar").style.display="none";
     return;
@@ -677,6 +828,33 @@ function renderAudit(data){
   document.getElementById("score-bar").style.display="flex";
 
   var container=document.getElementById("results"); container.innerHTML=""; container.style.display="block";
+
+  // AI Review panel
+  if (data.totalIssues > 0) {
+    var aiWrap = document.createElement("div"); aiWrap.className = "ai-review-wrap";
+    var aiBtn = document.createElement("button"); aiBtn.className = "ai-review-btn";
+    aiBtn.innerHTML = "✨ AI Review — Get a prioritized action plan";
+    var aiHasAccess = (_bhProxyHealthy || _bhApiKey);
+    if (!aiHasAccess) { aiBtn.disabled = true; aiBtn.title = "Set up AI access in Build HTML tab first"; aiBtn.innerHTML = "✨ AI Review — requires API key or proxy"; }
+    var aiPanel = document.createElement("div"); aiPanel.className = "ai-review-panel"; aiPanel.style.display = "none";
+    aiBtn.addEventListener("click", function(){
+      aiBtn.disabled = true; aiBtn.innerHTML = "✨ Analyzing…";
+      aiPanel.style.display = "block";
+      aiPanel.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
+      bhCallAuditAI(data, function(err, text){
+        aiBtn.style.display = "none";
+        if (err) {
+          aiPanel.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
+        } else {
+          aiPanel.innerHTML = markdownToHtml(text);
+        }
+      });
+    });
+    aiWrap.appendChild(aiBtn);
+    aiWrap.appendChild(aiPanel);
+    container.appendChild(aiWrap);
+  }
+
   GROUPS_ORDER.forEach(function(group){
     var hdr=document.createElement("div"); hdr.className="group-header"; hdr.textContent=group.label; container.appendChild(hdr);
     group.keys.forEach(function(key){
@@ -690,13 +868,55 @@ function renderAudit(data){
       card.appendChild(header);
 
       if (count) {
-        // Issue list
+        // Fix All button for fixable check types
+        var fixableKeys = ["naming","namingFormat","hidden","empty","colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+        if (fixableKeys.indexOf(key) !== -1) {
+          var bindableChecks = ["colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+          var fixCount = count;
+          if (bindableChecks.indexOf(key) !== -1) {
+            fixCount = check.issues.filter(function(iss){ return key === "textStyles" ? !!iss.suggestedStyle : !!iss.suggestedVar; }).length;
+          }
+          var fixAllBtn = document.createElement("button");
+          fixAllBtn.className = "action-btn fix-all-btn";
+          fixAllBtn.textContent = "Fix All ("+fixCount+")";
+          fixAllBtn.style.cssText = "margin-left:auto;margin-right:8px;font-size:11px;padding:2px 8px;";
+          if (fixCount === 0 || (key === "colors" && !data.fixable.hasColorVars) || (["spacingVars","radiusVars","opacityVars","borderVars"].indexOf(key) !== -1 && !data.fixable.hasFloatVars) || (key === "textStyles" && !data.fixable.hasTextStyles)) {
+            fixAllBtn.disabled = true;
+          }
+          (function(ck){
+            fixAllBtn.addEventListener("click", function(e){
+              e.stopPropagation();
+              this.disabled = true; this.textContent = "Fixing…";
+              parent.postMessage({pluginMessage:{type:"fix-all-check",checkKey:ck}},"*");
+            });
+          })(key);
+          header.appendChild(fixAllBtn);
+        }
+        // Issue list — group duplicate node IDs
         var list = document.createElement("div"); list.className = "issue-list";
+        var seenIds = {};
         check.issues.forEach(function(issue){
-          list.appendChild(makeIssueRow(key, issue, data.fixable.hasColorVars));
+          if (seenIds[issue.id]) {
+            // Append to existing row's label
+            var existing = seenIds[issue.id];
+            var lbl = existing.querySelector(".issue-label");
+            if (lbl) {
+              var extraPart = issue.label.replace(/^"[^"]*"\s*/, "");
+              if (extraPart && lbl.textContent.indexOf(extraPart) === -1) {
+                lbl.textContent += "; " + extraPart;
+              }
+            }
+            return;
+          }
+          var row = makeIssueRow(key, issue, data.fixable);
+          seenIds[issue.id] = row;
+          list.appendChild(row);
         });
         card.appendChild(list);
-        header.addEventListener("click", function(){ card.classList.toggle("open"); });
+        (function(k){
+          if (_auditOpenChecks[k]) card.classList.add("open");
+          header.addEventListener("click", function(){ card.classList.toggle("open"); _auditOpenChecks[k] = card.classList.contains("open"); });
+        })(key);
       }
 
       container.appendChild(card);
@@ -2398,9 +2618,9 @@ function renderStep3(container) {
   var prev = document.getElementById("wf-step-3");
   if (prev) prev.remove();
 
-  var locked = wfStep2Color === "red";
   var step3Done = wfPromoGenerated || wfStep3Skipped;
-  var indicatorColor = locked ? "red" : (step3Done ? "green" : "yellow");
+  var locked = wfStep2Color === "red" && !step3Done;
+  var indicatorColor = step3Done ? "green" : (locked ? "red" : "yellow");
   var stepOpen = locked ? false : wfFormState.step3Open;
 
   var step = document.createElement("div");
@@ -2993,37 +3213,6 @@ function renderStep3(container) {
     });
     btnWrap.appendChild(delBtn);
 
-    // Skip step button
-    if (!wfPromoGenerated && !wfStep3Skipped) {
-      var skipBtn = document.createElement("button");
-      skipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#6c7086;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
-      skipBtn.textContent = "Skip — I'll design my own pages";
-      skipBtn.addEventListener("mouseenter", function() { skipBtn.style.borderColor = "#89b4fa"; skipBtn.style.color = "#89b4fa"; });
-      skipBtn.addEventListener("mouseleave", function() { skipBtn.style.borderColor = "#45475a"; skipBtn.style.color = "#6c7086"; });
-      skipBtn.addEventListener("click", function() {
-        wfStep3Skipped = true;
-        wfFormState.step3Open = false;
-        wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
-        wfFormState.step4Open = true;
-        saveSettings();
-        renderWorkflow();
-      });
-      btnWrap.appendChild(skipBtn);
-    }
-    if (wfStep3Skipped && !wfPromoGenerated) {
-      var unskipBtn = document.createElement("button");
-      unskipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
-      unskipBtn.textContent = "Undo skip";
-      unskipBtn.addEventListener("mouseenter", function() { unskipBtn.style.borderColor = "#f9e2af"; unskipBtn.style.color = "#f9e2af"; });
-      unskipBtn.addEventListener("mouseleave", function() { unskipBtn.style.borderColor = "#45475a"; unskipBtn.style.color = "#a6adc8"; });
-      unskipBtn.addEventListener("click", function() {
-        wfStep3Skipped = false;
-        saveSettings();
-        renderWorkflow();
-      });
-      btnWrap.appendChild(unskipBtn);
-    }
-
     list.appendChild(btnWrap);
     } else {
       // Landing Page / Full Site Build — coming soon
@@ -3046,6 +3235,40 @@ function renderStep3(container) {
 
     body.appendChild(list);
   }
+
+  // Skip step button — always visible (even when locked)
+  var skipWrap = document.createElement("div");
+  skipWrap.style.cssText = "padding:4px 10px 8px;";
+  if (!wfPromoGenerated && !wfStep3Skipped) {
+    var skipBtn = document.createElement("button");
+    skipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#6c7086;border-radius:6px;cursor:pointer;transition:all .15s;";
+    skipBtn.textContent = "Skip — I'll design my own pages";
+    skipBtn.addEventListener("mouseenter", function() { skipBtn.style.borderColor = "#89b4fa"; skipBtn.style.color = "#89b4fa"; });
+    skipBtn.addEventListener("mouseleave", function() { skipBtn.style.borderColor = "#45475a"; skipBtn.style.color = "#6c7086"; });
+    skipBtn.addEventListener("click", function() {
+      wfStep3Skipped = true;
+      wfFormState.step3Open = false;
+      wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
+      wfFormState.step4Open = true;
+      saveSettings();
+      renderWorkflow();
+    });
+    skipWrap.appendChild(skipBtn);
+  }
+  if (wfStep3Skipped && !wfPromoGenerated) {
+    var unskipBtn = document.createElement("button");
+    unskipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;";
+    unskipBtn.textContent = "Undo skip";
+    unskipBtn.addEventListener("mouseenter", function() { unskipBtn.style.borderColor = "#f9e2af"; unskipBtn.style.color = "#f9e2af"; });
+    unskipBtn.addEventListener("mouseleave", function() { unskipBtn.style.borderColor = "#45475a"; unskipBtn.style.color = "#a6adc8"; });
+    unskipBtn.addEventListener("click", function() {
+      wfStep3Skipped = false;
+      saveSettings();
+      renderWorkflow();
+    });
+    skipWrap.appendChild(unskipBtn);
+  }
+  body.appendChild(skipWrap);
 
   body.addEventListener("change", function() { saveSettings(); });
 
@@ -3146,21 +3369,84 @@ function renderStep4(container) {
           chdr.innerHTML = "<div class='check-icon " + (count ? "icon-fail" : "icon-pass") + "'>" + check.icon + "</div><div class='check-info'><div class='check-label'>" + esc(check.label) + "</div><div class='check-desc'>" + esc(check.description) + "</div></div>" + priorityBadge(key) + "<span class='check-badge " + (count ? "badge-fail" : "badge-pass") + "'>" + (count ? count + " issue" + (count !== 1 ? "s" : "") : "Pass") + "</span>" + (count ? "<span class='check-chevron'>▼</span>" : "");
           card.appendChild(chdr);
           if (count) {
+            var fixableKeysWf = ["naming","namingFormat","hidden","empty","colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+            if (fixableKeysWf.indexOf(key) !== -1) {
+              var bindableChecksWf = ["colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+              var fixCountWf = count;
+              if (bindableChecksWf.indexOf(key) !== -1) {
+                fixCountWf = check.issues.filter(function(iss){ return key === "textStyles" ? !!iss.suggestedStyle : !!iss.suggestedVar; }).length;
+              }
+              var fixAllBtnWf = document.createElement("button");
+              fixAllBtnWf.className = "action-btn fix-all-btn";
+              fixAllBtnWf.textContent = "Fix All ("+fixCountWf+")";
+              fixAllBtnWf.style.cssText = "margin-left:auto;margin-right:8px;font-size:11px;padding:2px 8px;";
+              if (fixCountWf === 0 || (key === "colors" && !wfAuditData.fixable.hasColorVars) || (["spacingVars","radiusVars","opacityVars","borderVars"].indexOf(key) !== -1 && !wfAuditData.fixable.hasFloatVars) || (key === "textStyles" && !wfAuditData.fixable.hasTextStyles)) {
+                fixAllBtnWf.disabled = true;
+              }
+              (function(ck){
+                fixAllBtnWf.addEventListener("click", function(e){
+                  e.stopPropagation();
+                  this.disabled = true; this.textContent = "Fixing…";
+                  parent.postMessage({pluginMessage:{type:"fix-all-check",checkKey:ck}},"*");
+                });
+              })(key);
+              chdr.appendChild(fixAllBtnWf);
+            }
             var list = document.createElement("div"); list.className = "issue-list";
+            var seenIdsWf = {};
             check.issues.forEach(function(issue) {
-              list.appendChild(makeIssueRow(key, issue, wfAuditData.fixable.hasColorVars));
+              if (seenIdsWf[issue.id]) {
+                var lbl = seenIdsWf[issue.id].querySelector(".issue-label");
+                if (lbl) {
+                  var extraPart = issue.label.replace(/^"[^"]*"\s*/, "");
+                  if (extraPart && lbl.textContent.indexOf(extraPart) === -1) lbl.textContent += "; " + extraPart;
+                }
+                return;
+              }
+              var row = makeIssueRow(key, issue, wfAuditData.fixable);
+              seenIdsWf[issue.id] = row;
+              list.appendChild(row);
             });
             card.appendChild(list);
-            chdr.addEventListener("click", function() { card.classList.toggle("open"); });
+            (function(k){
+              if (_auditOpenChecks[k]) card.classList.add("open");
+              chdr.addEventListener("click", function(){ card.classList.toggle("open"); _auditOpenChecks[k] = card.classList.contains("open"); });
+            })(key);
           }
           resultsDiv.appendChild(card);
         });
       });
       auditWrap.appendChild(resultsDiv);
+
+      // AI Review panel (workflow tab)
+      if (wfAuditData.totalIssues > 0) {
+        var aiWrapWf = document.createElement("div"); aiWrapWf.className = "ai-review-wrap";
+        var aiBtnWf = document.createElement("button"); aiBtnWf.className = "ai-review-btn";
+        aiBtnWf.innerHTML = "✨ AI Review — Get a prioritized action plan";
+        var aiHasAccessWf = (_bhProxyHealthy || _bhApiKey);
+        if (!aiHasAccessWf) { aiBtnWf.disabled = true; aiBtnWf.title = "Set up AI access in Build HTML tab first"; aiBtnWf.innerHTML = "✨ AI Review — requires API key or proxy"; }
+        var aiPanelWf = document.createElement("div"); aiPanelWf.className = "ai-review-panel"; aiPanelWf.style.display = "none";
+        aiBtnWf.addEventListener("click", function(){
+          aiBtnWf.disabled = true; aiBtnWf.innerHTML = "✨ Analyzing…";
+          aiPanelWf.style.display = "block";
+          aiPanelWf.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
+          bhCallAuditAI(wfAuditData, function(err, text){
+            aiBtnWf.style.display = "none";
+            if (err) {
+              aiPanelWf.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
+            } else {
+              aiPanelWf.innerHTML = markdownToHtml(text);
+            }
+          });
+        });
+        aiWrapWf.appendChild(aiBtnWf);
+        aiWrapWf.appendChild(aiPanelWf);
+        auditWrap.appendChild(aiWrapWf);
+      }
     } else if (wfAuditData && wfAuditData.noPages) {
       var noPages = document.createElement("div");
       noPages.style.cssText = "padding:24px 16px;text-align:center;font-size:11px;color:#a6adc8;";
-      noPages.textContent = "No Desktop or Mobile pages found. The audit runs only on those pages.";
+      noPages.textContent = "No Desktop, Mobile, or Components pages found. The audit runs on those pages.";
       auditWrap.appendChild(noPages);
     } else if (hasPersistedResults) {
       // We have a persisted score but no full data — show loading while auto re-run fetches results
@@ -3620,6 +3906,7 @@ window.onmessage=function(event){
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
   if(msg.type==="audit-results"){
+    window._auditAllTextStyles = (msg.results && msg.results.fixable && msg.results.fixable.allTextStyles) || [];
     renderAudit(msg.results);
     wfAuditData = msg.results;
     // Persist audit summary
@@ -4095,6 +4382,140 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
     callback("AI request timed out (120s). The design may be too large for a single request.", null);
   };
   xhr.send(body);
+}
+
+// ── AI Audit Review ──────────────────────────────────────────────────────────
+function bhSerializeAuditForAI(data) {
+  var lines = [];
+  lines.push("Score: " + data.score + "/100 | " + data.totalIssues + " issues | " + data.totalNodes + " nodes scanned");
+  lines.push("");
+  var keys = Object.keys(data.checks);
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    var check = data.checks[k];
+    var count = check.issues.length;
+    if (!count) continue;
+    var w = WEIGHTS_UI[k] || 1;
+    var pri = w >= 5 ? "CRITICAL" : w >= 4 ? "HIGH" : w >= 3 ? "MEDIUM" : "LOW";
+    lines.push("[" + pri + "] " + check.label + " — " + count + " issue(s): " + check.description);
+    // Include up to 5 sample issues
+    var samples = Math.min(count, 5);
+    for (var j = 0; j < samples; j++) {
+      lines.push("  • " + check.issues[j].label + " (" + check.issues[j].path + ")");
+    }
+    if (count > 5) lines.push("  … and " + (count - 5) + " more");
+    lines.push("");
+  }
+  // Mention which auto-fixes are available
+  var fixInfo = [];
+  if (data.fixable.hasColorVars) fixInfo.push("color variable auto-bind available");
+  if (data.fixable.hasFloatVars) fixInfo.push("float variable auto-bind available (spacing, radius, opacity, border)");
+  if (data.fixable.naming) fixInfo.push("auto-rename available for " + data.fixable.naming + " layers");
+  if (data.fixable.hidden) fixInfo.push(data.fixable.hidden + " hidden layers can be auto-deleted");
+  if (data.fixable.empty) fixInfo.push(data.fixable.empty + " empty containers can be auto-deleted");
+  if (fixInfo.length) {
+    lines.push("Available auto-fixes: " + fixInfo.join("; "));
+  }
+  return lines.join("\n");
+}
+
+function bhCallAuditAI(data, callback) {
+  var useProxy = _bhProxyHealthy && !_bhApiKey;
+  if (useProxy && !_figmaUserId) { callback("Unable to identify Figma user. Please reload the plugin.", null); return; }
+  if (!useProxy && !_bhApiKey) { callback("No API key or proxy configured. Set up AI access in the Build HTML tab to use AI Review.", null); return; }
+
+  var auditText = bhSerializeAuditForAI(data);
+
+  var systemPrompt = "You are a Figma design systems expert reviewing a plugin-generated audit of a designer's file. "
+    + "The audit checks layer naming, auto layout usage, variable bindings, text styles, and hygiene.\n\n"
+    + "Your task: analyze the audit results and give the designer a SHORT, prioritized action plan.\n\n"
+    + "Rules:\n"
+    + "1. Start with the highest-impact fixes — what will improve the score the most.\n"
+    + "2. Tell them WHICH 'Fix All' buttons to click first (the plugin has Fix All for: naming, colors, spacing, radius, opacity, border, hidden, empty).\n"
+    + "3. For issues that can't be auto-fixed (auto layout, fixed sizing, text styles, deep nesting), give specific advice on what to change.\n"
+    + "4. Group related issues when possible (e.g. 'these 12 colors are all variants of your brand blue').\n"
+    + "5. If the score is above 80, congratulate briefly and focus on remaining polish items.\n"
+    + "6. Keep the total response under 250 words. Use short bullet points, not paragraphs.\n"
+    + "7. Use plain language a designer (not developer) would understand.\n"
+    + "8. Format with markdown: use **bold** for emphasis, bullet lists with - dashes.";
+
+  var body = JSON.stringify({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: "user", content: "Here are the audit results for my Figma file:\n\n" + auditText + "\n\nGive me a prioritized action plan to improve my score." }]
+  });
+
+  var xhr = new XMLHttpRequest();
+  if (useProxy) {
+    xhr.open("POST", _bhProxyUrl + "/v1/messages", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.open("POST", "https://api.anthropic.com/v1/messages", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("x-api-key", _bhApiKey);
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        callback(null, text);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else if (xhr.status === 429) {
+      callback("Rate limit exceeded. Please wait and try again.", null);
+    } else {
+      try {
+        var errBody = JSON.parse(xhr.responseText);
+        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
+      } catch(e2) {
+        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
+      }
+    }
+  };
+  xhr.onerror = function() { callback("Network error. Check your connection.", null); };
+  xhr.timeout = 30000;
+  xhr.ontimeout = function() { callback("AI review request timed out.", null); };
+  xhr.send(body);
+}
+
+// Simple markdown to HTML: **bold**, - bullets, newlines
+function markdownToHtml(md) {
+  var lines = md.split("\n");
+  var html = "";
+  var inList = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var trimmed = line.trim();
+    if (!trimmed) {
+      if (inList) { html += "</ul>"; inList = false; }
+      continue;
+    }
+    // Bold
+    trimmed = trimmed.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    // Bullet list
+    if (/^[-•]\s/.test(trimmed)) {
+      if (!inList) { html += "<ul>"; inList = true; }
+      html += "<li>" + trimmed.replace(/^[-•]\s*/, "") + "</li>";
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      if (inList) { html += "</ul>"; inList = false; }
+      html += "<p style='margin:4px 0;'>" + trimmed + "</p>";
+    } else {
+      if (inList) { html += "</ul>"; inList = false; }
+      html += "<p style='margin:6px 0;font-weight:600;'>" + trimmed + "</p>";
+    }
+  }
+  if (inList) html += "</ul>";
+  return html;
 }
 
 function bhShowResults(rawResult, enhancedResult) {

@@ -1,4 +1,5 @@
 // HTML generation engine
+import { MOBILE_BREAKPOINT } from './constants';
 
 export function htmlResolveVarToCSSName(variableId) {
   try {
@@ -8,8 +9,11 @@ export function htmlResolveVarToCSSName(variableId) {
   } catch(e) { return null; }
 }
 
-export function htmlResolveVarValue(variableId) {
+export function htmlResolveVarValue(variableId, _seen) {
   try {
+    var seen = _seen || {};
+    if (seen[variableId]) return null; // circular reference
+    seen[variableId] = true;
     var v = figma.variables.getVariableById(variableId);
     if (!v) return null;
     var col = figma.variables.getVariableCollectionById(v.variableCollectionId);
@@ -19,53 +23,112 @@ export function htmlResolveVarValue(variableId) {
     if (!val) return null;
     // Resolve alias
     if (val.type === "VARIABLE_ALIAS") {
-      return htmlResolveVarValue(val.id);
+      return htmlResolveVarValue(val.id, seen);
     }
     return val;
   } catch(e) { return null; }
 }
 
-export function htmlColorToCSS(c) {
+export function htmlColorToCSS(c, fillOpacity) {
   if (!c) return null;
   var r = Math.round((c.r || 0) * 255);
   var g = Math.round((c.g || 0) * 255);
   var b = Math.round((c.b || 0) * 255);
   var a = c.a !== undefined ? c.a : 1;
+  // Apply paint-level opacity (separate from node opacity in Figma)
+  if (fillOpacity !== undefined && fillOpacity < 1) a = a * fillOpacity;
   if (a < 1) return "rgba(" + r + "," + g + "," + b + "," + Math.round(a * 100) / 100 + ")";
   return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+export function htmlEscapeText(s) {
+  if (!s) return "";
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 export function htmlSanitizeName(name) {
   return name.replace(/[^a-zA-Z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
 }
 
-export function htmlExtractNodeCSS(node, cssVars) {
-  var styles = {};
-  var bv = node.boundVariables || {};
+// ── Shared helper: resolve variable binding to CSS var() or raw value ──
+function cssBindVar(alias, rawValue, unit, cssVars) {
+  if (!alias || !alias.id) return rawValue + unit;
+  var name = htmlResolveVarToCSSName(alias.id);
+  if (!name) return rawValue + unit;
+  cssVars[name] = rawValue + unit;
+  return "var(" + name + ")";
+}
 
-  // Absolute positioning (layoutPositioning === "ABSOLUTE" in Figma)
-  if (node.layoutPositioning === "ABSOLUTE") {
-    styles["position"] = "absolute";
-    var cons = node.constraints || {};
-    if (cons.horizontal === "STRETCH" && cons.vertical === "STRETCH") {
-      styles["inset"] = "0";
-    } else {
-      if (cons.horizontal === "STRETCH") { styles["left"] = "0"; styles["right"] = "0"; }
-      else if (cons.horizontal === "MAX") { styles["right"] = Math.round(node.parent ? node.parent.width - node.x - node.width : 0) + "px"; }
-      else if (cons.horizontal === "MIN") { styles["left"] = Math.round(node.x || 0) + "px"; }
-      else { styles["left"] = Math.round(node.x || 0) + "px"; }
-      if (cons.vertical === "STRETCH") { styles["top"] = "0"; styles["bottom"] = "0"; }
-      else if (cons.vertical === "MAX") { styles["bottom"] = Math.round(node.parent ? node.parent.height - node.y - node.height : 0) + "px"; }
-      else { styles["top"] = Math.round(node.y || 0) + "px"; }
-    }
+// Resolve a bound fill color to CSS, with variable binding support
+function cssFillColor(fillAlias, color, paintOpacity, cssVars) {
+  var raw = htmlColorToCSS(color, paintOpacity);
+  if (!fillAlias || !fillAlias.id) return raw;
+  var name = htmlResolveVarToCSSName(fillAlias.id);
+  if (!name) return raw;
+  var resolved = htmlResolveVarValue(fillAlias.id, null);
+  cssVars[name] = resolved ? htmlColorToCSS(resolved, paintOpacity) : raw;
+  // When paint has sub-1 opacity, the resolved color already bakes it in — use raw value
+  if (paintOpacity < 1) return cssVars[name];
+  return "var(" + name + ")";
+}
+
+// ── 1. extractPosition — Absolute positioning from constraints ──
+function extractPosition(node, styles, cssVars, bv) {
+  if (node.layoutPositioning !== "ABSOLUTE") return;
+  styles["position"] = "absolute";
+  var cons = node.constraints || {};
+  if (cons.horizontal === "STRETCH" && cons.vertical === "STRETCH") {
+    styles["inset"] = "0";
+    return;
   }
+  if (cons.horizontal === "STRETCH") { styles["left"] = "0"; styles["right"] = "0"; }
+  else if (cons.horizontal === "MAX") { styles["right"] = Math.round(node.parent ? node.parent.width - node.x - node.width : 0) + "px"; }
+  else { styles["left"] = Math.round(node.x || 0) + "px"; }
+  if (cons.vertical === "STRETCH") { styles["top"] = "0"; styles["bottom"] = "0"; }
+  else if (cons.vertical === "MAX") { styles["bottom"] = Math.round(node.parent ? node.parent.height - node.y - node.height : 0) + "px"; }
+  else { styles["top"] = Math.round(node.y || 0) + "px"; }
+}
 
-  // Layout mode
-  if (node.layoutMode && node.layoutMode !== "NONE") {
+// ── 2. extractLayout — Flexbox/Grid from auto-layout ──
+function extractLayout(node, styles, cssVars, bv) {
+  if (!node.layoutMode || node.layoutMode === "NONE") return;
+
+  // Grid layout
+  if (node.layoutMode === "GRID") {
+    styles["display"] = "grid";
+    styles["position"] = styles["position"] || "relative";
+    // Grid template from track sizes
+    if (node.gridColumnSizes && node.gridColumnSizes.length > 0) {
+      var cols = [];
+      for (var ci = 0; ci < node.gridColumnSizes.length; ci++) {
+        var ct = node.gridColumnSizes[ci];
+        if (ct.type === "FLEX") cols.push((ct.value || 1) + "fr");
+        else if (ct.type === "HUG") cols.push("auto");
+        else cols.push((ct.value || 0) + "px");
+      }
+      styles["grid-template-columns"] = cols.join(" ");
+    }
+    if (node.gridRowSizes && node.gridRowSizes.length > 0) {
+      var rows = [];
+      for (var ri = 0; ri < node.gridRowSizes.length; ri++) {
+        var rt = node.gridRowSizes[ri];
+        if (rt.type === "FLEX") rows.push((rt.value || 1) + "fr");
+        else if (rt.type === "HUG") rows.push("auto");
+        else rows.push((rt.value || 0) + "px");
+      }
+      styles["grid-template-rows"] = rows.join(" ");
+    }
+    // Grid gap
+    var colGap = node.itemSpacing > 0 ? cssBindVar(bv.itemSpacing, node.itemSpacing, "px", cssVars) : null;
+    var rowGap = node.counterAxisSpacing > 0 ? cssBindVar(bv.counterAxisSpacing, node.counterAxisSpacing, "px", cssVars) : null;
+    if (colGap && rowGap) styles["gap"] = rowGap + " " + colGap;
+    else if (colGap) styles["column-gap"] = colGap;
+    else if (rowGap) styles["row-gap"] = rowGap;
+  } else {
+    // Flex layout
     styles["display"] = "flex";
     styles["flex-direction"] = node.layoutMode === "VERTICAL" ? "column" : "row";
     if (node.layoutWrap === "WRAP") styles["flex-wrap"] = "wrap";
-    // Parent of absolute children needs position: relative
     styles["position"] = styles["position"] || "relative";
 
     // Alignment
@@ -74,54 +137,65 @@ export function htmlExtractNodeCSS(node, cssVars) {
     if (node.primaryAxisAlignItems && mainMap[node.primaryAxisAlignItems]) styles["justify-content"] = mainMap[node.primaryAxisAlignItems];
     if (node.counterAxisAlignItems && crossMap[node.counterAxisAlignItems]) styles["align-items"] = crossMap[node.counterAxisAlignItems];
 
-    // Gap
-    if (node.itemSpacing > 0) {
-      if (bv.itemSpacing) { var gn = htmlResolveVarToCSSName(bv.itemSpacing.id); if (gn) { cssVars[gn] = node.itemSpacing + "px"; styles["gap"] = "var(" + gn + ")"; } else styles["gap"] = node.itemSpacing + "px"; }
-      else styles["gap"] = node.itemSpacing + "px";
+    // Wrap alignment (align-content)
+    if (node.layoutWrap === "WRAP" && node.counterAxisAlignContent) {
+      if (node.counterAxisAlignContent === "SPACE_BETWEEN") styles["align-content"] = "space-between";
+      // AUTO = default stretch behavior, no need to emit
     }
 
-    // Padding
-    var padProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
-    var padVals = [];
-    for (var pi = 0; pi < padProps.length; pi++) {
-      var pv = node[padProps[pi]];
-      if (pv > 0) {
-        if (bv[padProps[pi]]) { var pn = htmlResolveVarToCSSName(bv[padProps[pi]].id); if (pn) { cssVars[pn] = pv + "px"; padVals.push("var(" + pn + ")"); } else padVals.push(pv + "px"); }
-        else padVals.push(pv + "px");
-      } else padVals.push("0");
+    // Gap (primary axis)
+    if (node.itemSpacing > 0) {
+      styles["gap"] = cssBindVar(bv.itemSpacing, node.itemSpacing, "px", cssVars);
     }
-    if (padVals.some(function(v) { return v !== "0"; })) {
-      if (padVals[0] === padVals[1] && padVals[1] === padVals[2] && padVals[2] === padVals[3]) styles["padding"] = padVals[0];
-      else if (padVals[0] === padVals[2] && padVals[1] === padVals[3]) styles["padding"] = padVals[0] + " " + padVals[1];
-      else styles["padding"] = padVals.join(" ");
+    // Counter-axis gap (wrap only — row-gap separate from column-gap)
+    if (node.layoutWrap === "WRAP" && node.counterAxisSpacing !== null && node.counterAxisSpacing !== undefined && node.counterAxisSpacing > 0) {
+      styles["row-gap"] = cssBindVar(bv.counterAxisSpacing, node.counterAxisSpacing, "px", cssVars);
     }
   }
 
-  // Width & height
+  // Padding (shared between flex and grid)
+  var padProps = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
+  var padVals = [];
+  for (var pi = 0; pi < padProps.length; pi++) {
+    var pv = node[padProps[pi]];
+    if (pv > 0) {
+      padVals.push(cssBindVar(bv[padProps[pi]], pv, "px", cssVars));
+    } else padVals.push("0");
+  }
+  if (padVals.some(function(v) { return v !== "0"; })) {
+    if (padVals[0] === padVals[1] && padVals[1] === padVals[2] && padVals[2] === padVals[3]) styles["padding"] = padVals[0];
+    else if (padVals[0] === padVals[2] && padVals[1] === padVals[3]) styles["padding"] = padVals[0] + " " + padVals[1];
+    else styles["padding"] = padVals.join(" ");
+  }
+
+  // Box-sizing when strokes are included in layout
+  if (node.strokesIncludedInLayout) styles["box-sizing"] = "border-box";
+}
+
+// ── 3. extractSizing — Width, height, flex, min/max, overflow ──
+function extractSizing(node, styles, cssVars, bv) {
   var isAutoChild = node.parent && node.parent.layoutMode && node.parent.layoutMode !== "NONE";
   var parentDir = isAutoChild ? node.parent.layoutMode : null;
+
+  // Horizontal sizing
   if (node.layoutSizingHorizontal === "FILL" || (isAutoChild && node.layoutAlign === "STRETCH")) {
-    // In a row layout, FILL means flex-grow; in column, it means width: 100%
     if (parentDir === "HORIZONTAL") {
-      // Use minWidth as flex-basis so fields keep their proportional width
       var flexBasis = "auto";
       if (node.minWidth && node.minWidth > 0 && node.minWidth < 10000) {
-        flexBasis = Math.round(node.minWidth) + "px";
-        if (bv.minWidth) {
-          var mwn = htmlResolveVarToCSSName(bv.minWidth.id);
-          if (mwn) { cssVars[mwn] = Math.round(node.minWidth) + "px"; flexBasis = "var(" + mwn + ")"; }
-        }
+        flexBasis = cssBindVar(bv.minWidth, Math.round(node.minWidth), "px", cssVars);
         styles["min-width"] = flexBasis;
       }
       styles["flex"] = "1 1 " + flexBasis;
+    } else {
+      styles["width"] = "100%";
     }
-    else { styles["width"] = "100%"; }
   } else if (node.width > 0 && node.layoutSizingHorizontal !== "HUG"
     && !(node.type === "TEXT" && node.textAutoResize === "WIDTH_AND_HEIGHT")) {
     styles["width"] = Math.round(node.width) + "px";
-    // Prevent flex shrinking below fixed width in flex parents
     if (isAutoChild) styles["flex-shrink"] = "0";
   }
+
+  // Vertical sizing
   if (node.layoutSizingVertical === "FILL") {
     if (parentDir === "VERTICAL") { styles["flex"] = "1 1 auto"; }
     else { styles["height"] = "100%"; }
@@ -130,163 +204,391 @@ export function htmlExtractNodeCSS(node, cssVars) {
     styles["height"] = Math.round(node.height) + "px";
   }
 
-  // Max/min width for responsive (child frames only — top-level handled in walkNode)
-  if (node.maxWidth && node.maxWidth < 10000) styles["max-width"] = Math.round(node.maxWidth) + "px";
+  // Max/min width
+  if (node.maxWidth && node.maxWidth < 10000) {
+    styles["max-width"] = cssBindVar(bv.maxWidth, Math.round(node.maxWidth), "px", cssVars);
+  }
   if (!styles["min-width"] && node.minWidth && node.minWidth > 0 && node.minWidth < 10000) {
-    if (bv.minWidth) {
-      var mwn2 = htmlResolveVarToCSSName(bv.minWidth.id);
-      if (mwn2) { cssVars[mwn2] = Math.round(node.minWidth) + "px"; styles["min-width"] = "var(" + mwn2 + ")"; }
-      else styles["min-width"] = Math.round(node.minWidth) + "px";
-    } else styles["min-width"] = Math.round(node.minWidth) + "px";
+    styles["min-width"] = cssBindVar(bv.minWidth, Math.round(node.minWidth), "px", cssVars);
+  }
+
+  // Min/max height
+  if (node.minHeight && node.minHeight > 0 && node.minHeight < 10000) {
+    styles["min-height"] = cssBindVar(bv.minHeight, Math.round(node.minHeight), "px", cssVars);
+  }
+  if (node.maxHeight && node.maxHeight < 10000) {
+    styles["max-height"] = cssBindVar(bv.maxHeight, Math.round(node.maxHeight), "px", cssVars);
   }
 
   // Overflow
   if (node.clipsContent) styles["overflow"] = "hidden";
+}
 
-  // Background color / gradient (skip TEXT nodes — their fills are text color, not background)
-  if (node.type !== "TEXT" && node.fills && Array.isArray(node.fills) && node.fills.length > 0) {
-    var fill = node.fills[0];
-    if (fill && fill.visible !== false) {
-      if (fill.type === "SOLID") {
-        if (bv.fills && bv.fills[0]) {
-          var bgn = htmlResolveVarToCSSName(bv.fills[0].id);
-          if (bgn) {
-            var resolved = htmlResolveVarValue(bv.fills[0].id);
-            cssVars[bgn] = resolved ? htmlColorToCSS(resolved) : htmlColorToCSS(fill.color);
-            styles["background-color"] = "var(" + bgn + ")";
-          } else styles["background-color"] = htmlColorToCSS(fill.color);
-        } else styles["background-color"] = htmlColorToCSS(fill.color);
-      } else if (fill.type === "GRADIENT_LINEAR" && fill.gradientStops && fill.gradientStops.length > 0) {
-        var stops = [];
-        for (var gi = 0; gi < fill.gradientStops.length; gi++) {
-          var gs = fill.gradientStops[gi];
-          stops.push(htmlColorToCSS(gs.color) + " " + Math.round(gs.position * 100) + "%");
+// ── 4. extractFills — Background colors, gradients, images ──
+function extractFills(node, styles, cssVars, bv) {
+  // TEXT fills are text color, not background — handled in extractText
+  if (node.type === "TEXT") return;
+  if (!node.fills || !Array.isArray(node.fills) || node.fills.length === 0) return;
+
+  var backgrounds = [];
+  var bgColors = [];
+  var fillBindings = bv.fills || [];
+
+  for (var fi = node.fills.length - 1; fi >= 0; fi--) {
+    var fill = node.fills[fi];
+    if (!fill || fill.visible === false) continue;
+    var paintOpacity = fill.opacity !== undefined ? fill.opacity : 1;
+
+    if (fill.type === "SOLID") {
+      bgColors.push(cssFillColor(fillBindings[fi], fill.color, paintOpacity, cssVars));
+    } else if (fill.type === "GRADIENT_LINEAR" && fill.gradientStops && fill.gradientStops.length > 0) {
+      var stops = [];
+      for (var gi = 0; gi < fill.gradientStops.length; gi++) {
+        var gs = fill.gradientStops[gi];
+        var stopColor = htmlColorToCSS(gs.color, paintOpacity);
+        if (gs.boundVariables && gs.boundVariables.color) {
+          var scn = htmlResolveVarToCSSName(gs.boundVariables.color.id);
+          if (scn) { var scResolved = htmlResolveVarValue(gs.boundVariables.color.id, null); cssVars[scn] = scResolved ? htmlColorToCSS(scResolved, paintOpacity) : stopColor; stopColor = "var(" + scn + ")"; }
         }
-        // Compute angle from gradientTransform matrix
-        var angle = 180;
-        if (fill.gradientTransform && fill.gradientTransform.length >= 2) {
-          var dx = fill.gradientTransform[0][0];
-          var dy = fill.gradientTransform[1][0];
-          angle = Math.round(Math.atan2(dy, dx) * 180 / Math.PI) + 90;
-        }
-        styles["background"] = "linear-gradient(" + angle + "deg, " + stops.join(", ") + ")";
-      } else if (fill.type === "GRADIENT_RADIAL" && fill.gradientStops && fill.gradientStops.length > 0) {
-        var rStops = [];
-        for (var ri = 0; ri < fill.gradientStops.length; ri++) {
-          var rs = fill.gradientStops[ri];
-          rStops.push(htmlColorToCSS(rs.color) + " " + Math.round(rs.position * 100) + "%");
-        }
-        styles["background"] = "radial-gradient(ellipse at center, " + rStops.join(", ") + ")";
+        stops.push(stopColor + " " + Math.round(gs.position * 100) + "%");
       }
+      var angle = 180;
+      if (fill.gradientTransform && fill.gradientTransform.length >= 2) {
+        var dx = fill.gradientTransform[0][0];
+        var dy = fill.gradientTransform[1][0];
+        angle = Math.round(Math.atan2(dy, dx) * 180 / Math.PI) + 90;
+        if (angle < 0) angle += 360;
+      }
+      backgrounds.push("linear-gradient(" + angle + "deg, " + stops.join(", ") + ")");
+    } else if (fill.type === "GRADIENT_RADIAL" && fill.gradientStops && fill.gradientStops.length > 0) {
+      var rStops = [];
+      for (var ri = 0; ri < fill.gradientStops.length; ri++) {
+        var rs = fill.gradientStops[ri];
+        rStops.push(htmlColorToCSS(rs.color, paintOpacity) + " " + Math.round(rs.position * 100) + "%");
+      }
+      backgrounds.push("radial-gradient(ellipse at center, " + rStops.join(", ") + ")");
+    } else if (fill.type === "GRADIENT_ANGULAR" && fill.gradientStops && fill.gradientStops.length > 0) {
+      var aStops = [];
+      for (var ai = 0; ai < fill.gradientStops.length; ai++) {
+        var as_ = fill.gradientStops[ai];
+        aStops.push(htmlColorToCSS(as_.color, paintOpacity) + " " + Math.round(as_.position * 360) + "deg");
+      }
+      var fromAngle = 0;
+      if (fill.gradientTransform && fill.gradientTransform.length >= 2) {
+        fromAngle = Math.round(Math.atan2(fill.gradientTransform[1][0], fill.gradientTransform[0][0]) * 180 / Math.PI);
+        if (fromAngle < 0) fromAngle += 360;
+      }
+      backgrounds.push("conic-gradient(from " + fromAngle + "deg, " + aStops.join(", ") + ")");
+    } else if (fill.type === "GRADIENT_DIAMOND" && fill.gradientStops && fill.gradientStops.length > 0) {
+      // No CSS equivalent for diamond gradient — approximate as radial
+      var dStops = [];
+      for (var di = 0; di < fill.gradientStops.length; di++) {
+        var ds = fill.gradientStops[di];
+        dStops.push(htmlColorToCSS(ds.color, paintOpacity) + " " + Math.round(ds.position * 100) + "%");
+      }
+      backgrounds.push("radial-gradient(ellipse at center, " + dStops.join(", ") + ")");
+    } else if (fill.type === "IMAGE" && fill.imageHash) {
+      // Image fills — output background-size based on scaleMode
+      var scaleModeMap = { FILL: "cover", FIT: "contain", TILE: "auto", CROP: "cover" };
+      var bgSize = scaleModeMap[fill.scaleMode] || "cover";
+      backgrounds.push("url('[image:" + fill.imageHash + "]')");
+      styles["background-size"] = bgSize;
+      styles["background-position"] = "center";
+      if (fill.scaleMode === "TILE") styles["background-repeat"] = "repeat";
+      else styles["background-repeat"] = "no-repeat";
     }
   }
 
-  // Corner radius (cornerRadius can be figma.mixed when corners differ)
+  // Output: prefer single solid color as background-color, otherwise stack as background
+  if (backgrounds.length === 0 && bgColors.length === 1) {
+    styles["background-color"] = bgColors[0];
+  } else if (backgrounds.length === 0 && bgColors.length > 1) {
+    // Multiple solid fills — only the topmost (first visible) matters in CSS
+    styles["background-color"] = bgColors[0];
+  } else if (backgrounds.length > 0 && bgColors.length === 0) {
+    styles["background"] = backgrounds.join(", ");
+  } else if (backgrounds.length > 0 && bgColors.length > 0) {
+    // Mix gradients/images with solid colors — solid goes last as fallback
+    styles["background"] = backgrounds.join(", ");
+    styles["background-color"] = bgColors[0];
+  }
+}
+
+// ── 5. extractCorners — Border radius ──
+function extractCorners(node, styles, cssVars, bv) {
   if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
-    if (bv.topLeftRadius || bv.cornerRadius) {
-      var rId = bv.cornerRadius ? bv.cornerRadius.id : bv.topLeftRadius.id;
-      var rn = htmlResolveVarToCSSName(rId);
-      if (rn) { cssVars[rn] = node.cornerRadius + "px"; styles["border-radius"] = "var(" + rn + ")"; }
-      else styles["border-radius"] = node.cornerRadius + "px";
-    } else styles["border-radius"] = node.cornerRadius + "px";
+    // Uniform radius — check for variable binding
+    var alias = bv.topLeftRadius || bv.cornerRadius;
+    styles["border-radius"] = cssBindVar(alias, node.cornerRadius, "px", cssVars);
   } else if (node.cornerRadius !== undefined && typeof node.cornerRadius !== "number") {
-    // Mixed corners — output individual values
-    var tl = node.topLeftRadius || 0, tr = node.topRightRadius || 0, br = node.bottomRightRadius || 0, bl = node.bottomLeftRadius || 0;
+    // Mixed corners — individual values with variable bindings
+    var tl = node.topLeftRadius || 0;
+    var tr = node.topRightRadius || 0;
+    var br = node.bottomRightRadius || 0;
+    var bl = node.bottomLeftRadius || 0;
     if (tl > 0 || tr > 0 || br > 0 || bl > 0) {
-      styles["border-radius"] = tl + "px " + tr + "px " + br + "px " + bl + "px";
+      var tlv = tl > 0 ? cssBindVar(bv.topLeftRadius, tl, "px", cssVars) : "0";
+      var trv = tr > 0 ? cssBindVar(bv.topRightRadius, tr, "px", cssVars) : "0";
+      var brv = br > 0 ? cssBindVar(bv.bottomRightRadius, br, "px", cssVars) : "0";
+      var blv = bl > 0 ? cssBindVar(bv.bottomLeftRadius, bl, "px", cssVars) : "0";
+      styles["border-radius"] = tlv + " " + trv + " " + brv + " " + blv;
+    }
+  }
+}
+
+// ── 6. extractStrokes — Borders ──
+function extractStrokes(node, styles, cssVars, bv) {
+  if (!node.strokes || node.strokes.length === 0) return;
+
+  var stroke = node.strokes[0];
+  if (!stroke || stroke.visible === false || stroke.type !== "SOLID") return;
+
+  // Determine border style from dashPattern
+  var borderStyle = "solid";
+  if (node.dashPattern && node.dashPattern.length > 0) {
+    var sw = typeof node.strokeWeight === "number" ? node.strokeWeight : 1;
+    borderStyle = (node.dashPattern[0] <= sw) ? "dotted" : "dashed";
+  }
+
+  // Stroke color with variable binding
+  var sc = cssFillColor(bv.strokes && bv.strokes[0], stroke.color, 1, cssVars);
+
+  // Check for individual stroke weights
+  var hasIndividual = typeof node.strokeTopWeight === "number" && typeof node.strokeBottomWeight === "number"
+    && typeof node.strokeLeftWeight === "number" && typeof node.strokeRightWeight === "number"
+    && (node.strokeTopWeight !== node.strokeBottomWeight || node.strokeTopWeight !== node.strokeLeftWeight || node.strokeTopWeight !== node.strokeRightWeight);
+
+  if (hasIndividual) {
+    // Individual stroke weights per side
+    styles["border-style"] = borderStyle;
+    styles["border-color"] = sc;
+    if (node.strokeTopWeight > 0) styles["border-top-width"] = cssBindVar(bv.strokeTopWeight, node.strokeTopWeight, "px", cssVars);
+    else styles["border-top-width"] = "0";
+    if (node.strokeRightWeight > 0) styles["border-right-width"] = cssBindVar(bv.strokeRightWeight, node.strokeRightWeight, "px", cssVars);
+    else styles["border-right-width"] = "0";
+    if (node.strokeBottomWeight > 0) styles["border-bottom-width"] = cssBindVar(bv.strokeBottomWeight, node.strokeBottomWeight, "px", cssVars);
+    else styles["border-bottom-width"] = "0";
+    if (node.strokeLeftWeight > 0) styles["border-left-width"] = cssBindVar(bv.strokeLeftWeight, node.strokeLeftWeight, "px", cssVars);
+    else styles["border-left-width"] = "0";
+  } else {
+    // Uniform stroke weight
+    var swVal = typeof node.strokeWeight === "number" ? node.strokeWeight : 0;
+    if (swVal > 0) {
+      var swCss = cssBindVar(bv.strokeWeight, swVal, "px", cssVars);
+      styles["border"] = swCss + " " + borderStyle + " " + sc;
     }
   }
 
-  // Strokes / border (guard against mixed strokeWeight)
-  if (node.strokes && node.strokes.length > 0) {
-    var stroke = node.strokes[0];
-    var sw = typeof node.strokeWeight === "number" ? node.strokeWeight : 0;
-    if (stroke && stroke.visible !== false && stroke.type === "SOLID" && sw > 0) {
-      var sc = htmlColorToCSS(stroke.color);
-      if (bv.strokes && bv.strokes[0]) {
-        var sn = htmlResolveVarToCSSName(bv.strokes[0].id);
-        if (sn) {
-          var sResolved = htmlResolveVarValue(bv.strokes[0].id);
-          cssVars[sn] = sResolved ? htmlColorToCSS(sResolved) : sc;
-          sc = "var(" + sn + ")";
-        }
+  // Second stroke → outline (CSS only supports one border)
+  if (node.strokes.length > 1) {
+    var s2 = node.strokes[1];
+    if (s2 && s2.visible !== false && s2.type === "SOLID") {
+      var s2c = htmlColorToCSS(s2.color, 1);
+      var s2w = typeof node.strokeWeight === "number" ? node.strokeWeight : 1;
+      styles["outline"] = s2w + "px " + borderStyle + " " + s2c;
+    }
+  }
+}
+
+// ── 7. extractEffects — Shadows, blur, backdrop-filter ──
+function extractEffects(node, styles, cssVars, bv) {
+  if (!node.effects || node.effects.length === 0) return;
+
+  var shadows = [];
+  var filters = [];
+  var backdropFilters = [];
+
+  for (var ei = 0; ei < node.effects.length; ei++) {
+    var eff = node.effects[ei];
+    if (!eff.visible) continue;
+
+    if (eff.type === "DROP_SHADOW" || eff.type === "INNER_SHADOW") {
+      var prefix = eff.type === "INNER_SHADOW" ? "inset " : "";
+      var ebv = eff.boundVariables || {};
+      var ox = (eff.offset ? eff.offset.x : 0);
+      var oy = (eff.offset ? eff.offset.y : 0);
+      var eRadius = eff.radius || 0;
+      var eSpread = eff.spread || 0;
+      var eColor = htmlColorToCSS(eff.color, 1);
+
+      // Variable bindings for shadow properties
+      var oxCss = ebv.offsetX ? cssBindVar(ebv.offsetX, ox, "px", cssVars) : ox + "px";
+      var oyCss = ebv.offsetY ? cssBindVar(ebv.offsetY, oy, "px", cssVars) : oy + "px";
+      var erCss = ebv.radius ? cssBindVar(ebv.radius, eRadius, "px", cssVars) : eRadius + "px";
+      var esCss = ebv.spread ? cssBindVar(ebv.spread, eSpread, "px", cssVars) : eSpread + "px";
+      if (ebv.color) {
+        var ecn = htmlResolveVarToCSSName(ebv.color.id);
+        if (ecn) { var ecResolved = htmlResolveVarValue(ebv.color.id, null); cssVars[ecn] = ecResolved ? htmlColorToCSS(ecResolved, 1) : eColor; eColor = "var(" + ecn + ")"; }
       }
-      styles["border"] = sw + "px solid " + sc;
+
+      shadows.push(prefix + oxCss + " " + oyCss + " " + erCss + " " + esCss + " " + eColor);
+    } else if (eff.type === "LAYER_BLUR") {
+      var blurR = eff.radius || 0;
+      var blurBv = eff.boundVariables || {};
+      var blurCss = blurBv.radius ? cssBindVar(blurBv.radius, blurR, "px", cssVars) : blurR + "px";
+      filters.push("blur(" + blurCss + ")");
+    } else if (eff.type === "BACKGROUND_BLUR") {
+      var bbR = eff.radius || 0;
+      var bbBv = eff.boundVariables || {};
+      var bbCss = bbBv.radius ? cssBindVar(bbBv.radius, bbR, "px", cssVars) : bbR + "px";
+      backdropFilters.push("blur(" + bbCss + ")");
+    } else if (eff.type === "GLASS") {
+      // Approximate glass as backdrop blur
+      var glassR = eff.radius || 0;
+      backdropFilters.push("blur(" + glassR + "px)");
     }
   }
 
-  // Opacity
-  if (node.opacity !== undefined && node.opacity < 1) {
-    if (bv.opacity) {
-      var on = htmlResolveVarToCSSName(bv.opacity.id);
-      if (on) { cssVars[on] = String(node.opacity); styles["opacity"] = "var(" + on + ")"; }
-      else styles["opacity"] = String(Math.round(node.opacity * 100) / 100);
-    } else styles["opacity"] = String(Math.round(node.opacity * 100) / 100);
+  if (shadows.length) styles["box-shadow"] = shadows.join(", ");
+  if (filters.length) styles["filter"] = filters.join(" ");
+  if (backdropFilters.length) styles["backdrop-filter"] = backdropFilters.join(" ");
+}
+
+// ── 8. extractOpacity — Layer opacity ──
+function extractOpacity(node, styles, cssVars, bv) {
+  if (node.opacity === undefined || node.opacity >= 1) return;
+  var val = Math.round(node.opacity * 100) + "%";
+  if (bv.opacity) {
+    var name = htmlResolveVarToCSSName(bv.opacity.id);
+    if (name) { cssVars[name] = val; styles["opacity"] = "var(" + name + ")"; return; }
+  }
+  styles["opacity"] = val;
+}
+
+// ── 9. extractBlendMode — Layer blend mode ──
+function extractBlendMode(node, styles, cssVars, bv) {
+  if (!node.blendMode || node.blendMode === "PASS_THROUGH" || node.blendMode === "NORMAL") return;
+  var map = {
+    DARKEN: "darken", MULTIPLY: "multiply", LINEAR_BURN: "multiply",
+    COLOR_BURN: "color-burn", LIGHTEN: "lighten", SCREEN: "screen",
+    LINEAR_DODGE: "screen", COLOR_DODGE: "color-dodge", OVERLAY: "overlay",
+    SOFT_LIGHT: "soft-light", HARD_LIGHT: "hard-light", DIFFERENCE: "difference",
+    EXCLUSION: "exclusion", HUE: "hue", SATURATION: "saturation",
+    COLOR: "color", LUMINOSITY: "luminosity"
+  };
+  if (map[node.blendMode]) styles["mix-blend-mode"] = map[node.blendMode];
+}
+
+// ── 10. extractText — Typography (TEXT nodes only) ──
+function extractText(node, styles, cssVars, bv) {
+  // Font family
+  if (node.fontName && typeof node.fontName === "object" && node.fontName.family) {
+    styles["font-family"] = "'" + node.fontName.family + "', sans-serif";
   }
 
-  // Effects (shadows)
-  if (node.effects && node.effects.length > 0) {
-    var shadows = [];
-    for (var ei = 0; ei < node.effects.length; ei++) {
-      var eff = node.effects[ei];
-      if (!eff.visible) continue;
-      if (eff.type === "DROP_SHADOW" || eff.type === "INNER_SHADOW") {
-        var prefix = eff.type === "INNER_SHADOW" ? "inset " : "";
-        shadows.push(prefix + (eff.offset ? eff.offset.x : 0) + "px " + (eff.offset ? eff.offset.y : 0) + "px " + (eff.radius || 0) + "px " + (eff.spread || 0) + "px " + htmlColorToCSS(eff.color));
-      }
-    }
-    if (shadows.length) styles["box-shadow"] = shadows.join(", ");
+  // Font size with variable binding
+  if (typeof node.fontSize === "number" && node.fontSize > 0) {
+    styles["font-size"] = cssBindVar(bv.fontSize, node.fontSize, "px", cssVars);
   }
 
-  // Text-specific styles (guard all properties against figma.mixed)
-  if (node.type === "TEXT") {
-    // Font family
-    if (node.fontName && typeof node.fontName === "object" && node.fontName.family) {
-      styles["font-family"] = "'" + node.fontName.family + "', sans-serif";
-    }
-    if (typeof node.fontSize === "number" && node.fontSize > 0) styles["font-size"] = node.fontSize + "px";
-    if (typeof node.fontWeight === "number") styles["font-weight"] = String(node.fontWeight);
-    else if (node.fontName && typeof node.fontName === "object" && node.fontName.style) {
-      // Derive weight from style name if fontWeight is not directly available
-      var styleWeightMap = { "Thin": "100", "ExtraLight": "200", "Light": "300", "Regular": "400", "Medium": "500", "SemiBold": "600", "Bold": "700", "ExtraBold": "800", "Black": "900" };
-      var styleName = node.fontName.style.replace(/\s+/g, "");
-      if (styleWeightMap[styleName]) styles["font-weight"] = styleWeightMap[styleName];
-    }
-    if (node.lineHeight && typeof node.lineHeight === "object" && node.lineHeight.value) {
-      if (node.lineHeight.unit === "PERCENT") styles["line-height"] = Math.round(node.lineHeight.value) / 100;
-      else if (node.lineHeight.unit === "PIXELS") styles["line-height"] = node.lineHeight.value + "px";
-    }
-    if (node.letterSpacing && typeof node.letterSpacing === "object" && node.letterSpacing.value) {
-      if (node.letterSpacing.unit === "PERCENT") styles["letter-spacing"] = (node.letterSpacing.value / 100) + "em";
-      else styles["letter-spacing"] = node.letterSpacing.value + "px";
-    }
-    var alignMap = { LEFT: "left", CENTER: "center", RIGHT: "right", JUSTIFIED: "justify" };
-    if (node.textAlignHorizontal && alignMap[node.textAlignHorizontal]) styles["text-align"] = alignMap[node.textAlignHorizontal];
+  // Font weight — prefer numeric fontWeight, fallback to style name parsing
+  if (typeof node.fontWeight === "number") {
+    styles["font-weight"] = cssBindVar(bv.fontWeight, node.fontWeight, "", cssVars);
+  } else if (node.fontName && typeof node.fontName === "object" && node.fontName.style) {
+    var styleWeightMap = { "Thin": "100", "Hairline": "100", "ExtraLight": "200", "UltraLight": "200", "Light": "300", "Regular": "400", "Normal": "400", "Medium": "500", "SemiBold": "600", "DemiBold": "600", "Bold": "700", "ExtraBold": "800", "UltraBold": "800", "Black": "900", "Heavy": "900" };
+    var rawStyle = node.fontName.style;
+    var hasItalic = /italic/i.test(rawStyle);
+    var hasOblique = /oblique/i.test(rawStyle);
+    var cleanedStyle = rawStyle.replace(/\b(Italic|Oblique)\b/gi, "").replace(/\s+/g, "") || "Regular";
+    if (styleWeightMap[cleanedStyle]) styles["font-weight"] = styleWeightMap[cleanedStyle];
+    if (hasItalic) styles["font-style"] = "italic";
+    else if (hasOblique) styles["font-style"] = "oblique";
+  }
 
-    // Text decoration (underline, strikethrough)
-    if (typeof node.textDecoration === "string") {
-      if (node.textDecoration === "UNDERLINE") styles["text-decoration"] = "underline";
-      else if (node.textDecoration === "STRIKETHROUGH") styles["text-decoration"] = "line-through";
-    }
-    // Text case (uppercase, lowercase, title case)
-    if (typeof node.textCase === "string") {
-      var caseMap = { UPPER: "uppercase", LOWER: "lowercase", TITLE: "capitalize" };
-      if (caseMap[node.textCase]) styles["text-transform"] = caseMap[node.textCase];
-    }
-
-    // Text color
-    if (node.fills && Array.isArray(node.fills) && node.fills.length > 0 && node.fills[0].type === "SOLID") {
-      if (bv.fills && bv.fills[0]) {
-        var tcn = htmlResolveVarToCSSName(bv.fills[0].id);
-        if (tcn) {
-          var tcResolved = htmlResolveVarValue(bv.fills[0].id);
-          cssVars[tcn] = tcResolved ? htmlColorToCSS(tcResolved) : htmlColorToCSS(node.fills[0].color);
-          styles["color"] = "var(" + tcn + ")";
-        } else styles["color"] = htmlColorToCSS(node.fills[0].color);
-      } else styles["color"] = htmlColorToCSS(node.fills[0].color);
+  // Line height with variable binding
+  if (node.lineHeight && typeof node.lineHeight === "object" && node.lineHeight.value) {
+    if (node.lineHeight.unit === "PERCENT") {
+      var lhVal = Math.round(node.lineHeight.value) / 100;
+      styles["line-height"] = bv.lineHeight ? cssBindVar(bv.lineHeight, lhVal, "", cssVars) : String(lhVal);
+    } else if (node.lineHeight.unit === "PIXELS") {
+      styles["line-height"] = cssBindVar(bv.lineHeight, node.lineHeight.value, "px", cssVars);
     }
   }
 
+  // Letter spacing with variable binding
+  if (node.letterSpacing && typeof node.letterSpacing === "object" && node.letterSpacing.value) {
+    if (node.letterSpacing.unit === "PERCENT") {
+      var lsVal = node.letterSpacing.value / 100;
+      styles["letter-spacing"] = bv.letterSpacing ? cssBindVar(bv.letterSpacing, lsVal, "em", cssVars) : lsVal + "em";
+    } else {
+      styles["letter-spacing"] = cssBindVar(bv.letterSpacing, node.letterSpacing.value, "px", cssVars);
+    }
+  }
+
+  // Text alignment
+  var alignMap = { LEFT: "left", CENTER: "center", RIGHT: "right", JUSTIFIED: "justify" };
+  if (node.textAlignHorizontal && alignMap[node.textAlignHorizontal]) styles["text-align"] = alignMap[node.textAlignHorizontal];
+
+  // Text decoration (line, style, offset, thickness, color)
+  if (typeof node.textDecoration === "string" && node.textDecoration !== "NONE") {
+    var decoLine = node.textDecoration === "UNDERLINE" ? "underline" : "line-through";
+    styles["text-decoration-line"] = decoLine;
+
+    // Decoration style (solid, wavy, dotted)
+    if (typeof node.textDecorationStyle === "string" && node.textDecorationStyle !== "SOLID") {
+      var decoStyleMap = { WAVY: "wavy", DOTTED: "dotted" };
+      if (decoStyleMap[node.textDecorationStyle]) styles["text-decoration-style"] = decoStyleMap[node.textDecorationStyle];
+    }
+
+    // Decoration offset
+    if (node.textDecorationOffset && typeof node.textDecorationOffset === "object" && node.textDecorationOffset.unit !== "AUTO") {
+      var offVal = node.textDecorationOffset.value;
+      if (node.textDecorationOffset.unit === "PERCENT") styles["text-underline-offset"] = offVal + "%";
+      else styles["text-underline-offset"] = offVal + "px";
+    }
+
+    // Decoration thickness
+    if (node.textDecorationThickness && typeof node.textDecorationThickness === "object" && node.textDecorationThickness.unit !== "AUTO") {
+      var thkVal = node.textDecorationThickness.value;
+      if (node.textDecorationThickness.unit === "PERCENT") styles["text-decoration-thickness"] = thkVal + "%";
+      else styles["text-decoration-thickness"] = thkVal + "px";
+    }
+
+    // Decoration color
+    if (node.textDecorationColor && typeof node.textDecorationColor === "object" && node.textDecorationColor.value !== "AUTO") {
+      var decoColor = node.textDecorationColor.value;
+      if (decoColor && decoColor.type === "SOLID") styles["text-decoration-color"] = htmlColorToCSS(decoColor.color, 1);
+    }
+  }
+
+  // Text case + small caps
+  if (typeof node.textCase === "string") {
+    var caseMap = { UPPER: "uppercase", LOWER: "lowercase", TITLE: "capitalize" };
+    if (caseMap[node.textCase]) styles["text-transform"] = caseMap[node.textCase];
+    else if (node.textCase === "SMALL_CAPS") styles["font-variant-caps"] = "small-caps";
+    else if (node.textCase === "SMALL_CAPS_FORCED") styles["font-variant-caps"] = "all-small-caps";
+  }
+
+  // Paragraph spacing with variable binding
+  if (typeof node.paragraphSpacing === "number" && node.paragraphSpacing > 0) {
+    styles["margin-bottom"] = cssBindVar(bv.paragraphSpacing, node.paragraphSpacing, "px", cssVars);
+  }
+
+  // Paragraph indent with variable binding
+  if (typeof node.paragraphIndent === "number" && node.paragraphIndent > 0) {
+    styles["text-indent"] = cssBindVar(bv.paragraphIndent, node.paragraphIndent, "px", cssVars);
+  }
+
+  // Text color (fills on TEXT = foreground color)
+  if (node.fills && Array.isArray(node.fills) && node.fills.length > 0 && node.fills[0].type === "SOLID") {
+    styles["color"] = cssFillColor(bv.fills && bv.fills[0], node.fills[0].color, 1, cssVars);
+  }
+}
+
+// ── Main CSS extraction — modular pipeline ──
+export function htmlExtractNodeCSS(node, cssVars) {
+  var styles = {};
+  var bv = node.boundVariables || {};
+  extractPosition(node, styles, cssVars, bv);
+  extractLayout(node, styles, cssVars, bv);
+  extractSizing(node, styles, cssVars, bv);
+  extractFills(node, styles, cssVars, bv);
+  extractCorners(node, styles, cssVars, bv);
+  extractStrokes(node, styles, cssVars, bv);
+  extractEffects(node, styles, cssVars, bv);
+  extractOpacity(node, styles, cssVars, bv);
+  extractBlendMode(node, styles, cssVars, bv);
+  if (node.type === "TEXT") extractText(node, styles, cssVars, bv);
   return styles;
 }
 
@@ -521,7 +823,10 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   // Top-level frames: always full-width, ignore Figma's fixed width and max-width
   if (depth === 0 && (node.type === "FRAME" || node.type === "SECTION")) {
     styles["width"] = "100%";
-    delete styles["height"];
+    if (styles["height"]) {
+      styles["min-height"] = styles["height"];
+      delete styles["height"];
+    }
     delete styles["max-width"];
   }
 
@@ -752,7 +1057,7 @@ export function htmlRenderCSS(cssVars, desktopTree, mobileTree, tokens) {
       }
     }
     if (diffs.length > 0) {
-      lines.push("@media (max-width: 567px) {");
+      lines.push("@media (max-width: " + MOBILE_BREAKPOINT + "px) {");
       for (var di = 0; di < diffs.length; di++) {
         lines.push("  ." + diffs[di].className + " {");
         var dpKeys = Object.keys(diffs[di].props);
@@ -771,7 +1076,7 @@ export function htmlRenderCSS(cssVars, desktopTree, mobileTree, tokens) {
     if (classStyles[classNames[gci3]]["grid-template-columns"]) gridClasses.push(classNames[gci3]);
   }
   if (gridClasses.length > 0) {
-    lines.push("@media (max-width: 567px) {");
+    lines.push("@media (max-width: " + MOBILE_BREAKPOINT + "px) {");
     for (var gci4 = 0; gci4 < gridClasses.length; gci4++) {
       lines.push("  ." + gridClasses[gci4] + " { grid-template-columns: 1fr; }");
     }
@@ -782,10 +1087,32 @@ export function htmlRenderCSS(cssVars, desktopTree, mobileTree, tokens) {
   return lines.join("\n");
 }
 
+function stylesMatch(a, b) {
+  var aKeys = Object.keys(a);
+  var bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (var i = 0; i < aKeys.length; i++) {
+    if (a[aKeys[i]] !== b[aKeys[i]]) return false;
+  }
+  return true;
+}
+
 export function htmlCollectClassStyles(tree, out) {
   if (!tree) return;
   if (tree.className && Object.keys(tree.styles).length > 0) {
-    out[tree.className] = tree.styles;
+    var cn = tree.className;
+    if (out[cn]) {
+      if (!stylesMatch(out[cn], tree.styles)) {
+        // Disambiguate: find unique suffix
+        var suffix = 2;
+        while (out[cn + "-" + suffix]) suffix++;
+        tree.className = cn + "-" + suffix;
+        out[tree.className] = tree.styles;
+      }
+      // else: styles match, reuse existing class
+    } else {
+      out[cn] = tree.styles;
+    }
   }
   // For form fields: use pre-resolved styles (after utility class extraction)
   if ((tree.tag === "form-field-floating" || tree.tag === "form-field") && tree.className) {
@@ -930,7 +1257,7 @@ export function htmlRenderNodeClean(tree, indent) {
   } else if (tree.tag === "form-field-floating") {
     // Floating label: follows component structure — form-field > field-wrapper > input + label
     var flfTexts = htmlCollectAllTexts(tree);
-    var flfLabel = flfTexts.length > 0 ? flfTexts[0].replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+    var flfLabel = flfTexts.length > 0 ? htmlEscapeText(flfTexts[0]) : "";
     var flfInputClasses = tree._inputUtilClasses || [];
     var flfLabelClasses = tree._labelUtilClasses || [];
     var flfInputAttr = flfInputClasses.length > 0 ? ' class="' + flfInputClasses.join(" ") + '"' : "";
@@ -957,8 +1284,8 @@ export function htmlRenderNodeClean(tree, indent) {
   } else if (tree.tag === "form-field") {
     // Regular form field: label above the input
     var ffTexts = htmlCollectAllTexts(tree);
-    var ffLabel = ffTexts.length > 0 ? ffTexts[0].replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
-    var ffPlaceholder = ffTexts.length > 1 ? ffTexts[1].replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+    var ffLabel = ffTexts.length > 0 ? htmlEscapeText(ffTexts[0]) : "";
+    var ffPlaceholder = ffTexts.length > 1 ? htmlEscapeText(ffTexts[1]) : "";
     var ffInputClasses = tree._inputUtilClasses || [];
     var ffLabelClasses = tree._labelUtilClasses || [];
     var ffInputAttr = ffInputClasses.length > 0 ? ' class="' + ffInputClasses.join(" ") + '"' : "";
@@ -974,7 +1301,7 @@ export function htmlRenderNodeClean(tree, indent) {
   } else if (tree.tag === "select") {
     var selectText = htmlExtractTextFromTree(tree) || tree.nodeName || "Select";
     lines.push(pad + '<select' + attrs + '>');
-    lines.push(pad + '  <option value="" disabled hidden selected>' + selectText.replace(/</g, "&lt;") + '</option>');
+    lines.push(pad + '  <option value="" disabled hidden selected>' + htmlEscapeText(selectText) + '</option>');
     lines.push(pad + '</select>');
   } else if (tree.tag === "button") {
     var btnText = htmlExtractTextFromTree(tree);
@@ -989,18 +1316,18 @@ export function htmlRenderNodeClean(tree, indent) {
       if (tree.iconImageWidth) iconImgAttrs += ' width="' + tree.iconImageWidth + '"';
       if (tree.iconImageHeight) iconImgAttrs += ' height="' + tree.iconImageHeight + '"';
       lines.push(pad + '  <img ' + iconImgAttrs + ' />');
-      if (btnText) lines.push(pad + '  <span>' + btnText.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</span>');
+      if (btnText) lines.push(pad + '  <span>' + htmlEscapeText(btnText) + '</span>');
       lines.push(pad + '</button>');
     } else if (btnText) {
-      lines.push(pad + '<button' + attrs + '>' + btnText.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</button>');
+      lines.push(pad + '<button' + attrs + '>' + htmlEscapeText(btnText) + '</button>');
     } else {
       lines.push(pad + '<button' + attrs + '></button>');
     }
   } else if (tree.tag === "a") {
     var linkText = htmlExtractTextFromTree(tree) || tree.nodeName || "Link";
-    lines.push(pad + '<a' + attrs + ' href="#">' + linkText.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</a>');
+    lines.push(pad + '<a' + attrs + ' href="#">' + htmlEscapeText(linkText) + '</a>');
   } else if (tree.text !== null) {
-    lines.push(pad + '<' + tree.tag + attrs + '>' + tree.text.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</' + tree.tag + '>');
+    lines.push(pad + '<' + tree.tag + attrs + '>' + htmlEscapeText(tree.text) + '</' + tree.tag + '>');
   } else if (tree.children.length === 0) {
     lines.push(pad + '<' + tree.tag + attrs + '></' + tree.tag + '>');
   } else {

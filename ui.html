@@ -467,12 +467,20 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
       </div>
     </div>
     <button id="bh-generate-btn" style="width:100%;padding:10px 16px;background:#89b4fa;color:#1e1e2e;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;">Generate HTML</button>
-    <!-- Progress -->
-    <div id="bh-progress" style="display:none;margin-top:12px;">
-      <div style="background:#313244;border-radius:6px;overflow:hidden;height:6px;margin-bottom:6px;">
-        <div id="bh-progress-bar" style="height:100%;background:#89b4fa;width:0%;transition:width 0.3s;"></div>
+    <!-- Terminal Console -->
+    <div id="bh-terminal" style="display:none;margin-top:12px;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;">
+        <span style="width:10px;height:10px;border-radius:50%;background:#f38ba8;"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#f9e2af;"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#a6e3a1;"></span>
+        <span style="flex:1;text-align:center;font-size:10px;color:#585858;font-family:monospace;">build-html</span>
       </div>
-      <div id="bh-progress-text" style="font-size:11px;color:#6c7086;text-align:center;"></div>
+      <div id="bh-terminal-log" style="padding:10px 12px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11px;line-height:1.6;max-height:220px;overflow-y:auto;min-height:60px;"></div>
+      <div id="bh-progress" style="display:none;padding:0 12px 8px;">
+        <div style="background:#1a1a1a;border-radius:3px;overflow:hidden;height:3px;">
+          <div id="bh-progress-bar" style="height:100%;background:#a6e3a1;width:0%;transition:width 0.3s;"></div>
+        </div>
+      </div>
     </div>
     <!-- Error -->
     <div id="bh-error" style="display:none;margin-top:12px;padding:10px;background:#45273a;border-radius:8px;font-size:11px;color:#f38ba8;"></div>
@@ -3048,6 +3056,10 @@ function renderStep4(container) {
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step4Open = !wfFormState.step4Open;
+      // If opening and we have persisted results but no full data, auto re-run audit
+      if (wfFormState.step4Open && !wfAuditData && wfAuditScore >= 0) {
+        parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
+      }
       var prev4 = document.getElementById("wf-step-4");
       if (prev4) prev4.remove();
       renderStep4(container);
@@ -3114,6 +3126,12 @@ function renderStep4(container) {
       noPages.style.cssText = "padding:24px 16px;text-align:center;font-size:11px;color:#a6adc8;";
       noPages.textContent = "No Desktop or Mobile pages found. The audit runs only on those pages.";
       auditWrap.appendChild(noPages);
+    } else if (hasPersistedResults) {
+      // We have a persisted score but no full data — show loading while auto re-run fetches results
+      var loadingDiv = document.createElement("div");
+      loadingDiv.style.cssText = "padding:16px;text-align:center;font-size:11px;color:#a6adc8;";
+      loadingDiv.textContent = "Loading audit details…";
+      auditWrap.appendChild(loadingDiv);
     }
 
     // Run / Re-run button
@@ -3560,9 +3578,7 @@ window.onmessage=function(event){
     wfAuditPassed = auditCritHighPass(msg.results);
     wfAuditScore = (msg.results && !msg.results.noPages) ? msg.results.score : -1;
     wfAuditIssues = (msg.results && msg.results.totalIssues !== undefined) ? msg.results.totalIssues : 0;
-    if (wfAuditPassed) {
-      wfFormState.step4Open = false;
-    }
+    // Never auto-collapse — user should always see audit results after running
     saveSettings();
     var sc = document.getElementById("wf-container");
     if (sc) renderStep4(sc);
@@ -3635,14 +3651,27 @@ window.onmessage=function(event){
   }
   // ── Build HTML messages ──
   if(msg.type==="build-html-progress"){
+    var term = document.getElementById("bh-terminal");
+    if (term) term.style.display = "";
     var prog = document.getElementById("bh-progress");
     if (prog) prog.style.display = "";
     var bar = document.getElementById("bh-progress-bar");
     if (bar) bar.style.width = (msg.percent || 0) + "%";
-    var txt = document.getElementById("bh-progress-text");
-    if (txt) txt.textContent = msg.phase || "";
+    // For image export updates, overwrite the last line instead of appending
+    var phase = msg.phase || "";
+    if (phase.indexOf("Exporting images") === 0) {
+      var logEl = document.getElementById("bh-terminal-log");
+      if (logEl && logEl.lastChild && logEl.lastChild._bhImgLine) {
+        logEl.removeChild(logEl.lastChild);
+      }
+      bhTermLog(phase, "info");
+      if (logEl && logEl.lastChild) logEl.lastChild._bhImgLine = true;
+    } else {
+      bhTermLog(phase, msg.percent >= 100 ? "done" : "info");
+    }
   }
   if(msg.type==="build-html-error"){
+    bhTermLog("ERROR: " + (msg.error || "Unknown error"), "error");
     var errDiv = document.getElementById("bh-error");
     if (errDiv) { errDiv.style.display = ""; errDiv.textContent = msg.error || "Unknown error"; }
     var progE = document.getElementById("bh-progress");
@@ -3653,36 +3682,45 @@ window.onmessage=function(event){
   if(msg.type==="build-html-result"){
     _bhLastRawResult = JSON.parse(JSON.stringify(msg));
     var aiEnabled = document.getElementById("bh-ai-enhance").checked;
+    bhTermLog("Raw HTML generated — " + (msg.stats ? msg.stats.nodes + " nodes, " + msg.stats.images + " images" : ""), "done");
+    if (msg.screenshots && msg.screenshots.length) {
+      bhTermLog("Captured " + msg.screenshots.length + " design screenshot" + (msg.screenshots.length !== 1 ? "s" : "") + " for AI context", "done");
+    }
     if (aiEnabled) {
       var bar = document.getElementById("bh-progress-bar");
       if (bar) bar.style.width = "90%";
-      var txt = document.getElementById("bh-progress-text");
-      if (txt) txt.textContent = "Enhancing with Claude AI…";
-      bhCallClaudeAPI(msg.htmlFiles, msg.css, function(err, refined) {
+      bhTermLog("Sending to Claude AI for enhancement…", "info");
+      bhCallClaudeAPI(msg.htmlFiles, msg.css, msg.screenshots || [], function(err, refined) {
         var progR = document.getElementById("bh-progress");
         if (progR) progR.style.display = "none";
         if (err) {
+          bhTermLog("AI enhancement failed: " + err, "error");
+          bhTermLog("Showing raw output instead", "warn");
           var errDiv = document.getElementById("bh-error");
           if (errDiv) { errDiv.style.display = ""; errDiv.textContent = "AI enhancement failed: " + err + " — showing raw output."; }
           _bhLastEnhancedResult = null;
           bhShowResults(_bhLastRawResult, null);
         } else {
+          bhTermLog("AI enhancement complete", "done");
           _bhLastEnhancedResult = {
             htmlFiles: refined.htmlFiles,
             css: refined.css,
             images: msg.images,
             stats: msg.stats
           };
+          _bhViewingEnhanced = true;
           bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
         }
+        bhTermLog("Ready — files available for download", "done");
         var genBtn2 = document.getElementById("bh-generate-btn");
         if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
-      });
+      }, wfPageType);
     } else {
       var progR = document.getElementById("bh-progress");
       if (progR) progR.style.display = "none";
       _bhLastEnhancedResult = null;
       bhShowResults(msg, null);
+      bhTermLog("Ready — files available for download", "done");
       var genBtn2 = document.getElementById("bh-generate-btn");
       if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
     }
@@ -3698,6 +3736,35 @@ window.onmessage=function(event){
     bhUpdateAiModeUI();
   }
 };
+
+// ── Terminal log helper ──
+function bhTermLog(text, type) {
+  var log = document.getElementById("bh-terminal-log");
+  if (!log) return;
+  var line = document.createElement("div");
+  var ts = new Date();
+  var timeStr = String(ts.getHours()).padStart(2, "0") + ":" + String(ts.getMinutes()).padStart(2, "0") + ":" + String(ts.getSeconds()).padStart(2, "0");
+  var prefix = "<span style='color:#585858;'>" + timeStr + "</span> ";
+  if (type === "done") {
+    prefix += "<span style='color:#a6e3a1;'>✓</span> ";
+    line.style.color = "#a6e3a1";
+  } else if (type === "error") {
+    prefix += "<span style='color:#f38ba8;'>✗</span> ";
+    line.style.color = "#f38ba8";
+  } else if (type === "warn") {
+    prefix += "<span style='color:#f9e2af;'>⚠</span> ";
+    line.style.color = "#f9e2af";
+  } else if (type === "dim") {
+    prefix += "  ";
+    line.style.color = "#585858";
+  } else {
+    prefix += "<span style='color:#89b4fa;'>›</span> ";
+    line.style.color = "#a6adc8";
+  }
+  line.innerHTML = prefix + esc(text);
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
 
 // ── Build HTML button handlers ──
 var _bhLastResult = null;
@@ -3869,7 +3936,8 @@ function bhBuildDesignContext() {
   return ctx;
 }
 
-function bhCallClaudeAPI(htmlFiles, css, callback) {
+function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
+  pageType = pageType || "promo";
   var useProxy = _bhProxyHealthy && !_bhApiKey;
   if (useProxy && !_figmaUserId) { callback("Unable to identify Figma user. Please reload the plugin.", null); return; }
   if (!useProxy && !_bhApiKey) { callback("No API key configured. Enter your Anthropic API key to use AI enhancement.", null); return; }
@@ -3882,12 +3950,16 @@ function bhCallClaudeAPI(htmlFiles, css, callback) {
   var designContext = bhBuildDesignContext();
 
   var systemPrompt = "You are an expert frontend developer refining auto-generated HTML/CSS from a Figma design tool. "
-    + "Your job is to improve the code while keeping it functionally and visually identical.\n\n"
+    + "Your job is to improve the code while keeping it functionally and visually identical. "
+    + "You may receive screenshots of the original Figma design — use them as the visual source of truth to verify your output matches the intended design.\n\n"
     + designContext + "\n"
     + "Rules:\n"
-    + "1. PRESERVE all class names exactly — both component classes and utility classes connect HTML to CSS and must not change.\n"
+    + "1. PRESERVE all class names exactly — both component classes AND utility classes (like 'relative', 'flex', 'flex-col', 'items-center', 'justify-center', 'hidden', etc.) connect HTML to CSS and must not be removed, renamed, or absorbed into component styles.\n"
     + "2. PRESERVE all asset paths (assets/*.png etc) exactly.\n"
-    + "3. Improve semantic HTML: replace generic divs with section, article, main, nav, header, footer, aside, figure, figcaption, ul/li, etc. where appropriate.\n"
+    + "3. Improve semantic HTML: replace generic divs with section, article, nav, header, footer, aside, figure, figcaption, ul/li, etc. where appropriate. "
+    + (pageType === "promo"
+      ? "This is a promo page — each top-level frame is a standalone <section>. Do NOT use <main>, <article>, or <header> tags. Keep the structure flat: <section> at the top level with <div>, <form>, <label>, <input>, <button>, <img>, <h1>-<h6>, and <p> inside.\n"
+      : "This is a " + pageType + " page — the top-level frame represents <body> and its direct children are page sections. You may use <main> to wrap the primary content area.\n")
     + "4. Add ARIA attributes (aria-label, role) and meaningful alt text for accessibility.\n"
     + "5. Clean up CSS: merge duplicate rules, use shorthand properties, remove redundant declarations. If a property is already covered by a utility class, remove it from the component CSS.\n"
     + "6. Add CSS comments grouping logical sections.\n"
@@ -3897,20 +3969,40 @@ function bhCallClaudeAPI(htmlFiles, css, callback) {
     + "10. Keep the link to styles.css as an external reference.\n"
     + "11. Return valid JSON only. No markdown fences, no explanation text outside the JSON.\n"
     + "12. You may add additional utility classes from the available set if they reduce component CSS duplication.\n"
-    + "13. Do NOT derive class names from text content (e.g. no '.get-50-off-today' or '.sign-up-now'). Use short semantic names (btn, text, card, hero, etc.) and utility classes instead.";
+    + "13. Do NOT derive class names from text content (e.g. no '.get-50-off-today' or '.sign-up-now'). Use short semantic names (btn, text, card, hero, etc.) and utility classes instead.\n"
+    + "14. You MAY reorder sibling elements for logical DOM order when it does not affect the visual result. For example, an absolute-positioned close button should appear before the content it overlays in the HTML source, even if it was generated last for layering reasons.";
 
-  var userMessage = "Here is the raw HTML and CSS generated from a Figma design.\n\n"
+  var userTextContent = "Here is the raw HTML and CSS generated from a Figma design.\n\n"
     + "## HTML Files\n```html\n" + htmlSummary + "```\n\n"
     + "## CSS (styles.css)\n```css\n" + css + "```\n\n"
     + "Please refine this code. Return ONLY a JSON object with this exact structure:\n"
     + "{\"htmlFiles\":[{\"name\":\"filename.html\",\"content\":\"...full refined HTML...\"}],\"css\":\"...full refined CSS...\"}\n"
     + "Return one entry in htmlFiles for each input file, preserving the file names.";
 
+  // Build multimodal user message with screenshots + text
+  var userContent = [];
+  if (screenshots && screenshots.length) {
+    for (var si = 0; si < screenshots.length; si++) {
+      var sc = screenshots[si];
+      if (!sc.bytes || !sc.bytes.length) continue;
+      // Convert byte array to base64
+      var binary = "";
+      var bytes = sc.bytes;
+      for (var bi = 0; bi < bytes.length; bi++) binary += String.fromCharCode(bytes[bi]);
+      var b64 = btoa(binary);
+      userContent.push({ type: "text", text: "Screenshot of " + sc.page + " frame: \"" + sc.name + "\"" });
+      userContent.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } });
+    }
+    userContent.push({ type: "text", text: "Above are screenshots of the original Figma design frames. Use them as visual reference to ensure your refinements match the design exactly.\n\n" + userTextContent });
+  } else {
+    userContent = userTextContent;
+  }
+
   var body = JSON.stringify({
     model: "claude-sonnet-4-20250514",
     max_tokens: 16384,
     system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }]
+    messages: [{ role: "user", content: userContent }]
   });
 
   var xhr = new XMLHttpRequest();
@@ -3974,7 +4066,6 @@ function bhShowResults(rawResult, enhancedResult) {
 
   var toggle = document.getElementById("bh-version-toggle");
   if (toggle) toggle.style.display = enhancedResult ? "" : "none";
-  if (enhancedResult) _bhViewingEnhanced = true;
 
   var active = (_bhViewingEnhanced && enhancedResult) ? enhancedResult : rawResult;
   _bhLastResult = active;
@@ -4021,11 +4112,19 @@ document.getElementById("bh-generate-btn").addEventListener("click", function() 
   btn.textContent = "Generating…";
   document.getElementById("bh-error").style.display = "none";
   document.getElementById("bh-results").style.display = "none";
+  // Initialize terminal
+  var termEl = document.getElementById("bh-terminal");
+  if (termEl) termEl.style.display = "";
+  var logEl = document.getElementById("bh-terminal-log");
+  if (logEl) logEl.innerHTML = "";
   document.getElementById("bh-progress").style.display = "";
   document.getElementById("bh-progress-bar").style.width = "0%";
-  document.getElementById("bh-progress-text").textContent = "Starting…";
+  bhTermLog("Starting HTML generation…", "info");
   var includeMobile = document.getElementById("bh-include-mobile").checked;
-  parent.postMessage({ pluginMessage: { type: "build-html", options: { includeMobile: includeMobile, pageType: wfPageType || "promo", tokens: { spacing: wfSpacing, typography: wfTypography, radius: wfRadius } } } }, "*");
+  if (includeMobile) bhTermLog("Mobile responsive styles enabled", "dim");
+  if (document.getElementById("bh-ai-enhance").checked) bhTermLog("AI enhancement enabled", "dim");
+  var aiEnabled = document.getElementById("bh-ai-enhance").checked;
+  parent.postMessage({ pluginMessage: { type: "build-html", options: { includeMobile: includeMobile, includeScreenshots: aiEnabled, pageType: wfPageType || "promo", tokens: { spacing: wfSpacing, typography: wfTypography, radius: wfRadius } } } }, "*");
 });
 
 document.getElementById("bh-copy-btn").addEventListener("click", function() {

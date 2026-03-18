@@ -68,6 +68,7 @@ export async function generatePromoStructure(msg) {
   var spacingVarMap = {};
   var radiusVarMap = {};
   var opacityVarMap = {};
+  var borderWidthVarMap = {};
   var allFloatVars = figma.variables.getLocalVariables().filter(function(v) { return v.resolvedType === "FLOAT"; });
   var allColls = figma.variables.getLocalVariableCollections();
   for (var fvi = 0; fvi < allFloatVars.length; fvi++) {
@@ -85,6 +86,11 @@ export async function generatePromoStructure(msg) {
       if (opModeId2) { try { var opVal2 = cxResolveVar(fv, opModeId2, allColls); if (typeof opVal2 === "number") opacityVarMap[Math.round(opVal2 * 100)] = fv; } catch(e) {} }
     } else if (collName.indexOf("radius") !== -1 || collName.indexOf("corner") !== -1) {
       radiusVarMap[shortName] = fv;
+    } else if (collName.indexOf("border") !== -1 && collName.indexOf("width") !== -1) {
+      // Build border width variable map by resolved value
+      var bwModeIdW = null;
+      for (var bwci = 0; bwci < allColls.length; bwci++) { if (allColls[bwci].id === fv.variableCollectionId && allColls[bwci].modes && allColls[bwci].modes.length) { bwModeIdW = allColls[bwci].modes[0].modeId; break; } }
+      if (bwModeIdW) { try { var bwv = cxResolveVar(fv, bwModeIdW, allColls); if (typeof bwv === "number") borderWidthVarMap[bwv] = fv; } catch(e) {} }
     }
   }
 
@@ -116,7 +122,7 @@ export async function generatePromoStructure(msg) {
 
   // Helper: bind opacity to variable
   function bindPromoOpacity(node) {
-    if (!("opacity" in node) || node.opacity >= 1 || node.opacity <= 0) return;
+    if (!("opacity" in node)) return;
     var pct = Math.round(node.opacity * 100);
     var ov = opacityVarMap[pct];
     if (ov) { try { node.setBoundVariable("opacity", ov); } catch(e) {} }
@@ -181,6 +187,15 @@ export async function generatePromoStructure(msg) {
     if (gapVar) {
       try { frame.setBoundVariable("itemSpacing", gapVar); } catch(e) {}
     }
+  }
+
+  // Helper: bind stroke weight to border width variable
+  function bindBorderWidth(node) {
+    if (!("strokeWeight" in node)) return;
+    var val = node.strokeWeight;
+    if (val === undefined || val === null || typeof val !== "number") return;
+    var bv = borderWidthVarMap[val];
+    if (bv) { try { node.setBoundVariable("strokeWeight", bv); } catch(e) {} }
   }
 
   // Helper: bind corner radius to variable
@@ -366,8 +381,15 @@ export async function generatePromoStructure(msg) {
       btn.layoutMode = "HORIZONTAL";
       btn.primaryAxisAlignItems = "CENTER";
       btn.counterAxisAlignItems = "CENTER";
-      btn.primaryAxisSizingMode = "FIXED";
+      btn.primaryAxisSizingMode = "AUTO";
       btn.counterAxisSizingMode = "FIXED";
+      var btnPadPx = isMobile ? 20 : 28;
+      btn.paddingLeft = btnPadPx; btn.paddingRight = btnPadPx;
+      btn.paddingTop = 0; btn.paddingBottom = 0;
+      var btnPadVar = findSpacingVar(btnPadPx);
+      if (btnPadVar) {
+        try { btn.setBoundVariable("paddingLeft", btnPadVar); btn.setBoundVariable("paddingRight", btnPadVar); } catch(e) {}
+      }
       var txt = figma.createText();
       var btnTxtStyle = findPromoTextStyle("buttons", isMobile ? "sm" : "default");
       if (btnTxtStyle) {
@@ -435,6 +457,7 @@ export async function generatePromoStructure(msg) {
       promoBindFill(fld, "white");
       fld.strokes = [{ type: "SOLID", color: { r: 0.82, g: 0.82, b: 0.82 } }];
       fld.strokeWeight = 1;
+      bindBorderWidth(fld);
       wrapper.appendChild(fld);
       fld.layoutSizingHorizontal = "FILL";
       parent.appendChild(wrapper);
@@ -551,6 +574,8 @@ export async function generatePromoStructure(msg) {
       bindRadius(heroImg, "md");
       heroImg.fills = [{ type: "IMAGE", imageHash: contentImageHash, scaleMode: "FILL" }];
       content.appendChild(heroImg);
+      try { heroImg.layoutSizingHorizontal = "FILL"; } catch(e) {}
+      heroImg.maxWidth = isMobile ? W - 60 : 400;
 
       // Paragraph
       var sub = figma.createText();
@@ -658,28 +683,6 @@ export async function generatePromoStructure(msg) {
         pcBg.opacity = 0.15;
         bindPromoOpacity(pcBg);
       }
-
-      // Close button (absolute, top-right corner x=0 y=0, padding inside)
-      var closeSize = isMobile ? 15 : 19;
-      var closeBtn = figma.createFrame();
-      closeBtn.name = "close-button";
-      closeBtn.fills = [];
-      closeBtn.layoutMode = "HORIZONTAL";
-      closeBtn.primaryAxisSizingMode = "AUTO";
-      closeBtn.counterAxisSizingMode = "AUTO";
-      closeBtn.primaryAxisAlignItems = "CENTER";
-      closeBtn.counterAxisAlignItems = "CENTER";
-      bindPaddingXY(closeBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
-      var closeIcon = figma.createRectangle();
-      closeIcon.name = "close-icon";
-      closeIcon.resize(closeSize, closeSize);
-      closeIcon.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: closeImageHash }];
-      closeBtn.appendChild(closeIcon);
-      pc.appendChild(closeBtn);
-      closeBtn.layoutPositioning = "ABSOLUTE";
-      closeBtn.constraints = { horizontal: "MAX", vertical: "MIN" };
-      closeBtn.x = pcMaxW - closeBtn.width;
-      closeBtn.y = 0;
 
       if (popupIncludeForm) {
         // ── Popup with form — auto-layout popup-inner ──
@@ -791,20 +794,23 @@ export async function generatePromoStructure(msg) {
               ? await createDropdown(rowFrame, fieldLabel)
               : await createInput(rowFrame, fieldLabel);
 
-            if (!isMobile) {
-              // Size field to span N columns: N * unitCol + (N-1) * gap
-              var fieldWidth = Math.round(span * unitCol + Math.max(0, span - 1) * colGap);
-              try {
-                inp.layoutSizingHorizontal = "FIXED";
-                inp.resize(fieldWidth, inp.height);
-              } catch(e) {}
-            } else {
-              try { inp.layoutSizingHorizontal = "FILL"; } catch(e) {}
-            }
+            try { inp.layoutSizingHorizontal = "FILL"; } catch(e) {}
 
-            // Bind minWidth to grid column variable
-            if (!isMobile && gridColVarMap[span]) {
-              try { inp.setBoundVariable("minWidth", gridColVarMap[span]); } catch(e) {}
+            // Store grid column span for HTML export
+            try { inp.setPluginData("colSpan", String(span)); } catch(e) {}
+
+            // Set maxWidth proportionally so fields respect grid proportions in Figma
+            if (!isMobile) {
+              var totalRowSpan = 0;
+              for (var si = 0; si < rowData.length; si++) totalRowSpan += (rowData[si].colSpan || Math.floor(12 / rowData.length));
+              var fieldMaxW = Math.round((span / totalRowSpan) * (rowWidth - Math.max(0, rowData.length - 1) * colGap));
+              try { inp.maxWidth = fieldMaxW; } catch(e) {}
+              // Set minWidth for wrapping breakpoint
+              var fieldMinW = Math.round(span * unitCol + Math.max(0, span - 1) * colGap);
+              try { inp.minWidth = fieldMinW; } catch(e) {}
+              if (gridColVarMap[span]) {
+                try { inp.setBoundVariable("minWidth", gridColVarMap[span]); } catch(e) {}
+              }
             }
             // Color the asterisk red on required fields
             if (fld.required) {
@@ -878,6 +884,28 @@ export async function generatePromoStructure(msg) {
 
         await createCta(innerFrame, "Call to Action");
       }
+
+      // Close button (absolute, top-right) — appended last so it layers on top
+      var closeSize = isMobile ? 15 : 19;
+      var closeBtn = figma.createFrame();
+      closeBtn.name = "close-button";
+      closeBtn.fills = [];
+      closeBtn.layoutMode = "HORIZONTAL";
+      closeBtn.primaryAxisSizingMode = "AUTO";
+      closeBtn.counterAxisSizingMode = "AUTO";
+      closeBtn.primaryAxisAlignItems = "CENTER";
+      closeBtn.counterAxisAlignItems = "CENTER";
+      bindPaddingXY(closeBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
+      var closeIcon = figma.createRectangle();
+      closeIcon.name = "close-icon";
+      closeIcon.resize(closeSize, closeSize);
+      closeIcon.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: closeImageHash }];
+      closeBtn.appendChild(closeIcon);
+      pc.appendChild(closeBtn);
+      closeBtn.layoutPositioning = "ABSOLUTE";
+      closeBtn.constraints = { horizontal: "MAX", vertical: "MIN" };
+      closeBtn.x = pcMaxW - closeBtn.width;
+      closeBtn.y = 0;
 
       // Resize overlay to match final parent size
       overlay.resize(popup.width, popup.height);
@@ -965,28 +993,6 @@ export async function generatePromoStructure(msg) {
           bindPromoOpacity(tyBg);
         }
 
-        // Close button (absolute, top-right)
-        var tyCloseSize = isMobile ? 15 : 19;
-        var tyCloseBtn = figma.createFrame();
-        tyCloseBtn.name = "close-button";
-        tyCloseBtn.fills = [];
-        tyCloseBtn.layoutMode = "HORIZONTAL";
-        tyCloseBtn.primaryAxisSizingMode = "AUTO";
-        tyCloseBtn.counterAxisSizingMode = "AUTO";
-        tyCloseBtn.primaryAxisAlignItems = "CENTER";
-        tyCloseBtn.counterAxisAlignItems = "CENTER";
-        bindPaddingXY(tyCloseBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
-        var tyCloseIcon = figma.createRectangle();
-        tyCloseIcon.name = "close-icon";
-        tyCloseIcon.resize(tyCloseSize, tyCloseSize);
-        tyCloseIcon.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: closeImageHash }];
-        tyCloseBtn.appendChild(tyCloseIcon);
-        tyPc.appendChild(tyCloseBtn);
-        tyCloseBtn.layoutPositioning = "ABSOLUTE";
-        tyCloseBtn.constraints = { horizontal: "MAX", vertical: "MIN" };
-        tyCloseBtn.x = tyPcMaxW - tyCloseBtn.width;
-        tyCloseBtn.y = 0;
-
         // Centered text + CTA
         var tyInner = figma.createFrame();
         tyInner.name = "popup-inner";
@@ -1035,6 +1041,28 @@ export async function generatePromoStructure(msg) {
 
         await createCta(tyInner, "Continue");
 
+        // Close button (absolute, top-right) — appended last so it layers on top
+        var tyCloseSize = isMobile ? 15 : 19;
+        var tyCloseBtn = figma.createFrame();
+        tyCloseBtn.name = "close-button";
+        tyCloseBtn.fills = [];
+        tyCloseBtn.layoutMode = "HORIZONTAL";
+        tyCloseBtn.primaryAxisSizingMode = "AUTO";
+        tyCloseBtn.counterAxisSizingMode = "AUTO";
+        tyCloseBtn.primaryAxisAlignItems = "CENTER";
+        tyCloseBtn.counterAxisAlignItems = "CENTER";
+        bindPaddingXY(tyCloseBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
+        var tyCloseIcon = figma.createRectangle();
+        tyCloseIcon.name = "close-icon";
+        tyCloseIcon.resize(tyCloseSize, tyCloseSize);
+        tyCloseIcon.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: closeImageHash }];
+        tyCloseBtn.appendChild(tyCloseIcon);
+        tyPc.appendChild(tyCloseBtn);
+        tyCloseBtn.layoutPositioning = "ABSOLUTE";
+        tyCloseBtn.constraints = { horizontal: "MAX", vertical: "MIN" };
+        tyCloseBtn.x = tyPcMaxW - tyCloseBtn.width;
+        tyCloseBtn.y = 0;
+
         // Resize overlay to match final parent size
         tyOverlay.resize(tyPopup.width, tyPopup.height);
 
@@ -1065,6 +1093,13 @@ export async function generatePromoStructure(msg) {
       innerBanner.name = "inner-banner";
       innerBanner.resize(innerW, innerH);
       innerBanner.clipsContent = true;
+      innerBanner.cornerRadius = defaultRadius;
+      bindRadius(innerBanner, "md");
+      innerBanner.layoutMode = isMobile ? "VERTICAL" : "HORIZONTAL";
+      innerBanner.primaryAxisAlignItems = "CENTER";
+      innerBanner.counterAxisAlignItems = "CENTER";
+      innerBanner.primaryAxisSizingMode = "AUTO";
+      innerBanner.counterAxisSizingMode = "FIXED";
       if (bgImageVariant) {
         innerBanner.fills = [];
         var bannerBg = bgImageVariant.createInstance();
@@ -1077,13 +1112,6 @@ export async function generatePromoStructure(msg) {
       } else {
         innerBanner.fills = [{ type: "IMAGE", imageHash: placeholderHash, scaleMode: "FILL" }];
       }
-      innerBanner.cornerRadius = defaultRadius;
-      bindRadius(innerBanner, "md");
-      innerBanner.layoutMode = isMobile ? "VERTICAL" : "HORIZONTAL";
-      innerBanner.primaryAxisAlignItems = "CENTER";
-      innerBanner.counterAxisAlignItems = "CENTER";
-      innerBanner.primaryAxisSizingMode = "AUTO";
-      innerBanner.counterAxisSizingMode = "FIXED";
       var bannerPadPx = isMobile ? 16 : 40;
       var bannerGapPx = isMobile ? 16 : 32;
       innerBanner.paddingLeft = bannerPadPx;
@@ -1109,10 +1137,8 @@ export async function generatePromoStructure(msg) {
         try { innerBanner.setBoundVariable("itemSpacing", bannerGapVar); } catch(e) {}
       }
       banner.appendChild(innerBanner);
-      if (isMobile) {
-        innerBanner.layoutSizingHorizontal = "FILL";
-        innerBanner.maxWidth = 375;
-      }
+      innerBanner.layoutSizingHorizontal = "FILL";
+      innerBanner.maxWidth = isMobile ? 375 : innerW;
 
       // Placeholder image inside banner
       var bannerImg = figma.createRectangle();
@@ -1122,7 +1148,7 @@ export async function generatePromoStructure(msg) {
       bindRadius(bannerImg, "md");
       bannerImg.fills = [{ type: "IMAGE", imageHash: contentImageHash, scaleMode: "FILL" }];
       innerBanner.appendChild(bannerImg);
-      if (isMobile) { bannerImg.layoutSizingHorizontal = "FILL"; }
+      bannerImg.maxWidth = isMobile ? 100 : 200;
 
       await createCta(innerBanner, "Learn More");
 

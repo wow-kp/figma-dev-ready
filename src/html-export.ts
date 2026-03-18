@@ -51,8 +51,11 @@ export function htmlExtractNodeCSS(node, cssVars) {
       styles["inset"] = "0";
     } else {
       if (cons.horizontal === "STRETCH") { styles["left"] = "0"; styles["right"] = "0"; }
+      else if (cons.horizontal === "MAX") { styles["right"] = Math.round(node.parent ? node.parent.width - node.x - node.width : 0) + "px"; }
+      else if (cons.horizontal === "MIN") { styles["left"] = Math.round(node.x || 0) + "px"; }
       else { styles["left"] = Math.round(node.x || 0) + "px"; }
       if (cons.vertical === "STRETCH") { styles["top"] = "0"; styles["bottom"] = "0"; }
+      else if (cons.vertical === "MAX") { styles["bottom"] = Math.round(node.parent ? node.parent.height - node.y - node.height : 0) + "px"; }
       else { styles["top"] = Math.round(node.y || 0) + "px"; }
     }
   }
@@ -99,7 +102,19 @@ export function htmlExtractNodeCSS(node, cssVars) {
   var parentDir = isAutoChild ? node.parent.layoutMode : null;
   if (node.layoutSizingHorizontal === "FILL" || (isAutoChild && node.layoutAlign === "STRETCH")) {
     // In a row layout, FILL means flex-grow; in column, it means width: 100%
-    if (parentDir === "HORIZONTAL") { styles["flex"] = "1 1 0"; }
+    if (parentDir === "HORIZONTAL") {
+      // Use minWidth as flex-basis so fields keep their proportional width
+      var flexBasis = "auto";
+      if (node.minWidth && node.minWidth > 0 && node.minWidth < 10000) {
+        flexBasis = Math.round(node.minWidth) + "px";
+        if (bv.minWidth) {
+          var mwn = htmlResolveVarToCSSName(bv.minWidth.id);
+          if (mwn) { cssVars[mwn] = Math.round(node.minWidth) + "px"; flexBasis = "var(" + mwn + ")"; }
+        }
+        styles["min-width"] = flexBasis;
+      }
+      styles["flex"] = "1 1 " + flexBasis;
+    }
     else { styles["width"] = "100%"; }
   } else if (node.width > 0 && node.layoutSizingHorizontal !== "HUG"
     && !(node.type === "TEXT" && node.textAutoResize === "WIDTH_AND_HEIGHT")) {
@@ -108,15 +123,22 @@ export function htmlExtractNodeCSS(node, cssVars) {
     if (isAutoChild) styles["flex-shrink"] = "0";
   }
   if (node.layoutSizingVertical === "FILL") {
-    if (parentDir === "VERTICAL") { styles["flex"] = "1 1 0"; }
+    if (parentDir === "VERTICAL") { styles["flex"] = "1 1 auto"; }
     else { styles["height"] = "100%"; }
-  } else if (node.height > 0 && node.layoutSizingVertical !== "HUG" && !node.layoutMode
+  } else if (node.height > 0 && node.layoutSizingVertical !== "HUG"
     && !(node.type === "TEXT" && (node.textAutoResize === "HEIGHT" || node.textAutoResize === "WIDTH_AND_HEIGHT"))) {
     styles["height"] = Math.round(node.height) + "px";
   }
 
-  // Max width for responsive (child frames only — top-level handled in walkNode)
+  // Max/min width for responsive (child frames only — top-level handled in walkNode)
   if (node.maxWidth && node.maxWidth < 10000) styles["max-width"] = Math.round(node.maxWidth) + "px";
+  if (!styles["min-width"] && node.minWidth && node.minWidth > 0 && node.minWidth < 10000) {
+    if (bv.minWidth) {
+      var mwn2 = htmlResolveVarToCSSName(bv.minWidth.id);
+      if (mwn2) { cssVars[mwn2] = Math.round(node.minWidth) + "px"; styles["min-width"] = "var(" + mwn2 + ")"; }
+      else styles["min-width"] = Math.round(node.minWidth) + "px";
+    } else styles["min-width"] = Math.round(node.minWidth) + "px";
+  }
 
   // Overflow
   if (node.clipsContent) styles["overflow"] = "hidden";
@@ -178,8 +200,8 @@ export function htmlExtractNodeCSS(node, cssVars) {
   // Strokes / border (guard against mixed strokeWeight)
   if (node.strokes && node.strokes.length > 0) {
     var stroke = node.strokes[0];
-    if (stroke && stroke.visible !== false && stroke.type === "SOLID") {
-      var sw = typeof node.strokeWeight === "number" ? node.strokeWeight : 1;
+    var sw = typeof node.strokeWeight === "number" ? node.strokeWeight : 0;
+    if (stroke && stroke.visible !== false && stroke.type === "SOLID" && sw > 0) {
       var sc = htmlColorToCSS(stroke.color);
       if (bv.strokes && bv.strokes[0]) {
         var sn = htmlResolveVarToCSSName(bv.strokes[0].id);
@@ -302,12 +324,18 @@ export function htmlGetSemanticTag(node, depth, pageType) {
 
   // Semantic section mapping (any frame-like type)
   if (type === "FRAME" || type === "SECTION" || type === "GROUP" || type === "COMPONENT" || type === "COMPONENT_SET" || type === "INSTANCE") {
-    if (name.indexOf("nav") !== -1 || name === "header") return "nav";
-    if (name.indexOf("header") !== -1) return "header";
-    if (name.indexOf("footer") !== -1) return "footer";
+    // Promo pages use a flat structure — no nav/header/footer/article tags
+    if (pageType !== "promo") {
+      if (name.indexOf("nav") !== -1 || name === "header") return "nav";
+      if (name.indexOf("header") !== -1) return "header";
+      if (name.indexOf("footer") !== -1) return "footer";
+    }
     if (name.indexOf("hero") !== -1) return "section";
     if (name.indexOf("banner") !== -1) return "section";
     if (name.indexOf("popup") !== -1 || name.indexOf("modal") !== -1 || name.indexOf("dialog") !== -1) return "div";
+
+    // Form detection
+    if (name === "form") return "form";
 
     // Button detection: check node name, component name, or component set name
     if (name.indexOf("button") !== -1 || name.indexOf("btn") !== -1 || name.indexOf("cta") !== -1
@@ -318,8 +346,12 @@ export function htmlGetSemanticTag(node, depth, pageType) {
         || componentHint.indexOf("dropdown") !== -1 || componentHint.indexOf("select") !== -1) return "select";
 
     // Input / field detection (frames named "input-*" or instances of input components)
-    if (name.indexOf("input") !== -1 || name.indexOf("field") !== -1 || name.indexOf("textarea") !== -1
-        || componentHint.indexOf("input") !== -1 || componentHint.indexOf("field") !== -1 || componentHint.indexOf("text-field") !== -1) return "input";
+    // Floating label components → "form-field-floating" (label inside the input)
+    // Other input components with labels → "form-field" (label above the input)
+    // Plain frames named "field" → bare "input"
+    if (componentHint.indexOf("floating label") !== -1) return "form-field-floating";
+    if (componentHint.indexOf("input") !== -1 || componentHint.indexOf("field") !== -1 || componentHint.indexOf("text-field") !== -1) return "form-field";
+    if (name.indexOf("input") !== -1 || name.indexOf("field") !== -1 || name.indexOf("textarea") !== -1) return "input";
 
     // Link detection
     if (name.indexOf("link") !== -1 || componentHint.indexOf("link") !== -1) return "a";
@@ -341,6 +373,8 @@ export function htmlGetSemanticClass(node, tag) {
     return sn || "section";
   }
   if (tag === "button") return "btn";
+  if (tag === "form") return "form";
+  if (tag === "form-field" || tag === "form-field-floating") return "form-field";
   if (tag === "input") return "input";
   if (tag === "select") return "select";
   if (tag === "a") return "link";
@@ -353,21 +387,11 @@ export function htmlGetSemanticClass(node, tag) {
 }
 
 export function htmlNodeIsExportableImage(node) {
-  // Only treat as <img> if: (a) node has exportSettings AND is a leaf (no children or only shapes), or
-  // (b) node is a RECTANGLE/ELLIPSE/VECTOR with IMAGE fill (not a container frame)
+  // Only treat as <img> if the node has exportSettings configured by the designer
+  if (!node.exportSettings || node.exportSettings.length === 0) return false;
   var isLeaf = !("children" in node) || !node.children || node.children.length === 0;
   var isShape = node.type === "RECTANGLE" || node.type === "ELLIPSE" || node.type === "VECTOR" || node.type === "LINE";
-
-  // Export-marked leaf nodes
-  if (node.exportSettings && node.exportSettings.length > 0 && (isLeaf || isShape)) return true;
-
-  // Shapes with IMAGE fills
-  if (isShape && node.fills && Array.isArray(node.fills)) {
-    for (var i = 0; i < node.fills.length; i++) {
-      if (node.fills[i].type === "IMAGE" && node.fills[i].visible !== false) return true;
-    }
-  }
-  return false;
+  return isLeaf || isShape;
 }
 
 export function htmlNodeHasBgImageVar(node) {
@@ -413,10 +437,9 @@ export function htmlNodeHasBgImageVar(node) {
 export function htmlNodeHasImageFill(node) {
   // Primary: detect via "background-image" boolean variable binding
   if (htmlNodeHasBgImageVar(node)) return true;
-  // Fallback: check if a container frame has an IMAGE fill (should be background-image, not <img>)
-  // Only applies to frames with children (containers), not leaf shapes
+  // Fallback: container frames with exportSettings and IMAGE fill → background-image
   var hasChildren = ("children" in node) && node.children && node.children.length > 0;
-  if (hasChildren && node.fills && Array.isArray(node.fills)) {
+  if (hasChildren && node.exportSettings && node.exportSettings.length > 0 && node.fills && Array.isArray(node.fills)) {
     for (var i = 0; i < node.fills.length; i++) {
       if (node.fills[i].type === "IMAGE" && node.fills[i].visible !== false) return true;
     }
@@ -428,44 +451,56 @@ export var _htmlImageNameCount = {};
 
 export async function htmlExportImage(node, progressCb) {
   try {
-    var format = "PNG";
-    var exportOpts = { format: "PNG", constraint: { type: "SCALE", value: 2 } };
+    if (!node.exportSettings || node.exportSettings.length === 0) return null;
 
-    if (node.exportSettings && node.exportSettings.length > 0) {
-      var es = node.exportSettings[0];
-      format = es.format || "PNG";
-      exportOpts = {
-        format: format,
-        constraint: es.constraint || { type: "SCALE", value: 2 }
-      };
-    }
-
-    var ext = format.toLowerCase();
-    if (ext === "jpg") ext = "jpg";
-    var bytes = await node.exportAsync(exportOpts);
     var baseName = htmlSanitizeName(node.name || "image");
     // Deduplicate image file names to prevent collisions
     if (!_htmlImageNameCount[baseName]) _htmlImageNameCount[baseName] = 0;
     _htmlImageNameCount[baseName]++;
     if (_htmlImageNameCount[baseName] > 1) baseName = baseName + "-" + _htmlImageNameCount[baseName];
-    var name = baseName + "." + ext;
-    return { name: name, format: ext, bytes: Array.from(bytes) };
+
+    var variants = [];
+    for (var esi = 0; esi < node.exportSettings.length; esi++) {
+      var es = node.exportSettings[esi];
+      var format = (es.format || "PNG");
+      var constraint = es.constraint || { type: "SCALE", value: 1 };
+      var scale = constraint.type === "SCALE" ? (constraint.value || 1) : 1;
+      var ext = format.toLowerCase();
+      var suffix = es.suffix || (scale !== 1 ? "@" + scale + "x" : "");
+      var fileName = baseName + suffix + "." + ext;
+      var bytes = await node.exportAsync({ format: format, constraint: constraint });
+      variants.push({ name: fileName, format: ext, bytes: Array.from(bytes), scale: scale });
+    }
+
+    // Primary variant is 1x, or the first one if no 1x exists
+    var primary = variants[0];
+    for (var vi = 0; vi < variants.length; vi++) {
+      if (variants[vi].scale === 1) { primary = variants[vi]; break; }
+    }
+
+    // Figma node dimensions are the 1x size
+    var displayWidth = Math.round(node.width);
+    var displayHeight = Math.round(node.height);
+
+    return {
+      name: primary.name,
+      format: primary.format,
+      bytes: primary.bytes,
+      variants: variants,
+      displayWidth: displayWidth,
+      displayHeight: displayHeight
+    };
   } catch(e) {
     return null;
   }
 }
 
-export function htmlWalkNode(node, cssVars, images, depth, classCounter, pageType) {
+export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   if (!node || node.visible === false) return null;
   if (depth > 20) return null; // safety limit
-  if (!classCounter) classCounter = {};
 
   var tag = htmlGetSemanticTag(node, depth, pageType);
-  var rawClass = htmlGetSemanticClass(node, tag);
-  // Deduplicate class names — append index if already seen
-  if (!classCounter[rawClass]) classCounter[rawClass] = 0;
-  classCounter[rawClass]++;
-  var className = classCounter[rawClass] > 1 ? rawClass + "-" + classCounter[rawClass] : rawClass;
+  var className = htmlGetSemanticClass(node, tag);
 
   var styles = htmlExtractNodeCSS(node, cssVars);
   var text = null;
@@ -473,7 +508,15 @@ export function htmlWalkNode(node, cssVars, images, depth, classCounter, pageTyp
   var hasImageFill = !isExportableImage && htmlNodeHasImageFill(node);
   var imageName = null;
   var bgImageName = null;
+  var bgImageNodeId = null;
+  var isBgImageChild = false;
   var children = [];
+
+  // Detect if this node is a bg-image component instance (absolute-positioned)
+  // that should be absorbed by its parent as CSS background-image
+  if (node.layoutPositioning === "ABSOLUTE" && htmlNodeHasBgImageVar(node)) {
+    isBgImageChild = true;
+  }
 
   // Top-level frames: always full-width, ignore Figma's fixed width and max-width
   if (depth === 0 && (node.type === "FRAME" || node.type === "SECTION")) {
@@ -503,43 +546,118 @@ export function htmlWalkNode(node, cssVars, images, depth, classCounter, pageTyp
   // Walk children (skip for exportable images — they're leaf <img> tags)
   if ("children" in node && node.children && !isExportableImage) {
     for (var i = 0; i < node.children.length; i++) {
-      var child = htmlWalkNode(node.children[i], cssVars, images, depth + 1, classCounter, pageType);
+      var child = htmlWalkNode(node.children[i], cssVars, images, depth + 1, null, pageType);
       if (child) children.push(child);
+    }
+  }
+
+  // Absorb background-image child instances into parent's CSS background-image
+  // (absolute-positioned bg image component instances should not render as child divs)
+  if (!hasImageFill && children.length > 0) {
+    var filteredChildren = [];
+    for (var bci = 0; bci < children.length; bci++) {
+      var bc = children[bci];
+      if (bc.isBgImageChild) {
+        // Absorb: mark parent as having a background image
+        hasImageFill = true;
+        bgImageName = htmlSanitizeName(bc.nodeName || "bg") + "-bg";
+        styles["background-size"] = "cover";
+        styles["background-position"] = "center";
+        // Store the original node ID so the image export can find it
+        bgImageNodeId = bc.nodeId;
+      } else {
+        filteredChildren.push(bc);
+      }
+    }
+    children = filteredChildren;
+  }
+
+  // Convert flex-wrap rows with grid column spans to CSS Grid for exact proportions
+  if (styles["flex-wrap"] === "wrap" && children.length > 0) {
+    var hasGridSpans = false;
+    for (var gci = 0; gci < children.length; gci++) {
+      if (children[gci].colSpan) { hasGridSpans = true; break; }
+    }
+    if (hasGridSpans) {
+      styles["display"] = "grid";
+      styles["grid-template-columns"] = "repeat(12, 1fr)";
+      delete styles["flex-direction"];
+      delete styles["flex-wrap"];
+      // Add col-span utility classes to children (not inline styles — class is shared)
+      for (var gci2 = 0; gci2 < children.length; gci2++) {
+        var cs = children[gci2].colSpan || 12;
+        if (!children[gci2].utilityClasses) children[gci2].utilityClasses = [];
+        children[gci2].utilityClasses.push("col-span-" + cs);
+        // Remove flex properties — grid handles sizing
+        delete children[gci2].styles["flex"];
+        delete children[gci2].styles["flex-shrink"];
+        delete children[gci2].styles["min-width"];
+        delete children[gci2].styles["max-width"];
+        delete children[gci2].styles["width"];
+      }
     }
   }
 
   // For collapsed elements (button, select, input, a), propagate child styles upward
   // since children won't appear in the HTML output
+  var iconNodeId = null;
+  var iconNodeName = "";
   if (tag === "button" || tag === "select" || tag === "input" || tag === "a") {
-    for (var sci = 0; sci < children.length; sci++) {
-      var sc = children[sci];
-      // Pull text styles from TEXT children (color, font-size, font-weight, font-family)
-      if (sc.text !== null && sc.text !== undefined) {
-        if (sc.styles["color"] && !styles["color"]) styles["color"] = sc.styles["color"];
-        if (sc.styles["font-size"] && !styles["font-size"]) styles["font-size"] = sc.styles["font-size"];
-        if (sc.styles["font-weight"] && !styles["font-weight"]) styles["font-weight"] = sc.styles["font-weight"];
-        if (sc.styles["font-family"] && !styles["font-family"]) styles["font-family"] = sc.styles["font-family"];
-        if (sc.styles["text-transform"] && !styles["text-transform"]) styles["text-transform"] = sc.styles["text-transform"];
-        if (sc.styles["text-decoration"] && !styles["text-decoration"]) styles["text-decoration"] = sc.styles["text-decoration"];
-        if (sc.styles["letter-spacing"] && !styles["letter-spacing"]) styles["letter-spacing"] = sc.styles["letter-spacing"];
-      }
-      // Pull border from inner frames if the parent has none
-      if (sc.styles["border"] && !styles["border"]) styles["border"] = sc.styles["border"];
-      if (sc.styles["border-radius"] && !styles["border-radius"]) styles["border-radius"] = sc.styles["border-radius"];
-      // Also check grandchildren (e.g. button > frame > text)
-      if (sc.text === null || sc.text === undefined) {
-        for (var gci = 0; gci < (sc.children || []).length; gci++) {
-          var gc = sc.children[gci];
-          if (gc.text !== null && gc.text !== undefined) {
-            if (gc.styles["color"] && !styles["color"]) styles["color"] = gc.styles["color"];
-            if (gc.styles["font-size"] && !styles["font-size"]) styles["font-size"] = gc.styles["font-size"];
-            if (gc.styles["font-weight"] && !styles["font-weight"]) styles["font-weight"] = gc.styles["font-weight"];
-            if (gc.styles["font-family"] && !styles["font-family"]) styles["font-family"] = gc.styles["font-family"];
-          }
-          if (gc.styles["border"] && !styles["border"]) styles["border"] = gc.styles["border"];
-          if (gc.styles["border-radius"] && !styles["border-radius"]) styles["border-radius"] = gc.styles["border-radius"];
+    // Helper to detect IMAGE-fill shape nodes (icons like close-x, chevron)
+    var findIconInChildren = function(childList) {
+      for (var fi = 0; fi < childList.length; fi++) {
+        var fc = childList[fi];
+        var fcNode = figma.getNodeById(fc.nodeId);
+        if (fcNode && fcNode.exportSettings && fcNode.exportSettings.length > 0) {
+          return { nodeId: fc.nodeId, nodeName: fc.nodeName, width: fcNode.width, height: fcNode.height };
+        }
+        // Check grandchildren
+        if (fc.children && fc.children.length > 0) {
+          var found = findIconInChildren(fc.children);
+          if (found) return found;
         }
       }
+      return null;
+    };
+
+    var iconInfo = findIconInChildren(children);
+    if (iconInfo) {
+      iconNodeId = iconInfo.nodeId;
+      iconNodeName = iconInfo.nodeName;
+      // For select: position chevron on the right side
+      if (tag === "select") {
+        styles["background-repeat"] = "no-repeat";
+        styles["background-position"] = "right 14px center";
+        styles["background-size"] = Math.round(iconInfo.width) + "px " + Math.round(iconInfo.height) + "px";
+        styles["padding-right"] = (Math.round(iconInfo.width) + 28) + "px";
+      } else if (tag === "button") {
+        // Button icons will render as <img> child — no background-image needed
+      }
+    }
+
+    // Propagate all styles from descendants that the collapsed element doesn't already have.
+    // Skip structural/layout props that don't make sense to bubble up.
+    var skipProps = { "position": 1, "left": 1, "right": 1, "top": 1, "bottom": 1,
+      "display": 1, "flex-direction": 1, "flex-wrap": 1, "justify-content": 1,
+      "align-items": 1, "gap": 1, "flex": 1, "width": 1, "max-width": 1, "min-width": 1,
+      "height": 1, "max-height": 1, "min-height": 1 };
+    var collectChildStyles = function(childList) {
+      for (var ci = 0; ci < childList.length; ci++) {
+        var c = childList[ci];
+        var keys = Object.keys(c.styles);
+        for (var ki = 0; ki < keys.length; ki++) {
+          if (!skipProps[keys[ki]] && !styles[keys[ki]]) {
+            styles[keys[ki]] = c.styles[keys[ki]];
+          }
+        }
+        if (c.children && c.children.length > 0) collectChildStyles(c.children);
+      }
+    };
+    collectChildStyles(children);
+
+    // Ensure collapsed elements have explicit height — their children won't provide it in HTML
+    if (!styles["height"] && node.height > 0) {
+      styles["height"] = Math.round(node.height) + "px";
     }
   }
 
@@ -551,8 +669,13 @@ export function htmlWalkNode(node, cssVars, images, depth, classCounter, pageTyp
     text: text,
     imageName: imageName,
     bgImageName: bgImageName,
+    bgImageNodeId: bgImageNodeId,
+    iconNodeId: iconNodeId,
+    iconNodeName: iconNodeName,
     isImage: isExportableImage,
     hasBgImage: hasImageFill,
+    isBgImageChild: isBgImageChild,
+    colSpan: (function() { try { var d = node.getPluginData && node.getPluginData("colSpan"); return d ? (parseInt(d) || 0) : 0; } catch(e) { return 0; } })(),
     nodeId: node.id,
     nodeName: node.name,
     children: children
@@ -575,8 +698,9 @@ export function htmlRenderCSS(cssVars, desktopTree, mobileTree, tokens) {
   lines.push("*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }");
   lines.push("body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; -webkit-font-smoothing: antialiased; }");
   lines.push("img { max-width: 100%; height: auto; display: block; }");
-  lines.push("button { cursor: pointer; font: inherit; display: inline-flex; align-items: center; justify-content: center; }");
+  lines.push("button { cursor: pointer; font: inherit; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; }");
   lines.push("input, select { font: inherit; display: block; width: 100%; }");
+  lines.push("select { appearance: none; -webkit-appearance: none; -moz-appearance: none; }");
   lines.push("a { text-decoration: none; color: inherit; }");
   lines.push("");
 
@@ -641,6 +765,20 @@ export function htmlRenderCSS(cssVars, desktopTree, mobileTree, tokens) {
     }
   }
 
+  // Mobile: stack grid items in single column
+  var gridClasses = [];
+  for (var gci3 = 0; gci3 < classNames.length; gci3++) {
+    if (classStyles[classNames[gci3]]["grid-template-columns"]) gridClasses.push(classNames[gci3]);
+  }
+  if (gridClasses.length > 0) {
+    lines.push("@media (max-width: 567px) {");
+    for (var gci4 = 0; gci4 < gridClasses.length; gci4++) {
+      lines.push("  ." + gridClasses[gci4] + " { grid-template-columns: 1fr; }");
+    }
+    lines.push("  [class*='col-span-'] { grid-column: span 1; }");
+    lines.push("}");
+  }
+
   return lines.join("\n");
 }
 
@@ -649,9 +787,102 @@ export function htmlCollectClassStyles(tree, out) {
   if (tree.className && Object.keys(tree.styles).length > 0) {
     out[tree.className] = tree.styles;
   }
+  // For form fields: use pre-resolved styles (after utility class extraction)
+  if ((tree.tag === "form-field-floating" || tree.tag === "form-field") && tree.className) {
+    if (tree._inputStyles && Object.keys(tree._inputStyles).length > 0) out[tree.className + " input"] = tree._inputStyles;
+    if (tree._labelStyles && Object.keys(tree._labelStyles).length > 0) out[tree.className + " label"] = tree._labelStyles;
+    // field-wrapper only needs position:relative — don't leak Figma internal styles
+    return;
+  }
   for (var i = 0; i < tree.children.length; i++) {
     htmlCollectClassStyles(tree.children[i], out);
   }
+}
+
+// Extract label and input styles from form-field children for CSS generation.
+// Propagates all styles — text children → labelStyles, non-text children → inputStyles.
+export function htmlExtractFormFieldChildStyles(tree, labelStyles, inputStyles) {
+  if (!tree || !tree.children) return;
+  // Structural props that shouldn't propagate to label/input
+  var skipLayout = { "display": 1, "flex-direction": 1, "flex-wrap": 1, "justify-content": 1,
+    "align-items": 1, "gap": 1, "flex": 1, "width": 1, "max-width": 1, "min-width": 1 };
+  for (var i = 0; i < tree.children.length; i++) {
+    var child = tree.children[i];
+    if (child.text !== null && child.text !== undefined) {
+      // Text children → label styles
+      var lKeys = Object.keys(child.styles);
+      for (var li = 0; li < lKeys.length; li++) {
+        if (!labelStyles[lKeys[li]]) labelStyles[lKeys[li]] = child.styles[lKeys[li]];
+      }
+    } else {
+      // Non-text children → input field styles
+      var iKeys = Object.keys(child.styles);
+      for (var ii = 0; ii < iKeys.length; ii++) {
+        if (!skipLayout[iKeys[ii]] && !inputStyles[iKeys[ii]]) inputStyles[iKeys[ii]] = child.styles[iKeys[ii]];
+      }
+      // Recurse into nested wrappers (field-wrapper > field + label)
+      htmlExtractFormFieldChildStyles(child, labelStyles, inputStyles);
+    }
+  }
+  // If no padding was found on the field but we have a label position, infer padding from it
+  if (!inputStyles["padding"] && labelStyles["left"]) {
+    var inferPadH = parseInt(labelStyles["left"], 10);
+    var inferPadV = labelStyles["top"] ? parseInt(labelStyles["top"], 10) : inferPadH;
+    if (inferPadH > 0) inputStyles["padding"] = inferPadV + "px " + inferPadH + "px";
+  }
+}
+
+// Find the absolute-positioned label's position values in a form-field tree, with utility class matches
+export function htmlFindAbsoluteLabelPos(tree) {
+  var result = { left: null, top: null, leftClass: null, topClass: null };
+  if (!tree || !tree.children) return result;
+  for (var i = 0; i < tree.children.length; i++) {
+    var child = tree.children[i];
+    if (child.text !== null && child.text !== undefined && child.styles["position"] === "absolute") {
+      // Parse px values from left/top styles
+      var leftVal = child.styles["left"] ? parseInt(child.styles["left"], 10) : null;
+      var topVal = child.styles["top"] ? parseInt(child.styles["top"], 10) : null;
+      result.left = leftVal;
+      result.top = topVal;
+      // Check if utility classes exist for these values
+      if (child.utilityClasses) {
+        for (var u = 0; u < child.utilityClasses.length; u++) {
+          if (child.utilityClasses[u].indexOf("left-") === 0) result.leftClass = child.utilityClasses[u];
+          if (child.utilityClasses[u].indexOf("top-") === 0) result.topClass = child.utilityClasses[u];
+        }
+      }
+      return result;
+    }
+    // Recurse into wrappers
+    var nested = htmlFindAbsoluteLabelPos(child);
+    if (nested.left !== null || nested.top !== null) return nested;
+  }
+  return result;
+}
+
+// Find the field-wrapper node in a form-field tree (the container with "wrapper" in name,
+// or the deepest non-text node whose children include both text and non-text nodes)
+export function htmlFindFieldWrapper(tree) {
+  if (!tree || !tree.children) return null;
+  for (var i = 0; i < tree.children.length; i++) {
+    var child = tree.children[i];
+    if (child.nodeName && child.nodeName.toLowerCase().indexOf("wrapper") !== -1) return child;
+    var nested = htmlFindFieldWrapper(child);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+// Collect all text nodes from a tree in order (for form fields with label + placeholder)
+export function htmlCollectAllTexts(tree) {
+  var results = [];
+  if (!tree) return results;
+  if (tree.text !== null && tree.text !== undefined && tree.text.trim()) results.push(tree.text.trim());
+  for (var i = 0; i < tree.children.length; i++) {
+    var childTexts = htmlCollectAllTexts(tree.children[i]);
+    for (var j = 0; j < childTexts.length; j++) results.push(childTexts[j]);
+  }
+  return results;
 }
 
 // Extract first text content from a component tree (for buttons, inputs, etc.)
@@ -690,17 +921,81 @@ export function htmlRenderNodeClean(tree, indent) {
 
   if (tree.tag === "img") {
     var src = tree.imageName ? "assets/" + tree.imageName : "assets/placeholder.png";
-    lines.push(pad + '<img' + attrs + ' src="' + src + '" alt="' + (tree.nodeName || "").replace(/"/g, "&quot;") + '" />');
+    var imgAttrs = attrs + ' src="' + src + '" alt="' + (tree.nodeName || "").replace(/"/g, "&quot;") + '"';
+    var srcset = buildSrcset(tree.imageVariants, "assets/");
+    if (srcset) imgAttrs += ' srcset="' + srcset + '"';
+    if (tree.imageWidth) imgAttrs += ' width="' + tree.imageWidth + '"';
+    if (tree.imageHeight) imgAttrs += ' height="' + tree.imageHeight + '"';
+    lines.push(pad + '<img' + imgAttrs + ' />');
+  } else if (tree.tag === "form-field-floating") {
+    // Floating label: follows component structure — form-field > field-wrapper > input + label
+    var flfTexts = htmlCollectAllTexts(tree);
+    var flfLabel = flfTexts.length > 0 ? flfTexts[0].replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+    var flfInputClasses = tree._inputUtilClasses || [];
+    var flfLabelClasses = tree._labelUtilClasses || [];
+    var flfInputAttr = flfInputClasses.length > 0 ? ' class="' + flfInputClasses.join(" ") + '"' : "";
+    var flfLabelAttr = flfLabelClasses.length > 0 ? ' class="' + flfLabelClasses.join(" ") + '"' : "";
+    // Find field-wrapper node and collect its utility classes
+    var flfWrapper = htmlFindFieldWrapper(tree);
+    var flfWrapperAllClasses = ["field-wrapper", "relative"];
+    if (flfWrapper && flfWrapper.utilityClasses) {
+      for (var fwi = 0; fwi < flfWrapper.utilityClasses.length; fwi++) {
+        if (flfWrapperAllClasses.indexOf(flfWrapper.utilityClasses[fwi]) === -1) {
+          flfWrapperAllClasses.push(flfWrapper.utilityClasses[fwi]);
+        }
+      }
+    }
+    var flfWrapperAttr = ' class="' + flfWrapperAllClasses.join(" ") + '"';
+    lines.push(pad + '<div' + attrs + '>');
+    lines.push(pad + '  <div' + flfWrapperAttr + '>');
+    lines.push(pad + '    <input type="text"' + flfInputAttr + ' />');
+    if (flfLabel) {
+      lines.push(pad + '    <label' + flfLabelAttr + '>' + flfLabel + '</label>');
+    }
+    lines.push(pad + '  </div>');
+    lines.push(pad + '</div>');
+  } else if (tree.tag === "form-field") {
+    // Regular form field: label above the input
+    var ffTexts = htmlCollectAllTexts(tree);
+    var ffLabel = ffTexts.length > 0 ? ffTexts[0].replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+    var ffPlaceholder = ffTexts.length > 1 ? ffTexts[1].replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+    var ffInputClasses = tree._inputUtilClasses || [];
+    var ffLabelClasses = tree._labelUtilClasses || [];
+    var ffInputAttr = ffInputClasses.length > 0 ? ' class="' + ffInputClasses.join(" ") + '"' : "";
+    var ffLabelAttr = ffLabelClasses.length > 0 ? ' class="' + ffLabelClasses.join(" ") + '"' : "";
+    lines.push(pad + '<div' + attrs + '>');
+    if (ffLabel) {
+      lines.push(pad + '  <label' + ffLabelAttr + '>' + ffLabel + '</label>');
+    }
+    lines.push(pad + '  <input type="text"' + ffInputAttr + (ffPlaceholder ? ' placeholder="' + ffPlaceholder + '"' : '') + ' />');
+    lines.push(pad + '</div>');
   } else if (tree.tag === "input") {
     lines.push(pad + '<input' + attrs + ' type="text" placeholder="' + htmlExtractTextFromTree(tree) + '" />');
   } else if (tree.tag === "select") {
     var selectText = htmlExtractTextFromTree(tree) || tree.nodeName || "Select";
     lines.push(pad + '<select' + attrs + '>');
-    lines.push(pad + '  <option value="" disabled selected>' + selectText.replace(/</g, "&lt;") + '</option>');
+    lines.push(pad + '  <option value="" disabled hidden selected>' + selectText.replace(/</g, "&lt;") + '</option>');
     lines.push(pad + '</select>');
   } else if (tree.tag === "button") {
-    var btnText = htmlExtractTextFromTree(tree) || tree.nodeName || "Button";
-    lines.push(pad + '<button' + attrs + '>' + btnText.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</button>');
+    var btnText = htmlExtractTextFromTree(tree);
+    // Icon-only buttons (e.g. close button) should be empty — don't fall back to node name
+    if (!btnText && !tree.iconNodeId) btnText = tree.nodeName || "Button";
+    if (tree.iconImageName) {
+      // Button with icon image: render as <img> inside button
+      lines.push(pad + '<button' + attrs + '>');
+      var iconImgAttrs = 'src="assets/' + tree.iconImageName + '" alt="' + (tree.iconNodeName || "icon").replace(/"/g, "&quot;") + '"';
+      var iconSrcset = buildSrcset(tree.iconImageVariants, "assets/");
+      if (iconSrcset) iconImgAttrs += ' srcset="' + iconSrcset + '"';
+      if (tree.iconImageWidth) iconImgAttrs += ' width="' + tree.iconImageWidth + '"';
+      if (tree.iconImageHeight) iconImgAttrs += ' height="' + tree.iconImageHeight + '"';
+      lines.push(pad + '  <img ' + iconImgAttrs + ' />');
+      if (btnText) lines.push(pad + '  <span>' + btnText.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</span>');
+      lines.push(pad + '</button>');
+    } else if (btnText) {
+      lines.push(pad + '<button' + attrs + '>' + btnText.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</button>');
+    } else {
+      lines.push(pad + '<button' + attrs + '></button>');
+    }
   } else if (tree.tag === "a") {
     var linkText = htmlExtractTextFromTree(tree) || tree.nodeName || "Link";
     lines.push(pad + '<a' + attrs + ' href="#">' + linkText.replace(/</g, "&lt;").replace(/>/g, "&gt;") + '</a>');
@@ -718,6 +1013,27 @@ export function htmlRenderNodeClean(tree, indent) {
   return lines.join("\n");
 }
 
+// Helper: push all image variants into the images array
+function pushImageVariants(img, images) {
+  if (img.variants && img.variants.length > 0) {
+    for (var vi = 0; vi < img.variants.length; vi++) {
+      images.push(img.variants[vi]);
+    }
+  } else {
+    images.push(img);
+  }
+}
+
+// Helper: build srcset string from image variants
+function buildSrcset(variants, basePath) {
+  if (!variants || variants.length <= 1) return null;
+  var parts = [];
+  for (var vi = 0; vi < variants.length; vi++) {
+    parts.push(basePath + variants[vi].name + " " + variants[vi].scale + "x");
+  }
+  return parts.join(", ");
+}
+
 export async function htmlCollectImages(tree, images, progressCb, counter) {
   if (!tree) return;
   // Export leaf <img> nodes
@@ -728,24 +1044,61 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
       if (progressCb) progressCb(counter.done, counter.total);
       var img = await htmlExportImage(node);
       if (img) {
-        tree.imageName = img.name; // already has extension from htmlExportImage
-        images.push(img);
+        tree.imageName = img.name;
+        tree.imageVariants = img.variants || [];
+        tree.imageWidth = img.displayWidth;
+        tree.imageHeight = img.displayHeight;
+        pushImageVariants(img, images);
+      }
+    }
+  }
+  // Export icon images for collapsed elements (close button X, select chevron)
+  if (tree.iconNodeId) {
+    var iconNode = figma.getNodeById(tree.iconNodeId);
+    if (iconNode) {
+      counter.done++;
+      if (progressCb) progressCb(counter.done, counter.total);
+      var iconImg = await htmlExportImage(iconNode);
+      if (iconImg) {
+        if (tree.tag === "button") {
+          tree.iconImageName = iconImg.name;
+          tree.iconImageVariants = iconImg.variants || [];
+          tree.iconImageWidth = iconImg.displayWidth;
+          tree.iconImageHeight = iconImg.displayHeight;
+        } else {
+          // Select chevron etc — use 1x for background-image, CSS handles density
+          tree.styles["background-image"] = "url('assets/" + iconImg.name + "')";
+          // image-set for retina bg images
+          if (iconImg.variants && iconImg.variants.length > 1) {
+            var bgParts = [];
+            for (var bvi = 0; bvi < iconImg.variants.length; bvi++) {
+              bgParts.push("url('assets/" + iconImg.variants[bvi].name + "') " + iconImg.variants[bvi].scale + "x");
+            }
+            tree.styles["background-image"] = "image-set(" + bgParts.join(", ") + ")";
+          }
+        }
+        pushImageVariants(iconImg, images);
       }
     }
   }
   // Export container background images
-  if (tree.hasBgImage && tree.nodeId) {
-    var bgNode = figma.getNodeById(tree.nodeId);
+  if (tree.hasBgImage && (tree.bgImageNodeId || tree.nodeId)) {
+    var bgNode = figma.getNodeById(tree.bgImageNodeId || tree.nodeId);
     if (bgNode) {
       counter.done++;
       if (progressCb) progressCb(counter.done, counter.total);
       var bgImg = await htmlExportImage(bgNode);
       if (bgImg) {
-        // Use the bgImageName as the file name
-        bgImg.name = htmlSanitizeName(tree.bgImageName) + "." + bgImg.format;
         tree.bgImageName = bgImg.name;
         tree.styles["background-image"] = "url('assets/" + bgImg.name + "')";
-        images.push(bgImg);
+        if (bgImg.variants && bgImg.variants.length > 1) {
+          var bgParts2 = [];
+          for (var bvi2 = 0; bvi2 < bgImg.variants.length; bvi2++) {
+            bgParts2.push("url('assets/" + bgImg.variants[bvi2].name + "') " + bgImg.variants[bvi2].scale + "x");
+          }
+          tree.styles["background-image"] = "image-set(" + bgParts2.join(", ") + ")";
+        }
+        pushImageVariants(bgImg, images);
       }
     }
   }
@@ -756,7 +1109,7 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
 
 export function htmlCountImages(tree) {
   if (!tree) return 0;
-  var count = (tree.isImage ? 1 : 0) + (tree.hasBgImage ? 1 : 0);
+  var count = (tree.isImage ? 1 : 0) + (tree.hasBgImage ? 1 : 0) + (tree.iconNodeId ? 1 : 0);
   for (var i = 0; i < tree.children.length; i++) {
     count += htmlCountImages(tree.children[i]);
   }
@@ -779,38 +1132,92 @@ export function htmlAbbreviateName(name) {
 
 export function htmlBuildUtilityMap(tokens) {
   var map = {};
-  // Layout
+
+  // Flexbox layout
   map["display:flex"] = "flex";
+  map["display:inline-flex"] = "inline-flex";
   map["flex-direction:column"] = "flex-col";
   map["flex-direction:row"] = "flex-row";
   map["flex-wrap:wrap"] = "flex-wrap";
+  map["flex-wrap:nowrap"] = "flex-nowrap";
+  map["flex:1 1 auto"] = "flex-1";
+  map["flex:0 0 auto"] = "flex-none";
+  map["flex-grow:0"] = "grow-0";
+  map["flex-grow:1"] = "grow";
+  map["flex-shrink:0"] = "shrink-0";
+  map["flex-shrink:1"] = "shrink";
+  map["flex-basis:auto"] = "basis-auto";
+  map["flex-basis:0"] = "basis-0";
+
+  // Alignment
   map["align-items:flex-start"] = "items-start";
   map["align-items:center"] = "items-center";
   map["align-items:flex-end"] = "items-end";
   map["align-items:baseline"] = "items-baseline";
+  map["align-items:stretch"] = "items-stretch";
+  map["align-self:auto"] = "self-auto";
+  map["align-self:flex-start"] = "self-start";
+  map["align-self:center"] = "self-center";
+  map["align-self:flex-end"] = "self-end";
+  map["align-self:stretch"] = "self-stretch";
   map["justify-content:flex-start"] = "justify-start";
   map["justify-content:center"] = "justify-center";
   map["justify-content:flex-end"] = "justify-end";
   map["justify-content:space-between"] = "justify-between";
+
+  // Sizing
   map["width:100%"] = "w-full";
   map["height:100%"] = "h-full";
-  map["flex:1 1 0"] = "flex-1";
+  map["width:auto"] = "w-auto";
+  map["height:auto"] = "h-auto";
+
+  // Overflow
   map["overflow:hidden"] = "overflow-hidden";
+  map["overflow:auto"] = "overflow-auto";
+  map["overflow:scroll"] = "overflow-scroll";
+  map["overflow:visible"] = "overflow-visible";
+
+  // Position
   map["position:relative"] = "relative";
   map["position:absolute"] = "absolute";
+  map["position:fixed"] = "fixed";
+  map["position:sticky"] = "sticky";
+  map["inset:0"] = "inset-0";
+  map["top:0"] = "top-0";
+  map["right:0"] = "right-0";
+  map["bottom:0"] = "bottom-0";
+  map["left:0"] = "left-0";
+  map["top:0px"] = "top-0";
+  map["right:0px"] = "right-0";
+  map["bottom:0px"] = "bottom-0";
+  map["left:0px"] = "left-0";
+
+  // Text
   map["text-align:left"] = "text-left";
   map["text-align:center"] = "text-center";
   map["text-align:right"] = "text-right";
   map["text-align:justify"] = "text-justify";
-  map["flex-shrink:0"] = "shrink-0";
+  map["text-decoration:underline"] = "underline";
+  map["text-decoration:line-through"] = "line-through";
+  map["text-decoration:none"] = "no-underline";
+  map["text-transform:uppercase"] = "uppercase";
+  map["text-transform:lowercase"] = "lowercase";
+  map["text-transform:capitalize"] = "capitalize";
 
-  // Spacing (gap)
+  // Pointer events
+  map["pointer-events:none"] = "pointer-events-none";
+
+  // Spacing (gap, padding, position offsets — from tokens)
   if (tokens && tokens.spacing) {
+    var posProps = ["top", "right", "bottom", "left"];
     for (var si = 0; si < tokens.spacing.length; si++) {
       var sp = tokens.spacing[si];
       if (sp.value === "0") continue;
       var val = sp.value + "px";
       map["gap:" + val] = "gap-" + sp.name;
+      for (var ppi = 0; ppi < posProps.length; ppi++) {
+        map[posProps[ppi] + ":" + val] = posProps[ppi] + "-" + sp.name;
+      }
     }
   }
 
@@ -845,7 +1252,7 @@ export function htmlBuildUtilityMap(tokens) {
   return map;
 }
 
-export function htmlBuildSpacingLookup(tokens) {
+export function htmlBuildSpacingLookup(tokens, cssVars) {
   var lookup = {};
   if (tokens && tokens.spacing) {
     for (var i = 0; i < tokens.spacing.length; i++) {
@@ -853,6 +1260,17 @@ export function htmlBuildSpacingLookup(tokens) {
       if (sp.value === "0") continue;
       var val = sp.value + "px";
       lookup[val] = sp.name;
+    }
+  }
+  // Also index var() references that resolve to spacing values
+  if (cssVars) {
+    var varKeys = Object.keys(cssVars);
+    for (var vi = 0; vi < varKeys.length; vi++) {
+      var vn = varKeys[vi];
+      var vv = cssVars[vn];
+      if (typeof vv === "string" && /^\d+px$/.test(vv) && lookup[vv]) {
+        lookup["var(" + vn + ")"] = lookup[vv];
+      }
     }
   }
   return lookup;
@@ -863,40 +1281,95 @@ export function htmlAddColorUtilities(utilMap, cssVars) {
   for (var i = 0; i < varKeys.length; i++) {
     var varName = varKeys[i];
     var val = cssVars[varName];
+    var shortName = varName.replace(/^--/, "");
+    var varRef = "var(" + varName + ")";
     if (typeof val === "string" && (val.indexOf("rgb") === 0 || val.indexOf("#") === 0)) {
-      var shortName = varName.replace(/^--/, "");
-      utilMap["background-color:var(" + varName + ")"] = "bg-" + shortName;
-      utilMap["color:var(" + varName + ")"] = "text-" + shortName;
+      utilMap["background-color:" + varRef] = "bg-" + shortName;
+      utilMap["color:" + varRef] = "text-" + shortName;
+    }
+    // Map var()-based spacing/radius values to existing token utilities
+    // e.g., gap:var(--spacing-4) → reuse the same class as gap:4px (which is gap-4)
+    if (typeof val === "string" && /^\d+px$/.test(val)) {
+      var gapTokenClass = utilMap["gap:" + val];
+      if (gapTokenClass) utilMap["gap:" + varRef] = gapTokenClass;
+      var radiusTokenClass = utilMap["border-radius:" + val];
+      if (radiusTokenClass) utilMap["border-radius:" + varRef] = radiusTokenClass;
     }
   }
 }
 
 export function htmlGenerateUtilityCSS(tokens, cssVars) {
   var lines = [];
-  lines.push("/* ── Layout Utilities ─────────────────────────────────── */");
+  lines.push("/* ── Flexbox Utilities ────────────────────────────────── */");
   lines.push(".flex { display: flex; }");
+  lines.push(".inline-flex { display: inline-flex; }");
   lines.push(".flex-col { flex-direction: column; }");
   lines.push(".flex-row { flex-direction: row; }");
   lines.push(".flex-wrap { flex-wrap: wrap; }");
-  lines.push(".flex-1 { flex: 1 1 0; }");
+  lines.push(".flex-nowrap { flex-wrap: nowrap; }");
+  lines.push(".flex-1 { flex: 1 1 auto; }");
+  lines.push(".flex-none { flex: 0 0 auto; }");
+  lines.push(".grow { flex-grow: 1; }");
+  lines.push(".grow-0 { flex-grow: 0; }");
+  lines.push(".shrink { flex-shrink: 1; }");
   lines.push(".shrink-0 { flex-shrink: 0; }");
+  lines.push(".basis-auto { flex-basis: auto; }");
+  lines.push(".basis-0 { flex-basis: 0; }");
   lines.push(".items-start { align-items: flex-start; }");
   lines.push(".items-center { align-items: center; }");
   lines.push(".items-end { align-items: flex-end; }");
   lines.push(".items-baseline { align-items: baseline; }");
+  lines.push(".items-stretch { align-items: stretch; }");
+  lines.push(".self-auto { align-self: auto; }");
+  lines.push(".self-start { align-self: flex-start; }");
+  lines.push(".self-center { align-self: center; }");
+  lines.push(".self-end { align-self: flex-end; }");
+  lines.push(".self-stretch { align-self: stretch; }");
   lines.push(".justify-start { justify-content: flex-start; }");
   lines.push(".justify-center { justify-content: center; }");
   lines.push(".justify-end { justify-content: flex-end; }");
   lines.push(".justify-between { justify-content: space-between; }");
+  lines.push("");
+  lines.push("/* ── Sizing Utilities ─────────────────────────────────── */");
   lines.push(".w-full { width: 100%; }");
+  lines.push(".w-auto { width: auto; }");
   lines.push(".h-full { height: 100%; }");
+  lines.push(".h-auto { height: auto; }");
   lines.push(".overflow-hidden { overflow: hidden; }");
+  lines.push(".overflow-auto { overflow: auto; }");
+  lines.push(".overflow-scroll { overflow: scroll; }");
+  lines.push(".overflow-visible { overflow: visible; }");
+  lines.push("");
+  lines.push("/* ── Position Utilities ───────────────────────────────── */");
   lines.push(".relative { position: relative; }");
   lines.push(".absolute { position: absolute; }");
+  lines.push(".fixed { position: fixed; }");
+  lines.push(".sticky { position: sticky; }");
+  lines.push(".inset-0 { inset: 0; }");
+  lines.push(".top-0 { top: 0; }");
+  lines.push(".right-0 { right: 0; }");
+  lines.push(".bottom-0 { bottom: 0; }");
+  lines.push(".left-0 { left: 0; }");
+  lines.push("");
+  lines.push("/* ── Text Utilities ───────────────────────────────────── */");
   lines.push(".text-left { text-align: left; }");
   lines.push(".text-center { text-align: center; }");
   lines.push(".text-right { text-align: right; }");
   lines.push(".text-justify { text-align: justify; }");
+  lines.push(".underline { text-decoration: underline; }");
+  lines.push(".line-through { text-decoration: line-through; }");
+  lines.push(".no-underline { text-decoration: none; }");
+  lines.push(".uppercase { text-transform: uppercase; }");
+  lines.push(".lowercase { text-transform: lowercase; }");
+  lines.push(".capitalize { text-transform: capitalize; }");
+  lines.push(".pointer-events-none { pointer-events: none; }");
+  lines.push("");
+  lines.push("/* ── Grid Utilities ───────────────────────────────────── */");
+  lines.push(".grid { display: grid; }");
+  lines.push(".grid-cols-12 { grid-template-columns: repeat(12, 1fr); }");
+  for (var colI = 1; colI <= 12; colI++) {
+    lines.push(".col-span-" + colI + " { grid-column: span " + colI + "; }");
+  }
   lines.push("");
 
   // Spacing
@@ -915,6 +1388,17 @@ export function htmlGenerateUtilityCSS(tokens, cssVars) {
       lines.push(".p-" + sp2.name + " { padding: " + v2 + "; }");
       lines.push(".px-" + sp2.name + " { padding-left: " + v2 + "; padding-right: " + v2 + "; }");
       lines.push(".py-" + sp2.name + " { padding-top: " + v2 + "; padding-bottom: " + v2 + "; }");
+    }
+    lines.push("");
+    lines.push("/* ── Position Offset Utilities (from spacing tokens) ──── */");
+    for (var si3 = 0; si3 < tokens.spacing.length; si3++) {
+      var sp3 = tokens.spacing[si3];
+      if (sp3.value === "0") continue;
+      var v3 = sp3.value + "px";
+      lines.push(".top-" + sp3.name + " { top: " + v3 + "; }");
+      lines.push(".right-" + sp3.name + " { right: " + v3 + "; }");
+      lines.push(".bottom-" + sp3.name + " { bottom: " + v3 + "; }");
+      lines.push(".left-" + sp3.name + " { left: " + v3 + "; }");
     }
     lines.push("");
   }
@@ -970,38 +1454,76 @@ export function htmlGenerateUtilityCSS(tokens, cssVars) {
   return lines.join("\n");
 }
 
-export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
-  if (!tree) return;
+// Resolve a styles object into { utils: string[], remaining: object }
+function resolveStylesToUtilities(styles, utilMap, spacingLookup) {
   var utils = [];
   var remaining = {};
-
-  var keys = Object.keys(tree.styles);
+  var keys = Object.keys(styles);
   for (var i = 0; i < keys.length; i++) {
     var prop = keys[i];
-    var val = tree.styles[prop];
+    var val = styles[prop];
     var lookup = prop + ":" + val;
-
     if (utilMap[lookup]) {
       utils.push(utilMap[lookup]);
     } else if (prop === "padding" && spacingLookup) {
-      var parts = val.split(" ");
-      // Skip var() padding — already references design system
-      var hasVar = val.indexOf("var(") !== -1;
-      if (!hasVar && parts.length === 1 && spacingLookup[parts[0]]) {
-        utils.push("p-" + spacingLookup[parts[0]]);
-      } else if (!hasVar && parts.length === 2 && spacingLookup[parts[0]] && spacingLookup[parts[1]]) {
-        utils.push("py-" + spacingLookup[parts[0]]);
-        utils.push("px-" + spacingLookup[parts[1]]);
-      } else {
-        remaining[prop] = val;
+      var padParts = [];
+      var padRemainder = val;
+      while (padRemainder.length > 0) {
+        padRemainder = padRemainder.trim();
+        if (padRemainder.indexOf("var(") === 0) {
+          var closeIdx = padRemainder.indexOf(")");
+          if (closeIdx !== -1) { padParts.push(padRemainder.substring(0, closeIdx + 1)); padRemainder = padRemainder.substring(closeIdx + 1); }
+          else { padParts.push(padRemainder); padRemainder = ""; }
+        } else {
+          var spIdx = padRemainder.indexOf(" ");
+          if (spIdx !== -1) { padParts.push(padRemainder.substring(0, spIdx)); padRemainder = padRemainder.substring(spIdx + 1); }
+          else { padParts.push(padRemainder); padRemainder = ""; }
+        }
       }
+      var resolvedParts = [];
+      for (var ppi = 0; ppi < padParts.length; ppi++) {
+        var pp = padParts[ppi];
+        if (spacingLookup[pp]) { resolvedParts.push(spacingLookup[pp]); }
+        else if (pp === "0" || pp === "0px") { resolvedParts.push(null); }
+        else { resolvedParts = null; break; }
+      }
+      if (resolvedParts && resolvedParts.length === 1 && resolvedParts[0]) {
+        utils.push("p-" + resolvedParts[0]);
+      } else if (resolvedParts && resolvedParts.length === 2) {
+        if (resolvedParts[0]) utils.push("py-" + resolvedParts[0]);
+        if (resolvedParts[1]) utils.push("px-" + resolvedParts[1]);
+      } else { remaining[prop] = val; }
     } else {
       remaining[prop] = val;
     }
   }
+  return { utils: utils, remaining: remaining };
+}
 
-  tree.utilityClasses = utils;
-  tree.styles = remaining;
+export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
+  if (!tree) return;
+  var result = resolveStylesToUtilities(tree.styles, utilMap, spacingLookup);
+  // Preserve existing utility classes (e.g. col-span-N added during tree walk)
+  var existing = tree.utilityClasses || [];
+  tree.utilityClasses = existing.concat(result.utils);
+  tree.styles = result.remaining;
+
+  // For form fields: resolve input/label child styles to utility classes too
+  if (tree.tag === "form-field-floating" || tree.tag === "form-field") {
+    var flLabelStyles = {};
+    var flInputStyles = {};
+    htmlExtractFormFieldChildStyles(tree, flLabelStyles, flInputStyles);
+    if (tree.tag === "form-field-floating") {
+      flLabelStyles["position"] = "absolute";
+      flLabelStyles["pointer-events"] = "none";
+    }
+    var inputResult = resolveStylesToUtilities(flInputStyles, utilMap, spacingLookup);
+    var labelResult = resolveStylesToUtilities(flLabelStyles, utilMap, spacingLookup);
+    tree._inputUtilClasses = inputResult.utils;
+    tree._inputStyles = inputResult.remaining;
+    tree._labelUtilClasses = labelResult.utils;
+    tree._labelStyles = labelResult.remaining;
+  }
 
   if (tree.children) {
     for (var ci = 0; ci < tree.children.length; ci++) {

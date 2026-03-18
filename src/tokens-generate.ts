@@ -210,9 +210,11 @@ export function generateBorderData(bordersList) {
 
 export function generateOpacityData() {
   var tokens = {};
+  tokens[0] = { "$type": "number", "$value": 0 };
   for (var i = 5; i <= 95; i += 5) {
     tokens[i] = { "$type": "number", "$value": i / 100 };
   }
+  tokens[100] = { "$type": "number", "$value": 1 };
   return tokens;
 }
 

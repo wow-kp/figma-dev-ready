@@ -394,12 +394,11 @@ export function runAudit(){
     if(!insideInst && depth>=6&&(node.type==="FRAME"||node.type==="GROUP"))checks.deepNesting.issues.push({id:node.id,label:"Depth "+depth+': "'+trunc(node.name)+'"',path:path});
     if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode==="NONE"&&"children"in node&&node.children.length>=2)checks.autoLayout.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.children.length+' children',path:path});
     // ── Fixed sizing: flag layout containers with FIXED width inside auto-layout parents ──
-    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT") && node.parent && "layoutMode" in node.parent && node.parent.layoutMode !== "NONE") {
-      var parentDir = node.parent.layoutMode;
+    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT"||node.type==="INSTANCE") && node.parent && "layoutMode" in node.parent && node.parent.layoutMode !== "NONE") {
       // Check horizontal sizing: should be FILL in horizontal parent, or always for vertical parent children
       if ("layoutSizingHorizontal" in node && node.layoutSizingHorizontal === "FIXED") {
         // Skip small elements: buttons, icons, images, inputs (width < 200 and not a section-level frame)
-        var isSmallElement = node.width < 200 || (node.name && /button|btn|icon|img|image|input|field|logo/i.test(node.name));
+        var isSmallElement = node.width < 200 || (node.name && /button|btn|icon|img|image|input|field|logo|close|chevron|arrow|label|dropdown/i.test(node.name));
         if (!isSmallElement) checks.fixedSize.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — fixed width '+Math.round(node.width)+'px',path:path});
       }
     }

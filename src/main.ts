@@ -307,6 +307,7 @@ figma.ui.onmessage = async function(msg) {
     try {
       var opts = msg.options || {};
       var includeMobile = opts.includeMobile !== false;
+      var includeScreenshots = opts.includeScreenshots === true;
       var pageType = opts.pageType || "promo";
 
       // Phase 1: Scan
@@ -325,7 +326,6 @@ figma.ui.onmessage = async function(msg) {
 
       var cssVars = {};
       var images = [];
-      var classCounter = {};
       // Reset image name dedup counter
       for (var k in _htmlImageNameCount) { if (_htmlImageNameCount.hasOwnProperty(k)) delete _htmlImageNameCount[k]; }
 
@@ -335,21 +335,18 @@ figma.ui.onmessage = async function(msg) {
       for (var dci = 0; dci < desktopPage.children.length; dci++) {
         var dChild = desktopPage.children[dci];
         if (dChild.visible === false) continue;
-        var dTree = htmlWalkNode(dChild, cssVars, images, 0, classCounter, pageType);
+        var dTree = htmlWalkNode(dChild, cssVars, images, 0, null, pageType);
         if (dTree) desktopTrees.push(dTree);
       }
 
-      // Walk mobile tree if requested — SHARE classCounter so class names match desktop
+      // Walk mobile tree if requested
       var mobileTrees = null;
       if (includeMobile && mobilePage) {
         mobileTrees = [];
-        var mobileClassCounter = {};
-        var dKeys = Object.keys(classCounter);
-        for (var cki = 0; cki < dKeys.length; cki++) mobileClassCounter[dKeys[cki]] = 0;
         for (var mci = 0; mci < mobilePage.children.length; mci++) {
           var mChild = mobilePage.children[mci];
           if (mChild.visible === false) continue;
-          var mTree = htmlWalkNode(mChild, cssVars, images, 0, mobileClassCounter, pageType);
+          var mTree = htmlWalkNode(mChild, cssVars, images, 0, null, pageType);
           if (mTree) mobileTrees.push(mTree);
         }
       }
@@ -357,7 +354,7 @@ figma.ui.onmessage = async function(msg) {
       // Phase 2b: Assign utility classes
       var tokens = opts.tokens || null;
       var utilMap = htmlBuildUtilityMap(tokens);
-      var spacingLookup = htmlBuildSpacingLookup(tokens);
+      var spacingLookup = htmlBuildSpacingLookup(tokens, cssVars);
       htmlAddColorUtilities(utilMap, cssVars);
       for (var uti = 0; uti < desktopTrees.length; uti++) {
         htmlAssignUtilities(desktopTrees[uti], utilMap, spacingLookup);
@@ -409,12 +406,37 @@ figma.ui.onmessage = async function(msg) {
         htmlFiles.push({ name: "index.html", content: indexHtml, frameName: pageTitle });
       }
 
+      // Phase 5: Export frame screenshots for AI visual context (only when AI enhancement is enabled)
+      var screenshots = [];
+      if (includeScreenshots) {
+        figma.ui.postMessage({ type: "build-html-progress", phase: "Capturing design screenshots…", percent: 95 });
+        for (var sci = 0; sci < desktopPage.children.length; sci++) {
+          var scChild = desktopPage.children[sci];
+          if (scChild.visible === false || !("exportAsync" in scChild)) continue;
+          try {
+            var scBytes = await scChild.exportAsync({ format: "JPG", constraint: { type: "SCALE", value: 1 } });
+            screenshots.push({ name: scChild.name || ("frame-" + sci), page: "desktop", bytes: Array.prototype.slice.call(scBytes) });
+          } catch(e) {}
+        }
+        if (includeMobile && mobilePage) {
+          for (var smci = 0; smci < mobilePage.children.length; smci++) {
+            var smChild = mobilePage.children[smci];
+            if (smChild.visible === false || !("exportAsync" in smChild)) continue;
+            try {
+              var smBytes = await smChild.exportAsync({ format: "JPG", constraint: { type: "SCALE", value: 1 } });
+              screenshots.push({ name: smChild.name || ("frame-" + smci), page: "mobile", bytes: Array.prototype.slice.call(smBytes) });
+            } catch(e) {}
+          }
+        }
+      }
+
       figma.ui.postMessage({ type: "build-html-progress", phase: "Done!", percent: 100 });
       figma.ui.postMessage({
         type: "build-html-result",
         htmlFiles: htmlFiles,
         css: css,
         images: images,
+        screenshots: screenshots,
         stats: { nodes: desktopTrees.length, files: htmlFiles.length, images: images.length, variables: Object.keys(cssVars).length }
       });
     } catch(e) {

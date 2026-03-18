@@ -37,6 +37,7 @@ export async function generateComponentsPage(msg) {
   frame.paddingLeft = PAD; frame.paddingRight = PAD;
   frame.itemSpacing = 24;
   page.appendChild(frame);
+  // Note: bindCompSpacing(frame) called after helpers are defined (see below)
 
   var brandColor = hexToFigma(msg.brandColor || "#3B82F6");
 
@@ -126,10 +127,59 @@ export async function generateComponentsPage(msg) {
       var prop = props[pi];
       if (!(prop in frame)) continue;
       var val = frame[prop];
-      if (!val || val <= 0) continue;
+      if (val === undefined || val === null) continue;
       var sv = spacingVarMapComp[val];
       if (sv) { try { frame.setBoundVariable(prop, sv); } catch(e) {} }
     }
+  }
+
+  // ── Look up border width variables for binding ──
+  var borderCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name.toLowerCase().indexOf("border") !== -1 && c.name.toLowerCase().indexOf("width") !== -1; });
+  var borderVarMapComp = {};
+  if (borderCols.length > 0) {
+    var bwVars = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === borderCols[0].id && v.resolvedType === "FLOAT"; });
+    var allColsBw = figma.variables.getLocalVariableCollections();
+    var bwModeId = borderCols[0].modes[0].modeId;
+    for (var bwi = 0; bwi < bwVars.length; bwi++) {
+      try {
+        var bwVal = bwVars[bwi].valuesByMode[bwModeId];
+        if (bwVal && typeof bwVal === "object" && bwVal.type === "VARIABLE_ALIAS") {
+          bwVal = cxResolveVar(bwVars[bwi], bwModeId, allColsBw);
+        }
+        if (typeof bwVal === "number") borderVarMapComp[bwVal] = bwVars[bwi];
+      } catch(e) {}
+    }
+  }
+  function bindBorderWidth(node) {
+    if (!("strokeWeight" in node)) return;
+    var val = node.strokeWeight;
+    if (val === undefined || val === null || typeof val !== "number") return;
+    var bv = borderVarMapComp[val];
+    if (bv) { try { node.setBoundVariable("strokeWeight", bv); } catch(e) {} }
+  }
+
+  // ── Look up radius variables by value for binding ──
+  var radiusVarByValueComp = {};
+  if (radiusCols2.length > 0) {
+    var rvars2 = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
+    var allColsRv = figma.variables.getLocalVariableCollections();
+    var rvModeId = radiusCols2[0].modes[0].modeId;
+    for (var rvi2 = 0; rvi2 < rvars2.length; rvi2++) {
+      try {
+        var rvv = rvars2[rvi2].valuesByMode[rvModeId];
+        if (rvv && typeof rvv === "object" && rvv.type === "VARIABLE_ALIAS") {
+          rvv = cxResolveVar(rvars2[rvi2], rvModeId, allColsRv);
+        }
+        if (typeof rvv === "number") radiusVarByValueComp[rvv] = rvars2[rvi2];
+      } catch(e) {}
+    }
+  }
+  function bindRadiusByValue(node) {
+    if (!("cornerRadius" in node)) return;
+    var val = node.cornerRadius;
+    if (val === undefined || val === null || typeof val !== "number") return;
+    var rv = radiusVarByValueComp[val];
+    if (rv) { try { node.setBoundVariable("cornerRadius", rv); } catch(e) {} }
   }
 
   // ── Look up opacity variables for binding ──
@@ -147,11 +197,14 @@ export async function generateComponentsPage(msg) {
     }
   }
   function bindOpacity(node) {
-    if (!("opacity" in node) || node.opacity >= 1 || node.opacity <= 0) return;
+    if (!("opacity" in node)) return;
     var pct = Math.round(node.opacity * 100);
     var ov = opacityVarMapComp[pct];
     if (ov) { try { node.setBoundVariable("opacity", ov); } catch(e) {} }
   }
+
+  // Bind the main frame spacing now that helpers are defined
+  bindCompSpacing(frame);
 
   // ══════════════════════════════════════════════════════════════════════════
   // BUTTONS (component set with Variant + Size properties)
@@ -190,6 +243,7 @@ export async function generateComponentsPage(msg) {
         bindFill(btnComp, "white");
         bindStroke(btnComp, "brand/primary");
         btnComp.strokeWeight = 1.5;
+        bindBorderWidth(btnComp);
       }
 
       var btnText = figma.createText();
@@ -228,9 +282,12 @@ export async function generateComponentsPage(msg) {
   btnSet.primaryAxisSizingMode = "AUTO";
   btnSet.counterAxisSizingMode = "AUTO";
   btnSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+  bindFill(btnSet, "white");
   btnSet.cornerRadius = 12;
+  bindRadiusByValue(btnSet);
   btnSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   btnSet.strokeWeight = 1;
+  bindBorderWidth(btnSet);
   bindCompSpacing(btnSet);
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -320,6 +377,7 @@ export async function generateComponentsPage(msg) {
           field.strokes = [{ type: "SOLID", color: ist.borderColor }];
           bindStroke(field, ist.borderVar);
           field.strokeWeight = ist.strokeW;
+          bindBorderWidth(field);
         } else {
           // Non-default states: frame with value text inside
           field = figma.createFrame();
@@ -337,6 +395,7 @@ export async function generateComponentsPage(msg) {
           field.strokes = [{ type: "SOLID", color: ist.borderColor }];
           bindStroke(field, ist.borderVar);
           field.strokeWeight = ist.strokeW;
+          bindBorderWidth(field);
 
           var floatInput = figma.createText();
           if (inputStyle) {
@@ -424,6 +483,7 @@ export async function generateComponentsPage(msg) {
         inputField.strokes = [{ type: "SOLID", color: ist.borderColor }];
         bindStroke(inputField, ist.borderVar);
         inputField.strokeWeight = ist.strokeW;
+        bindBorderWidth(inputField);
         inputField.layoutMode = "HORIZONTAL";
         inputField.counterAxisAlignItems = "CENTER";
         inputField.paddingLeft = 14; inputField.paddingRight = 14;
@@ -460,6 +520,7 @@ export async function generateComponentsPage(msg) {
         inputField2.strokes = [{ type: "SOLID", color: ist.borderColor }];
         bindStroke(inputField2, ist.borderVar);
         inputField2.strokeWeight = ist.strokeW;
+        bindBorderWidth(inputField2);
         inputField2.layoutMode = "HORIZONTAL";
         inputField2.counterAxisAlignItems = "CENTER";
         inputField2.paddingLeft = 14; inputField2.paddingRight = 14;
@@ -496,9 +557,12 @@ export async function generateComponentsPage(msg) {
     typeSet.primaryAxisSizingMode = "AUTO";
     typeSet.counterAxisSizingMode = "AUTO";
     typeSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    bindFill(typeSet, "white");
     typeSet.cornerRadius = 12;
+    bindRadiusByValue(typeSet);
     typeSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     typeSet.strokeWeight = 1;
+    bindBorderWidth(typeSet);
     // Make each variant fill equally
     for (var vi = 0; vi < typeSet.children.length; vi++) {
       typeSet.children[vi].layoutSizingHorizontal = "FILL";
@@ -546,9 +610,12 @@ export async function generateComponentsPage(msg) {
     lblSet.primaryAxisSizingMode = "AUTO";
     lblSet.counterAxisSizingMode = "AUTO";
     lblSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    bindFill(lblSet, "white");
     lblSet.cornerRadius = 12;
+    bindRadiusByValue(lblSet);
     lblSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     lblSet.strokeWeight = 1;
+    bindBorderWidth(lblSet);
     bindCompSpacing(lblSet);
   }
 
@@ -617,6 +684,7 @@ export async function generateComponentsPage(msg) {
     dField.strokes = [{ type: "SOLID", color: dst.borderColor }];
     bindStroke(dField, dst.borderVar);
     dField.strokeWeight = dst.strokeW;
+    bindBorderWidth(dField);
 
     // Select text (placeholder)
     var dText = figma.createText();
@@ -663,9 +731,12 @@ export async function generateComponentsPage(msg) {
   dropSet.primaryAxisSizingMode = "AUTO";
   dropSet.counterAxisSizingMode = "AUTO";
   dropSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+  bindFill(dropSet, "white");
   dropSet.cornerRadius = 12;
+  bindRadiusByValue(dropSet);
   dropSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   dropSet.strokeWeight = 1;
+  bindBorderWidth(dropSet);
   bindCompSpacing(dropSet);
   for (var dvi = 0; dvi < dropSet.children.length; dvi++) {
     dropSet.children[dvi].layoutSizingHorizontal = "FILL";
@@ -773,9 +844,12 @@ export async function generateComponentsPage(msg) {
     imgSet.primaryAxisSizingMode = "AUTO";
     imgSet.counterAxisSizingMode = "AUTO";
     imgSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    bindFill(imgSet, "white");
     imgSet.cornerRadius = 12;
+    bindRadiusByValue(imgSet);
     imgSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     imgSet.strokeWeight = 1;
+    bindBorderWidth(imgSet);
     bindCompSpacing(imgSet);
   }
 

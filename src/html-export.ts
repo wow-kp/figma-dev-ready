@@ -77,16 +77,70 @@ function extractPosition(node, styles, cssVars, bv) {
   if (node.layoutPositioning !== "ABSOLUTE") return;
   styles["position"] = "absolute";
   var cons = node.constraints || {};
-  if (cons.horizontal === "STRETCH" && cons.vertical === "STRETCH") {
-    styles["inset"] = "0";
-    return;
+  var pw = node.parent ? node.parent.width : 0;
+  var ph = node.parent ? node.parent.height : 0;
+  var transforms = [];
+
+  // ── Horizontal axis ──
+  if (cons.horizontal === "STRETCH") {
+    styles["left"] = "0"; styles["right"] = "0";
+  } else if (cons.horizontal === "CENTER") {
+    styles["left"] = "50%";
+    transforms.push("translateX(-50%)");
+  } else if (cons.horizontal === "SCALE" && pw > 0) {
+    styles["left"] = Math.round(node.x / pw * 1000) / 10 + "%";
+    styles["width"] = Math.round(node.width / pw * 1000) / 10 + "%";
+  } else if (cons.horizontal === "MAX" && pw > 0) {
+    styles["right"] = Math.round((pw - node.x - node.width) / pw * 1000) / 10 + "%";
+  } else {
+    // MIN or default — percentage when parent width is known
+    styles["left"] = pw > 0 ? Math.round((node.x || 0) / pw * 1000) / 10 + "%" : Math.round(node.x || 0) + "px";
   }
-  if (cons.horizontal === "STRETCH") { styles["left"] = "0"; styles["right"] = "0"; }
-  else if (cons.horizontal === "MAX") { styles["right"] = Math.round(node.parent ? node.parent.width - node.x - node.width : 0) + "px"; }
-  else { styles["left"] = Math.round(node.x || 0) + "px"; }
-  if (cons.vertical === "STRETCH") { styles["top"] = "0"; styles["bottom"] = "0"; }
-  else if (cons.vertical === "MAX") { styles["bottom"] = Math.round(node.parent ? node.parent.height - node.y - node.height : 0) + "px"; }
-  else { styles["top"] = Math.round(node.y || 0) + "px"; }
+
+  // ── Vertical axis ──
+  if (cons.vertical === "STRETCH") {
+    styles["top"] = "0"; styles["bottom"] = "0";
+  } else if (cons.vertical === "CENTER") {
+    styles["top"] = "50%";
+    transforms.push("translateY(-50%)");
+  } else if (cons.vertical === "SCALE" && ph > 0) {
+    styles["top"] = Math.round(node.y / ph * 1000) / 10 + "%";
+    styles["height"] = Math.round(node.height / ph * 1000) / 10 + "%";
+  } else if (cons.vertical === "MAX" && ph > 0) {
+    styles["bottom"] = Math.round((ph - node.y - node.height) / ph * 1000) / 10 + "%";
+  } else {
+    styles["top"] = ph > 0 ? Math.round((node.y || 0) / ph * 1000) / 10 + "%" : Math.round(node.y || 0) + "px";
+  }
+
+  // Compose transforms
+  if (transforms.length > 0) {
+    styles["transform"] = transforms.join(" ");
+  }
+
+  // Explicit dimensions (when not set by STRETCH or SCALE)
+  if (!styles["width"] && !styles["right"] && node.width > 0) {
+    styles["width"] = Math.round(node.width) + "px";
+    // Responsive max-width + aspect-ratio for MIN/MAX/CENTER constraints
+    if (pw > 0) {
+      styles["max-width"] = Math.round(node.width / pw * 1000) / 10 + "%";
+    }
+    if (node.width > 0 && node.height > 0) {
+      styles["aspect-ratio"] = Math.round(node.width / node.height * 100) / 100 + " / 1";
+    }
+  }
+  if (!styles["height"] && !styles["bottom"] && node.height > 0 && !styles["aspect-ratio"]) {
+    styles["height"] = Math.round(node.height) + "px";
+  }
+
+  // Z-index from layer order (parent's children array index)
+  if (node.parent && node.parent.children) {
+    for (var zi = 0; zi < node.parent.children.length; zi++) {
+      if (node.parent.children[zi].id === node.id) {
+        styles["z-index"] = String(zi + 1);
+        break;
+      }
+    }
+  }
 }
 
 // ── 2. extractLayout — Flexbox/Grid from auto-layout ──
@@ -174,6 +228,11 @@ function extractLayout(node, styles, cssVars, bv) {
 
 // ── 3. extractSizing — Width, height, flex, min/max, overflow ──
 function extractSizing(node, styles, cssVars, bv) {
+  // Absolute elements: dimensions handled by extractPosition
+  if (node.layoutPositioning === "ABSOLUTE") {
+    if (node.clipsContent) styles["overflow"] = "hidden";
+    return;
+  }
   var isAutoChild = node.parent && node.parent.layoutMode && node.parent.layoutMode !== "NONE";
   var parentDir = isAutoChild ? node.parent.layoutMode : null;
 
@@ -812,12 +871,15 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   var bgImageName = null;
   var bgImageNodeId = null;
   var isBgImageChild = false;
+  var bgImageFills = null;
   var children = [];
 
   // Detect if this node is a bg-image component instance (absolute-positioned)
   // that should be absorbed by its parent as CSS background-image
   if (node.layoutPositioning === "ABSOLUTE" && htmlNodeHasBgImageVar(node)) {
     isBgImageChild = true;
+    // Carry fills so parent can read scaleMode during absorption
+    try { bgImageFills = node.fills; } catch(e) { bgImageFills = null; }
   }
 
   // Top-level frames: always full-width, ignore Figma's fixed width and max-width
@@ -843,9 +905,23 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   // Container frames with IMAGE fill: export as background-image, keep walking children
   if (hasImageFill) {
     bgImageName = htmlSanitizeName(node.name || "bg") + "-bg";
-    styles["background-size"] = "cover";
+    // Read scaleMode from node's image fill
+    var nodeBgSize = "cover";
+    try {
+      var nFills = node.fills;
+      if (nFills) {
+        for (var nfi = 0; nfi < nFills.length; nfi++) {
+          if (nFills[nfi].type === "IMAGE" && nFills[nfi].visible !== false) {
+            var smMap = { FILL: "cover", FIT: "contain", TILE: "auto", CROP: "cover" };
+            nodeBgSize = smMap[nFills[nfi].scaleMode] || "cover";
+            break;
+          }
+        }
+      }
+    } catch(e) {}
+    styles["background-size"] = nodeBgSize;
     styles["background-position"] = "center";
-    // bgImageName will be resolved to assets/ path after export
+    if (nodeBgSize === "auto") styles["background-repeat"] = "repeat";
   }
 
   // Walk children (skip for exportable images — they're leaf <img> tags)
@@ -866,8 +942,21 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
         // Absorb: mark parent as having a background image
         hasImageFill = true;
         bgImageName = htmlSanitizeName(bc.nodeName || "bg") + "-bg";
-        styles["background-size"] = "cover";
+        // Read scaleMode from child's fills
+        var childBgSize = "cover";
+        if (bc.bgImageFills) {
+          for (var cfi = 0; cfi < bc.bgImageFills.length; cfi++) {
+            var cf = bc.bgImageFills[cfi];
+            if (cf.type === "IMAGE" && cf.visible !== false) {
+              var cSmMap = { FILL: "cover", FIT: "contain", TILE: "auto", CROP: "cover" };
+              childBgSize = cSmMap[cf.scaleMode] || "cover";
+              break;
+            }
+          }
+        }
+        styles["background-size"] = childBgSize;
         styles["background-position"] = "center";
+        if (childBgSize === "auto") styles["background-repeat"] = "repeat";
         // Store the original node ID so the image export can find it
         bgImageNodeId = bc.nodeId;
       } else {
@@ -980,6 +1069,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
     isImage: isExportableImage,
     hasBgImage: hasImageFill,
     isBgImageChild: isBgImageChild,
+    bgImageFills: bgImageFills,
     colSpan: (function() { try { var d = node.getPluginData && node.getPluginData("colSpan"); return d ? (parseInt(d) || 0) : 0; } catch(e) { return 0; } })(),
     nodeId: node.id,
     nodeName: node.name,

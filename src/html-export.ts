@@ -1,6 +1,27 @@
 // HTML generation engine
 import { MOBILE_BREAKPOINT } from './constants';
 
+// Base64 encoding for Figma plugin sandbox (no btoa available)
+var _b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+function bytesToBase64(bytes) {
+  var result = "";
+  var len = bytes.length;
+  for (var i = 0; i < len; i += 3) {
+    var b0 = bytes[i], b1 = i + 1 < len ? bytes[i + 1] : 0, b2 = i + 2 < len ? bytes[i + 2] : 0;
+    result += _b64chars[(b0 >> 2) & 63];
+    result += _b64chars[((b0 << 4) | (b1 >> 4)) & 63];
+    result += (i + 1 < len) ? _b64chars[((b1 << 2) | (b2 >> 6)) & 63] : "=";
+    result += (i + 2 < len) ? _b64chars[b2 & 63] : "=";
+  }
+  return result;
+}
+
+function bytesToDataUrl(bytes, format) {
+  var mimeMap = { svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", pdf: "image/pdf" };
+  var mime = mimeMap[format] || "application/octet-stream";
+  return "data:" + mime + ";base64," + bytesToBase64(bytes);
+}
+
 export function htmlResolveVarToCSSName(variableId) {
   try {
     var v = figma.variables.getVariableById(variableId);
@@ -118,29 +139,25 @@ function extractPosition(node, styles, cssVars, bv) {
   }
 
   // Explicit dimensions (when not set by STRETCH or SCALE)
-  if (!styles["width"] && !styles["right"] && node.width > 0) {
-    styles["width"] = Math.round(node.width) + "px";
-    // Responsive max-width + aspect-ratio for MIN/MAX/CENTER constraints
-    if (pw > 0) {
-      styles["max-width"] = Math.round(node.width / pw * 1000) / 10 + "%";
-    }
-    if (node.width > 0 && node.height > 0) {
-      styles["aspect-ratio"] = Math.round(node.width / node.height * 100) / 100 + " / 1";
-    }
-  }
-  if (!styles["height"] && !styles["bottom"] && node.height > 0 && !styles["aspect-ratio"]) {
-    styles["height"] = Math.round(node.height) + "px";
-  }
-
-  // Z-index from layer order (parent's children array index)
-  if (node.parent && node.parent.children) {
-    for (var zi = 0; zi < node.parent.children.length; zi++) {
-      if (node.parent.children[zi].id === node.id) {
-        styles["z-index"] = String(zi + 1);
-        break;
+  // Skip for TEXT nodes — they size naturally from content, fixed dimensions would truncate text
+  if (node.type !== "TEXT") {
+    if (!styles["width"] && !styles["right"] && node.width > 0) {
+      styles["width"] = Math.round(node.width) + "px";
+      // Responsive max-width + aspect-ratio for MIN/MAX/CENTER constraints
+      if (pw > 0) {
+        styles["max-width"] = Math.round(node.width / pw * 1000) / 10 + "%";
+      }
+      if (node.width > 0 && node.height > 0) {
+        styles["aspect-ratio"] = Math.round(node.width / node.height * 100) / 100 + " / 1";
       }
     }
+    if (!styles["height"] && !styles["bottom"] && node.height > 0 && !styles["aspect-ratio"]) {
+      styles["height"] = Math.round(node.height) + "px";
+    }
   }
+
+  // No z-index needed — DOM order handles stacking naturally.
+  // Later siblings in HTML render above earlier ones, matching Figma's layer order.
 }
 
 // ── 2. extractLayout — Flexbox/Grid from auto-layout ──
@@ -359,17 +376,19 @@ function extractFills(node, styles, cssVars, bv) {
   }
 
   // Output: prefer single solid color as background-color, otherwise stack as background
-  if (backgrounds.length === 0 && bgColors.length === 1) {
-    styles["background-color"] = bgColors[0];
-  } else if (backgrounds.length === 0 && bgColors.length > 1) {
+  // Skip fully transparent colors — they block child style propagation for collapsed elements
+  var visibleBgColors = bgColors.filter(function(c) { return c.indexOf(",0)") === -1; });
+  if (backgrounds.length === 0 && visibleBgColors.length === 1) {
+    styles["background-color"] = visibleBgColors[0];
+  } else if (backgrounds.length === 0 && visibleBgColors.length > 1) {
     // Multiple solid fills — only the topmost (first visible) matters in CSS
-    styles["background-color"] = bgColors[0];
+    styles["background-color"] = visibleBgColors[0];
   } else if (backgrounds.length > 0 && bgColors.length === 0) {
     styles["background"] = backgrounds.join(", ");
   } else if (backgrounds.length > 0 && bgColors.length > 0) {
     // Mix gradients/images with solid colors — solid goes last as fallback
     styles["background"] = backgrounds.join(", ");
-    styles["background-color"] = bgColors[0];
+    if (visibleBgColors.length > 0) styles["background-color"] = visibleBgColors[0];
   }
 }
 
@@ -702,14 +721,11 @@ export function htmlGetSemanticTag(node, depth, pageType) {
     if (name.indexOf("button") !== -1 || name.indexOf("btn") !== -1 || name.indexOf("cta") !== -1
         || componentHint.indexOf("button") !== -1 || componentHint.indexOf("btn") !== -1) return "button";
 
-    // Dropdown / select detection
+    // Dropdown / select detection — same structure as floating-label input, just renders <select> instead of <input>
     if (name.indexOf("dropdown") !== -1 || name.indexOf("select") !== -1
-        || componentHint.indexOf("dropdown") !== -1 || componentHint.indexOf("select") !== -1) return "select";
+        || componentHint.indexOf("dropdown") !== -1 || componentHint.indexOf("select") !== -1) return "form-field-floating";
 
-    // Input / field detection (frames named "input-*" or instances of input components)
-    // Floating label components → "form-field-floating" (label inside the input)
-    // Other input components with labels → "form-field" (label above the input)
-    // Plain frames named "field" → bare "input"
+    // Floating label input detection
     if (componentHint.indexOf("floating label") !== -1) return "form-field-floating";
     if (componentHint.indexOf("input") !== -1 || componentHint.indexOf("field") !== -1 || componentHint.indexOf("text-field") !== -1) return "form-field";
     if (name.indexOf("input") !== -1 || name.indexOf("field") !== -1 || name.indexOf("textarea") !== -1) return "input";
@@ -737,7 +753,6 @@ export function htmlGetSemanticClass(node, tag) {
   if (tag === "form") return "form";
   if (tag === "form-field" || tag === "form-field-floating") return "form-field";
   if (tag === "input") return "input";
-  if (tag === "select") return "select";
   if (tag === "a") return "link";
   if (/^h[1-6]$/.test(tag)) return tag;
   if (tag === "p") return "text";
@@ -862,6 +877,12 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
 
   var tag = htmlGetSemanticTag(node, depth, pageType);
   var className = htmlGetSemanticClass(node, tag);
+
+  var nodeName = (node.name || "").toLowerCase();
+  var compHint = "";
+  try { if ("componentPropertyReferences" in node) { var mp = node.mainComponent || node; compHint = ((mp.parent && mp.parent.name) || "").toLowerCase(); } } catch(e) {}
+  var isSelect = nodeName.indexOf("dropdown") !== -1 || nodeName.indexOf("select") !== -1
+    || compHint.indexOf("dropdown") !== -1 || compHint.indexOf("select") !== -1;
 
   var styles = htmlExtractNodeCSS(node, cssVars);
   var text = null;
@@ -992,49 +1013,50 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
     }
   }
 
-  // For collapsed elements (button, select, input, a), propagate child styles upward
-  // since children won't appear in the HTML output
+  // Helper to detect small icon nodes (close-x, chevron, etc.) in a child tree
+  var findIconInChildren = function(childList) {
+    for (var fi = 0; fi < childList.length; fi++) {
+      var fc = childList[fi];
+      var fcNode = figma.getNodeById(fc.nodeId);
+      if (!fcNode) continue;
+      var hasExport = fcNode.exportSettings && fcNode.exportSettings.length > 0;
+      var isSmallIcon = (fcNode.type === "VECTOR" || fcNode.type === "INSTANCE" || fcNode.type === "COMPONENT"
+        || fcNode.type === "BOOLEAN_OPERATION" || fcNode.type === "STAR" || fcNode.type === "POLYGON"
+        || fcNode.type === "LINE" || fcNode.type === "FRAME" || fcNode.type === "GROUP"
+        || fcNode.type === "IMAGE") && fcNode.width <= 32 && fcNode.height <= 32
+        && !(fcNode.type === "FRAME" && fcNode.children && fcNode.children.length === 0);
+      if (hasExport || isSmallIcon) {
+        return { nodeId: fc.nodeId, nodeName: fc.nodeName, width: fcNode.width, height: fcNode.height, hasExport: hasExport };
+      }
+      if (fc.children && fc.children.length > 0) {
+        var found = findIconInChildren(fc.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   var iconNodeId = null;
   var iconNodeName = "";
-  if (tag === "button" || tag === "select" || tag === "input" || tag === "a") {
-    // Helper to detect IMAGE-fill shape nodes (icons like close-x, chevron)
-    var findIconInChildren = function(childList) {
-      for (var fi = 0; fi < childList.length; fi++) {
-        var fc = childList[fi];
-        var fcNode = figma.getNodeById(fc.nodeId);
-        if (fcNode && fcNode.exportSettings && fcNode.exportSettings.length > 0) {
-          return { nodeId: fc.nodeId, nodeName: fc.nodeName, width: fcNode.width, height: fcNode.height };
-        }
-        // Check grandchildren
-        if (fc.children && fc.children.length > 0) {
-          var found = findIconInChildren(fc.children);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
 
+  // For collapsed elements (button, input, a), propagate child styles upward
+  // since children won't appear in the HTML output.
+  // Select is NOT collapsed — it goes through form-field-floating path.
+  if (tag === "button" || tag === "input" || tag === "a") {
     var iconInfo = findIconInChildren(children);
     if (iconInfo) {
       iconNodeId = iconInfo.nodeId;
       iconNodeName = iconInfo.nodeName;
-      // For select: position chevron on the right side
-      if (tag === "select") {
-        styles["background-repeat"] = "no-repeat";
-        styles["background-position"] = "right 14px center";
-        styles["background-size"] = Math.round(iconInfo.width) + "px " + Math.round(iconInfo.height) + "px";
-        styles["padding-right"] = (Math.round(iconInfo.width) + 28) + "px";
-      } else if (tag === "button") {
-        // Button icons will render as <img> child — no background-image needed
-      }
     }
 
-    // Propagate all styles from descendants that the collapsed element doesn't already have.
-    // Skip structural/layout props that don't make sense to bubble up.
+    // Propagate visual styles from descendants that the collapsed element doesn't already have.
     var skipProps = { "position": 1, "left": 1, "right": 1, "top": 1, "bottom": 1,
       "display": 1, "flex-direction": 1, "flex-wrap": 1, "justify-content": 1,
       "align-items": 1, "gap": 1, "flex": 1, "width": 1, "max-width": 1, "min-width": 1,
-      "height": 1, "max-height": 1, "min-height": 1 };
+      "height": 1, "max-height": 1, "min-height": 1,
+      "padding": 1, "aspect-ratio": 1, "transform": 1, "overflow": 1, "z-index": 1,
+      "background": 1, "background-image": 1, "background-size": 1,
+      "background-position": 1, "background-repeat": 1 };
     var collectChildStyles = function(childList) {
       for (var ci = 0; ci < childList.length; ci++) {
         var c = childList[ci];
@@ -1049,7 +1071,17 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
     };
     collectChildStyles(children);
 
-    // Ensure collapsed elements have explicit height — their children won't provide it in HTML
+    // Strip internal layout properties from input collapsed elements
+    if (tag === "input") {
+      var stripLayout = ["display", "flex-direction", "flex-wrap", "justify-content",
+        "align-items", "gap", "row-gap", "column-gap", "padding"];
+      for (var sli = 0; sli < stripLayout.length; sli++) {
+        delete styles[stripLayout[sli]];
+      }
+      if (styles["position"] === "relative") delete styles["position"];
+    }
+
+    // Ensure collapsed elements have explicit height
     if (!styles["height"] && node.height > 0) {
       styles["height"] = Math.round(node.height) + "px";
     }
@@ -1071,6 +1103,22 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
     isBgImageChild: isBgImageChild,
     bgImageFills: bgImageFills,
     colSpan: (function() { try { var d = node.getPluginData && node.getPluginData("colSpan"); return d ? (parseInt(d) || 0) : 0; } catch(e) { return 0; } })(),
+    isRequired: (function() {
+      // Primary: read plugin data set by wireframe generator
+      try { if (node.getPluginData && node.getPluginData("required") === "true") return true; } catch(e) {}
+      // Fallback: check if any text child ends with " *" (wireframe generator always adds this)
+      try {
+        if ("children" in node && node.children) {
+          for (var ri = 0; ri < node.children.length; ri++) {
+            if (node.children[ri].type === "TEXT" && /\s\*\s*$/.test(node.children[ri].characters || "")) return true;
+          }
+        }
+      } catch(e) {}
+      return false;
+    })(),
+    isSelect: isSelect,
+    _labelStyles: null,
+    _inputStyles: null,
     nodeId: node.id,
     nodeName: node.name,
     children: children
@@ -1097,6 +1145,7 @@ export function htmlRenderCSS(cssVars, desktopTree, mobileTree, tokens) {
   lines.push("input, select { font: inherit; display: block; width: 100%; }");
   lines.push("select { appearance: none; -webkit-appearance: none; -moz-appearance: none; }");
   lines.push("a { text-decoration: none; color: inherit; }");
+  lines.push(".required-star { color: #e53333; }");
   lines.push("");
 
   // Utility classes
@@ -1189,26 +1238,37 @@ function stylesMatch(a, b) {
 
 export function htmlCollectClassStyles(tree, out) {
   if (!tree) return;
+  var isFormField = (tree.tag === "form-field-floating" || tree.tag === "form-field");
   if (tree.className && Object.keys(tree.styles).length > 0) {
     var cn = tree.className;
     if (out[cn]) {
-      if (!stylesMatch(out[cn], tree.styles)) {
-        // Disambiguate: find unique suffix
+      // For form fields: also compare sub-styles (input/label) to avoid collisions
+      var wrapperMatch = stylesMatch(out[cn], tree.styles);
+      var subMatch = true;
+      if (isFormField) {
+        var fieldInputSel = tree.isSelect ? " select" : " input";
+        var existingInput = out[cn + fieldInputSel];
+        var existingLabel = out[cn + " label"];
+        if (existingInput && tree._inputStyles && !stylesMatch(existingInput, tree._inputStyles)) subMatch = false;
+        if (existingLabel && tree._labelStyles && !stylesMatch(existingLabel, tree._labelStyles)) subMatch = false;
+        if (tree.isSelect && out[cn + " input"]) subMatch = false;
+        if (!tree.isSelect && out[cn + " select"]) subMatch = false;
+      }
+      if (!wrapperMatch || !subMatch) {
         var suffix = 2;
         while (out[cn + "-" + suffix]) suffix++;
         tree.className = cn + "-" + suffix;
         out[tree.className] = tree.styles;
       }
-      // else: styles match, reuse existing class
     } else {
       out[cn] = tree.styles;
     }
   }
   // For form fields: use pre-resolved styles (after utility class extraction)
-  if ((tree.tag === "form-field-floating" || tree.tag === "form-field") && tree.className) {
-    if (tree._inputStyles && Object.keys(tree._inputStyles).length > 0) out[tree.className + " input"] = tree._inputStyles;
+  if (isFormField && tree.className) {
+    var fieldInputSelector = tree.isSelect ? " select" : " input";
+    if (tree._inputStyles && Object.keys(tree._inputStyles).length > 0) out[tree.className + fieldInputSelector] = tree._inputStyles;
     if (tree._labelStyles && Object.keys(tree._labelStyles).length > 0) out[tree.className + " label"] = tree._labelStyles;
-    // field-wrapper only needs position:relative — don't leak Figma internal styles
     return;
   }
   for (var i = 0; i < tree.children.length; i++) {
@@ -1220,16 +1280,25 @@ export function htmlCollectClassStyles(tree, out) {
 // Propagates all styles — text children → labelStyles, non-text children → inputStyles.
 export function htmlExtractFormFieldChildStyles(tree, labelStyles, inputStyles) {
   if (!tree || !tree.children) return;
-  // Structural props that shouldn't propagate to label/input
+  // Structural props that shouldn't propagate to input styles
   var skipLayout = { "display": 1, "flex-direction": 1, "flex-wrap": 1, "justify-content": 1,
-    "align-items": 1, "gap": 1, "flex": 1, "width": 1, "max-width": 1, "min-width": 1 };
+    "align-items": 1, "gap": 1, "flex": 1, "width": 1, "max-width": 1, "min-width": 1,
+    "position": 1, "left": 1, "right": 1, "top": 1, "bottom": 1,
+    "padding": 1, "aspect-ratio": 1, "transform": 1, "overflow": 1, "z-index": 1,
+    "background": 1, "background-image": 1, "background-size": 1, "background-position": 1, "background-repeat": 1 };
+  // For text children (labels): only skip sizing/layout — ALLOW positioning through (left/top/position/transform)
+  var skipTextProps = { "display": 1, "flex-direction": 1, "flex-wrap": 1, "justify-content": 1,
+    "align-items": 1, "gap": 1, "flex": 1, "width": 1, "max-width": 1, "min-width": 1,
+    "height": 1, "max-height": 1, "min-height": 1,
+    "padding": 1, "aspect-ratio": 1, "overflow": 1, "z-index": 1,
+    "background": 1, "background-image": 1, "background-size": 1, "background-position": 1, "background-repeat": 1 };
   for (var i = 0; i < tree.children.length; i++) {
     var child = tree.children[i];
     if (child.text !== null && child.text !== undefined) {
-      // Text children → label styles
+      // Text children → label styles (allow position/left/top/transform for Figma label positioning)
       var lKeys = Object.keys(child.styles);
       for (var li = 0; li < lKeys.length; li++) {
-        if (!labelStyles[lKeys[li]]) labelStyles[lKeys[li]] = child.styles[lKeys[li]];
+        if (!skipTextProps[lKeys[li]] && !labelStyles[lKeys[li]]) labelStyles[lKeys[li]] = child.styles[lKeys[li]];
       }
     } else {
       // Non-text children → input field styles
@@ -1241,40 +1310,6 @@ export function htmlExtractFormFieldChildStyles(tree, labelStyles, inputStyles) 
       htmlExtractFormFieldChildStyles(child, labelStyles, inputStyles);
     }
   }
-  // If no padding was found on the field but we have a label position, infer padding from it
-  if (!inputStyles["padding"] && labelStyles["left"]) {
-    var inferPadH = parseInt(labelStyles["left"], 10);
-    var inferPadV = labelStyles["top"] ? parseInt(labelStyles["top"], 10) : inferPadH;
-    if (inferPadH > 0) inputStyles["padding"] = inferPadV + "px " + inferPadH + "px";
-  }
-}
-
-// Find the absolute-positioned label's position values in a form-field tree, with utility class matches
-export function htmlFindAbsoluteLabelPos(tree) {
-  var result = { left: null, top: null, leftClass: null, topClass: null };
-  if (!tree || !tree.children) return result;
-  for (var i = 0; i < tree.children.length; i++) {
-    var child = tree.children[i];
-    if (child.text !== null && child.text !== undefined && child.styles["position"] === "absolute") {
-      // Parse px values from left/top styles
-      var leftVal = child.styles["left"] ? parseInt(child.styles["left"], 10) : null;
-      var topVal = child.styles["top"] ? parseInt(child.styles["top"], 10) : null;
-      result.left = leftVal;
-      result.top = topVal;
-      // Check if utility classes exist for these values
-      if (child.utilityClasses) {
-        for (var u = 0; u < child.utilityClasses.length; u++) {
-          if (child.utilityClasses[u].indexOf("left-") === 0) result.leftClass = child.utilityClasses[u];
-          if (child.utilityClasses[u].indexOf("top-") === 0) result.topClass = child.utilityClasses[u];
-        }
-      }
-      return result;
-    }
-    // Recurse into wrappers
-    var nested = htmlFindAbsoluteLabelPos(child);
-    if (nested.left !== null || nested.top !== null) return nested;
-  }
-  return result;
 }
 
 // Find the field-wrapper node in a form-field tree (the container with "wrapper" in name,
@@ -1313,6 +1348,14 @@ export function htmlExtractTextFromTree(tree) {
   return "";
 }
 
+// Format label for required fields: strip any existing asterisk, append styled one.
+// Called only when isRequired is true (from plugin data), no text detection needed.
+function formatRequiredLabel(escapedLabel) {
+  // Remove trailing asterisk if the wireframe generator already added one
+  var clean = escapedLabel.replace(/\s*\*\s*$/, "");
+  return clean + ' <span class="required-star">*</span>';
+}
+
 export function htmlRenderNodeClean(tree, indent) {
   // Render HTML without inline styles (styles are in CSS file)
   if (!tree) return "";
@@ -1348,9 +1391,11 @@ export function htmlRenderNodeClean(tree, indent) {
     // Floating label: follows component structure — form-field > field-wrapper > input + label
     var flfTexts = htmlCollectAllTexts(tree);
     var flfLabel = flfTexts.length > 0 ? htmlEscapeText(flfTexts[0]) : "";
+    if (tree.isRequired) flfLabel = formatRequiredLabel(flfLabel);
     var flfInputClasses = tree._inputUtilClasses || [];
     var flfLabelClasses = tree._labelUtilClasses || [];
     var flfInputAttr = flfInputClasses.length > 0 ? ' class="' + flfInputClasses.join(" ") + '"' : "";
+    if (tree.isRequired) flfInputAttr += ' required';
     var flfLabelAttr = flfLabelClasses.length > 0 ? ' class="' + flfLabelClasses.join(" ") + '"' : "";
     // Find field-wrapper node and collect its utility classes
     var flfWrapper = htmlFindFieldWrapper(tree);
@@ -1365,7 +1410,13 @@ export function htmlRenderNodeClean(tree, indent) {
     var flfWrapperAttr = ' class="' + flfWrapperAllClasses.join(" ") + '"';
     lines.push(pad + '<div' + attrs + '>');
     lines.push(pad + '  <div' + flfWrapperAttr + '>');
-    lines.push(pad + '    <input type="text"' + flfInputAttr + ' />');
+    if (tree.isSelect) {
+      lines.push(pad + '    <select' + flfInputAttr + '>');
+      lines.push(pad + '      <option value="" disabled hidden selected></option>');
+      lines.push(pad + '    </select>');
+    } else {
+      lines.push(pad + '    <input type="text"' + flfInputAttr + ' />');
+    }
     if (flfLabel) {
       lines.push(pad + '    <label' + flfLabelAttr + '>' + flfLabel + '</label>');
     }
@@ -1375,10 +1426,12 @@ export function htmlRenderNodeClean(tree, indent) {
     // Regular form field: label above the input
     var ffTexts = htmlCollectAllTexts(tree);
     var ffLabel = ffTexts.length > 0 ? htmlEscapeText(ffTexts[0]) : "";
+    if (tree.isRequired) ffLabel = formatRequiredLabel(ffLabel);
     var ffPlaceholder = ffTexts.length > 1 ? htmlEscapeText(ffTexts[1]) : "";
     var ffInputClasses = tree._inputUtilClasses || [];
     var ffLabelClasses = tree._labelUtilClasses || [];
     var ffInputAttr = ffInputClasses.length > 0 ? ' class="' + ffInputClasses.join(" ") + '"' : "";
+    if (tree.isRequired) ffInputAttr += ' required';
     var ffLabelAttr = ffLabelClasses.length > 0 ? ' class="' + ffLabelClasses.join(" ") + '"' : "";
     lines.push(pad + '<div' + attrs + '>');
     if (ffLabel) {
@@ -1387,12 +1440,8 @@ export function htmlRenderNodeClean(tree, indent) {
     lines.push(pad + '  <input type="text"' + ffInputAttr + (ffPlaceholder ? ' placeholder="' + ffPlaceholder + '"' : '') + ' />');
     lines.push(pad + '</div>');
   } else if (tree.tag === "input") {
-    lines.push(pad + '<input' + attrs + ' type="text" placeholder="' + htmlExtractTextFromTree(tree) + '" />');
-  } else if (tree.tag === "select") {
-    var selectText = htmlExtractTextFromTree(tree) || tree.nodeName || "Select";
-    lines.push(pad + '<select' + attrs + '>');
-    lines.push(pad + '  <option value="" disabled hidden selected>' + htmlEscapeText(selectText) + '</option>');
-    lines.push(pad + '</select>');
+    var inpText = htmlExtractTextFromTree(tree);
+    lines.push(pad + '<input' + attrs + ' type="text" placeholder="' + inpText + '"' + (tree.isRequired ? ' required' : '') + ' />');
   } else if (tree.tag === "button") {
     var btnText = htmlExtractTextFromTree(tree);
     // Icon-only buttons (e.g. close button) should be empty — don't fall back to node name
@@ -1476,25 +1525,33 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
       counter.done++;
       if (progressCb) progressCb(counter.done, counter.total);
       var iconImg = await htmlExportImage(iconNode);
+      // Fallback: if no export settings, export as SVG directly
+      if (!iconImg && iconNode.exportAsync) {
+        try {
+          var svgBytes = await iconNode.exportAsync({ format: "SVG" });
+          iconImg = { name: htmlSanitizeName(iconNode.name || "icon") + ".svg", format: "svg", bytes: Array.from(svgBytes), variants: [], displayWidth: Math.round(iconNode.width), displayHeight: Math.round(iconNode.height) };
+        } catch(e) {}
+      }
       if (iconImg) {
         if (tree.tag === "button") {
           tree.iconImageName = iconImg.name;
           tree.iconImageVariants = iconImg.variants || [];
           tree.iconImageWidth = iconImg.displayWidth;
           tree.iconImageHeight = iconImg.displayHeight;
+          pushImageVariants(iconImg, images);
         } else {
-          // Select chevron etc — use 1x for background-image, CSS handles density
-          tree.styles["background-image"] = "url('assets/" + iconImg.name + "')";
-          // image-set for retina bg images
-          if (iconImg.variants && iconImg.variants.length > 1) {
-            var bgParts = [];
-            for (var bvi = 0; bvi < iconImg.variants.length; bvi++) {
-              bgParts.push("url('assets/" + iconImg.variants[bvi].name + "') " + iconImg.variants[bvi].scale + "x");
-            }
-            tree.styles["background-image"] = "image-set(" + bgParts.join(", ") + ")";
+          // Select chevron — inline as base64 data URL
+          var iconBytes = iconImg.bytes;
+          var iconFormat = iconImg.format || "png";
+          var iconBgUrl = "";
+          if (iconBytes && iconBytes.length > 0) {
+            iconBgUrl = "url(\"" + bytesToDataUrl(new Uint8Array(iconBytes), iconFormat) + "\")";
+          } else {
+            iconBgUrl = "url('assets/" + iconImg.name + "')";
+            pushImageVariants(iconImg, images);
           }
+          tree.styles["background-image"] = iconBgUrl;
         }
-        pushImageVariants(iconImg, images);
       }
     }
   }
@@ -1941,6 +1998,7 @@ export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
     tree._labelUtilClasses = labelResult.utils;
     tree._labelStyles = labelResult.remaining;
   }
+
 
   if (tree.children) {
     for (var ci = 0; ci < tree.children.length; ci++) {

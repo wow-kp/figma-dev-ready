@@ -4111,7 +4111,25 @@ window.onmessage=function(event){
     var sc5 = document.getElementById("wf-container");
     if (sc5) renderStep5(sc5);
   }
+  // ── Image export pre-check ──
+  if (msg.type === "check-images-export-result") {
+    var missing = msg.missing || [];
+    if (missing.length > 0) {
+      var names = missing.length <= 5 ? missing.join(", ") : missing.slice(0, 5).join(", ") + " and " + (missing.length - 5) + " more";
+      if (confirm("Warning: " + missing.length + " image(s) in your design have no export settings configured and won't be included in the export:\n\n" + names + "\n\nTo include them, select each image in Figma and add export settings (e.g. SVG or PNG @1x/@2x).\n\nContinue anyway?")) {
+        bhStartHtmlGeneration();
+      } else {
+        var btn = document.getElementById("bh-generate-btn");
+        if (btn) { btn.disabled = false; btn.textContent = "Generate Code"; }
+      }
+    } else {
+      bhStartHtmlGeneration();
+    }
+  }
   // ── Build HTML messages ──
+  if (msg.type === "build-html-warning") {
+    bhTermLog("WARNING: " + (msg.message || ""), "warn");
+  }
   if(msg.type==="build-html-progress"){
     var term = document.getElementById("bh-terminal");
     if (term) term.style.display = "";
@@ -4765,8 +4783,8 @@ document.getElementById("bh-view-ai").addEventListener("click", function() {
   bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
 });
 
-document.getElementById("bh-generate-btn").addEventListener("click", function() {
-  var btn = this;
+function bhStartHtmlGeneration() {
+  var btn = document.getElementById("bh-generate-btn");
   btn.disabled = true;
   btn.textContent = "Generating…";
   document.getElementById("bh-error").style.display = "none";
@@ -4784,6 +4802,11 @@ document.getElementById("bh-generate-btn").addEventListener("click", function() 
   if (document.getElementById("bh-ai-enhance").checked) bhTermLog("AI enhancement enabled", "dim");
   var aiEnabled = document.getElementById("bh-ai-enhance").checked;
   parent.postMessage({ pluginMessage: { type: "build-html", options: { includeMobile: includeMobile, includeScreenshots: aiEnabled, pageType: wfPageType || "promo", tokens: { spacing: wfSpacing, typography: wfTypography, radius: wfRadius } } } }, "*");
+}
+
+document.getElementById("bh-generate-btn").addEventListener("click", function() {
+  // Pre-check: scan for images without export settings
+  parent.postMessage({ pluginMessage: { type: "check-images-export" } }, "*");
 });
 
 document.getElementById("bh-copy-btn").addEventListener("click", function() {
@@ -4869,7 +4892,7 @@ function bhDownloadAsZip(result) {
   var url = URL.createObjectURL(blob);
   var a = document.createElement("a");
   a.href = url;
-  a.download = "build-html.zip";
+  a.download = (_bhViewingEnhanced && _bhLastEnhancedResult) ? "code-ai.zip" : "code-raw.zip";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

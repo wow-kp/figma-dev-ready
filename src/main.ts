@@ -616,6 +616,35 @@ figma.ui.onmessage = async function(msg) {
     }
   }
 
+  if (msg.type === "check-images-export") {
+    try {
+      var auditPages2 = getAuditPages();
+      var missingExport = [];
+      for (var api = 0; api < auditPages2.length; api++) {
+        var apName = auditPages2[api].name.toLowerCase().replace(/[^a-z]/g, "");
+        if (apName.indexOf("desktop") === -1 && apName.indexOf("mobile") === -1) continue;
+        auditPages2[api].findAll(function(n) {
+          // Image fills on non-text nodes
+          if (n.type !== "TEXT" && n.fills && Array.isArray(n.fills)) {
+            for (var fi = 0; fi < n.fills.length; fi++) {
+              if (n.fills[fi].type === "IMAGE" && n.fills[fi].visible !== false) {
+                if (!n.exportSettings || n.exportSettings.length === 0) {
+                  missingExport.push(n.name || n.id);
+                }
+                break;
+              }
+            }
+          }
+          // Leaf shape nodes that look like images (RECTANGLE/ELLIPSE with image fill)
+          return false;
+        });
+      }
+      figma.ui.postMessage({ type: "check-images-export-result", missing: missingExport });
+    } catch(e) {
+      figma.ui.postMessage({ type: "check-images-export-result", missing: [] });
+    }
+  }
+
   if (msg.type === "build-html") {
     try {
       var opts = msg.options || {};
@@ -683,10 +712,18 @@ figma.ui.onmessage = async function(msg) {
       for (var dti = 0; dti < desktopTrees.length; dti++) totalImages += htmlCountImages(desktopTrees[dti]);
       figma.ui.postMessage({ type: "build-html-progress", phase: "Exporting images (0/" + totalImages + ")…", percent: 40 });
       var counter = { done: 0, total: totalImages };
+      var imageErrors = [];
       for (var dei = 0; dei < desktopTrees.length; dei++) {
-        await htmlCollectImages(desktopTrees[dei], images, function(done, total) {
-          figma.ui.postMessage({ type: "build-html-progress", phase: "Exporting images (" + done + "/" + total + ")…", percent: 40 + Math.round((done / Math.max(total, 1)) * 30) });
-        }, counter);
+        try {
+          await htmlCollectImages(desktopTrees[dei], images, function(done, total) {
+            figma.ui.postMessage({ type: "build-html-progress", phase: "Exporting images (" + done + "/" + total + ")…", percent: 40 + Math.round((done / Math.max(total, 1)) * 30) });
+          }, counter);
+        } catch(imgErr) {
+          imageErrors.push(String(imgErr));
+        }
+      }
+      if (imageErrors.length > 0) {
+        figma.ui.postMessage({ type: "build-html-warning", message: "Some images failed to export: " + imageErrors.join("; ") });
       }
 
       // Phase 4: Compile

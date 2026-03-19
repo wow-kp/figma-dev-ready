@@ -857,8 +857,9 @@ export async function generatePromoStructure(msg) {
                 try { inp.setBoundVariable("minWidth", gridColVarMap[span]); } catch(e) {}
               }
             }
-            // Color the asterisk red on required fields
+            // Color the asterisk red on required fields and store required state
             if (fld.required) {
+              try { inp.setPluginData("required", "true"); } catch(e) {}
               var txtNodes = inp.findAll(function(n) { return n.type === "TEXT"; });
               for (var ti = 0; ti < txtNodes.length; ti++) {
                 var tn = txtNodes[ti];

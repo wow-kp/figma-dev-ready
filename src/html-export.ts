@@ -1325,6 +1325,18 @@ export function htmlFindFieldWrapper(tree) {
   return null;
 }
 
+// Find the first text node in a tree (the label)
+function htmlFindLabelNode(tree) {
+  if (!tree || !tree.children) return null;
+  for (var i = 0; i < tree.children.length; i++) {
+    var child = tree.children[i];
+    if (child.text !== null && child.text !== undefined) return child;
+    var nested = htmlFindLabelNode(child);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 // Collect all text nodes from a tree in order (for form fields with label + placeholder)
 export function htmlCollectAllTexts(tree) {
   var results = [];
@@ -1990,6 +2002,15 @@ export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
     if (tree.tag === "form-field-floating") {
       flLabelStyles["position"] = "absolute";
       flLabelStyles["pointer-events"] = "none";
+      // Always read label position from Figma node's x/y in px (matches design, resolves to utility classes)
+      var labelNode = htmlFindLabelNode(tree);
+      if (labelNode) {
+        var lNode = figma.getNodeById(labelNode.nodeId);
+        if (lNode) {
+          if (typeof lNode.x === "number") flLabelStyles["left"] = Math.round(lNode.x) + "px";
+          if (typeof lNode.y === "number") flLabelStyles["top"] = Math.round(lNode.y) + "px";
+        }
+      }
     }
     var inputResult = resolveStylesToUtilities(flInputStyles, utilMap, spacingLookup);
     var labelResult = resolveStylesToUtilities(flLabelStyles, utilMap, spacingLookup);

@@ -373,7 +373,8 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 <div id="tabs">
   <button class="tab-btn active" data-tab="workflow">🗂 Workflow</button>
   <button class="tab-btn"        data-tab="tools">🛠 Tools</button>
-  <button class="tab-btn"        data-tab="buildhtml" id="tab-buildhtml" style="display:none;">🏗 Build HTML</button>
+  <button class="tab-btn"        data-tab="buildhtml" id="tab-buildhtml" style="display:none;">🏗 Generate Code</button>
+  <button class="tab-btn"        data-tab="settings">⚙ Settings</button>
 </div>
 
 <!-- ── TOOLS (container with sub-tabs) ── -->
@@ -457,7 +458,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 <div class="pane" id="pane-buildhtml" style="overflow-y:auto;">
   <div style="padding:20px 16px;text-align:center;">
     <div style="font-size:28px;margin-bottom:8px;">🏗</div>
-    <div style="font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;">Build HTML</div>
+    <div style="font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;">Generate Code</div>
     <div style="font-size:11px;color:#6c7086;line-height:1.4;">Generate production-ready HTML from your dev-ready wireframes.</div>
   </div>
   <div id="buildhtml-content" style="padding:0 16px 20px;">
@@ -495,7 +496,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
         <span style="width:10px;height:10px;border-radius:50%;background:#f38ba8;"></span>
         <span style="width:10px;height:10px;border-radius:50%;background:#f9e2af;"></span>
         <span style="width:10px;height:10px;border-radius:50%;background:#a6e3a1;"></span>
-        <span style="flex:1;text-align:center;font-size:10px;color:#585858;font-family:monospace;">build-html</span>
+        <span style="flex:1;text-align:center;font-size:10px;color:#585858;font-family:monospace;">generate-code</span>
       </div>
       <div id="bh-terminal-log" style="padding:10px 12px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11px;line-height:1.6;max-height:220px;overflow-y:auto;min-height:60px;"></div>
       <div id="bh-progress" style="display:none;padding:0 12px 8px;">
@@ -527,6 +528,76 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
         <summary style="font-size:11px;color:#6c7086;cursor:pointer;margin-bottom:6px;">Preview CSS</summary>
         <pre id="bh-css-preview" style="background:#181825;border:1px solid #313244;border-radius:6px;padding:10px;font-size:10px;color:#a6adc8;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
       </details>
+    </div>
+  </div>
+</div>
+
+<!-- ── SETTINGS ────────────────────────── -->
+<div class="pane" id="pane-settings" style="overflow-y:auto;">
+  <div style="padding:20px 16px;">
+    <div style="font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:16px;">AI Configuration</div>
+
+    <!-- API Key (primary) -->
+    <div style="margin-bottom:16px;">
+      <label id="settings-key-label" style="display:block;font-size:11px;font-weight:600;color:#a6adc8;margin-bottom:6px;">Anthropic API Key</label>
+      <div id="settings-key-desc" style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.5;">Get your key at <a href="https://console.anthropic.com/" target="_blank" style="color:#89b4fa;text-decoration:underline;">console.anthropic.com</a></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+        <input type="password" id="settings-api-key" placeholder="sk-ant-..."
+          style="flex:1;padding:6px 8px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;" />
+        <button id="settings-key-toggle" style="padding:4px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;font-size:10px;color:#a6adc8;cursor:pointer;">Show</button>
+      </div>
+      <div id="settings-key-status" style="font-size:10px;min-height:14px;color:#6c7086;"></div>
+    </div>
+
+    <!-- Connection test -->
+    <div style="margin-bottom:16px;">
+      <button id="settings-test-btn" style="padding:8px 14px;background:#313244;border:1px solid #45475a;border-radius:6px;font-size:11px;font-weight:600;color:#cdd6f4;cursor:pointer;">Test Connection</button>
+      <span id="settings-test-status" style="font-size:10px;margin-left:8px;"></span>
+    </div>
+
+    <!-- Custom Proxy -->
+    <details id="settings-proxy-details" style="margin-top:16px;">
+      <summary style="font-size:11px;font-weight:600;color:#6c7086;cursor:pointer;margin-bottom:8px;">Advanced: Custom Proxy URL</summary>
+      <div style="padding-top:8px;">
+        <div style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.5;">Route API calls through your own proxy instead of calling Anthropic directly. <a href="https://github.com/wow-kp/figma-dev-ready/blob/main/docs/proxy-setup.md" target="_blank" style="color:#89b4fa;text-decoration:underline;">How to set up a proxy</a></div>
+        <div id="settings-proxy-builtin-notice" style="display:none;font-size:10px;color:#a6e3a1;margin-bottom:6px;line-height:1.5;padding:6px 8px;background:#181825;border:1px solid #313244;border-radius:6px;">&#10003; Pre-configured proxy baked into this build. You can override it below.</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+          <input type="text" id="settings-proxy-url" placeholder="https://your-proxy.workers.dev"
+            style="flex:1;padding:6px 8px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;" />
+          <button id="settings-proxy-check" style="padding:4px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;font-size:10px;color:#a6adc8;cursor:pointer;">Check</button>
+        </div>
+        <div id="settings-proxy-status" style="font-size:10px;min-height:14px;color:#6c7086;"></div>
+      </div>
+    </details>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #313244;text-align:center;">
+      <a href="#" id="settings-show-welcome" style="font-size:10px;color:#6c7086;text-decoration:underline;cursor:pointer;">Show welcome screen</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── WELCOME OVERLAY ────────────────── -->
+<div id="welcome-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:1000;overflow-y:auto;">
+  <div style="max-width:400px;margin:40px auto;padding:32px 28px;background:#1e1e2e;border:1px solid #313244;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:32px;margin-bottom:8px;">🛠</div>
+      <div style="font-size:16px;font-weight:700;color:#cdd6f4;margin-bottom:6px;">Welcome to Dev-Ready Tools</div>
+      <div style="font-size:12px;color:#6c7086;line-height:1.5;">Prepare Figma designs for development with audit, auto-fixes, HTML/CSS export, and AI-powered enhancements.</div>
+    </div>
+
+    <div style="background:#181825;border:1px solid #313244;border-radius:10px;padding:16px;margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:600;color:#a6adc8;margin-bottom:10px;">AI Setup (optional)</div>
+      <div id="welcome-proxy-notice" style="display:none;font-size:10px;line-height:1.5;padding:8px 10px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;margin-bottom:10px;">
+        <span id="welcome-proxy-icon" style="color:#6c7086;">&#8635;</span> <span id="welcome-proxy-text" style="color:#6c7086;">Checking proxy...</span>
+      </div>
+      <div style="font-size:10px;color:#6c7086;margin-bottom:8px;line-height:1.5;">Enter your Anthropic API key to enable AI-powered features like smart naming, HTML refinement, and audit review.</div>
+      <input type="password" id="welcome-api-key" placeholder="sk-ant-..."
+        style="width:100%;padding:8px 10px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;box-sizing:border-box;margin-bottom:6px;" />
+      <div style="font-size:10px;color:#6c7086;line-height:1.5;">Get your key at <a href="https://console.anthropic.com/" target="_blank" style="color:#89b4fa;text-decoration:underline;">console.anthropic.com</a></div>
+    </div>
+
+    <button id="welcome-start-btn" style="width:100%;padding:12px 16px;background:#89b4fa;color:#1e1e2e;font-size:13px;font-weight:700;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;">Get Started</button>
+    <div style="text-align:center;">
+      <a href="#" id="welcome-skip" style="font-size:11px;color:#6c7086;text-decoration:underline;">Skip — set up later in Settings</a>
     </div>
   </div>
 </div>
@@ -589,6 +660,134 @@ function updateBuildHtmlTab() {
 // Workflow is the first tab — load it immediately on plugin open
 parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
 
+// ── Settings tab ─────────────────────────────────────────────────────────────
+document.getElementById("settings-key-toggle").addEventListener("click", function() {
+  var inp = document.getElementById("settings-api-key");
+  if (inp.type === "password") { inp.type = "text"; this.textContent = "Hide"; }
+  else { inp.type = "password"; this.textContent = "Show"; }
+});
+
+document.getElementById("settings-api-key").addEventListener("change", function() {
+  var key = this.value.trim();
+  _bhApiKey = key;
+  var status = document.getElementById("settings-key-status");
+  if (key && key.indexOf("sk-ant-") === 0) {
+    status.textContent = "Key set.";
+    status.style.color = "#a6e3a1";
+  } else if (key) {
+    status.textContent = "Key set (does not look like a standard Anthropic key).";
+    status.style.color = "#fab387";
+  } else {
+    status.textContent = "";
+  }
+  // Persist to clientStorage
+  bhSaveAiConfig();
+});
+
+document.getElementById("settings-proxy-url").addEventListener("change", function() {
+  var url = this.value.trim();
+  if (url) _bhProxyUrl = url;
+  bhSaveAiConfig();
+});
+
+document.getElementById("settings-proxy-check").addEventListener("click", function() {
+  var url = document.getElementById("settings-proxy-url").value.trim();
+  var status = document.getElementById("settings-proxy-status");
+  if (!url) { status.textContent = "Enter a URL first."; status.style.color = "#fab387"; return; }
+  status.textContent = "Checking…"; status.style.color = "#6c7086";
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", url + "/health", true);
+  xhr.timeout = 5000;
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      _bhProxyUrl = url; _bhProxyHealthy = true; _bhProxyChecked = true;
+      status.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Proxy healthy.";
+      bhUpdateProxyUI(); bhUpdateAiModeUI();
+    } else {
+      _bhProxyHealthy = false; _bhProxyChecked = true;
+      status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Proxy returned " + xhr.status;
+      bhUpdateProxyUI(); bhUpdateAiModeUI();
+    }
+  };
+  xhr.onerror = function() { _bhProxyHealthy = false; _bhProxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Could not reach proxy."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
+  xhr.ontimeout = function() { _bhProxyHealthy = false; _bhProxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Proxy timed out."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
+  xhr.send();
+});
+
+document.getElementById("settings-test-btn").addEventListener("click", function() {
+  var btn = this;
+  var status = document.getElementById("settings-test-status");
+  var proxyUrlVal = document.getElementById("settings-proxy-url").value.trim();
+  var useProxy = proxyUrlVal && proxyUrlVal.indexOf("YOUR_SUBDOMAIN") === -1 && proxyUrlVal.length > 10;
+  if (!_bhApiKey && !useProxy) { status.innerHTML = "<span style='color:#fab387;'>Enter an API key or configure a proxy first.</span>"; return; }
+  btn.disabled = true; btn.textContent = "Testing…";
+  status.textContent = "";
+
+  var url = useProxy ? proxyUrlVal + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  var headers = { "Content-Type": "application/json" };
+  if (useProxy) {
+    headers["X-Figma-User-Id"] = _figmaUserId;
+    headers["X-Figma-User-Name"] = _figmaUserName;
+    if (_bhApiKey) headers["x-api-key"] = _bhApiKey;
+  } else {
+    headers["x-api-key"] = _bhApiKey;
+    headers["anthropic-version"] = "2025-04-15";
+    headers["anthropic-dangerous-direct-browser-access"] = "true";
+  }
+
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", url, true);
+  for (var h in headers) xhr.setRequestHeader(h, headers[h]);
+  xhr.timeout = 15000;
+  xhr.onload = function() {
+    btn.disabled = false; btn.textContent = "Test Connection";
+    if (xhr.status === 200) {
+      status.innerHTML = "<span style='color:#a6e3a1;'>&#10003; Connected successfully.</span>";
+    } else if (xhr.status === 401) {
+      status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Invalid API key.</span>";
+    } else {
+      status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Error " + xhr.status + "</span>";
+    }
+  };
+  xhr.onerror = function() { btn.disabled = false; btn.textContent = "Test Connection"; status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Network error.</span>"; };
+  xhr.ontimeout = function() { btn.disabled = false; btn.textContent = "Test Connection"; status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Timed out.</span>"; };
+  xhr.send(JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] }));
+});
+
+function bhSaveAiConfig() {
+  var config = {};
+  if (_bhApiKey) config.apiKey = _bhApiKey;
+  var proxyUrl = document.getElementById("settings-proxy-url").value.trim();
+  if (proxyUrl) config.proxyUrl = proxyUrl;
+  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: config } }, "*");
+}
+
+// ── Welcome overlay ──────────────────────────────────────────────────────────
+document.getElementById("welcome-start-btn").addEventListener("click", function() {
+  var key = document.getElementById("welcome-api-key").value.trim();
+  if (key) {
+    _bhApiKey = key;
+    var inp = document.getElementById("settings-api-key");
+    if (inp) inp.value = key;
+  }
+  bhSaveAiConfig();
+  // Mark welcome as done
+  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: { apiKey: _bhApiKey || "", welcomeDone: true } } }, "*");
+  document.getElementById("welcome-overlay").style.display = "none";
+});
+
+document.getElementById("welcome-skip").addEventListener("click", function(e) {
+  e.preventDefault();
+  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: { welcomeDone: true } } }, "*");
+  document.getElementById("welcome-overlay").style.display = "none";
+});
+
+document.getElementById("settings-show-welcome").addEventListener("click", function(e) {
+  e.preventDefault();
+  document.getElementById("welcome-overlay").style.display = "";
+  if (bhHasBuiltinProxy && bhHasBuiltinProxy()) bhCheckProxyHealth();
+});
+
 // ── Audit ──────────────────────────────────────────────────────────────────────
 document.getElementById("run-btn").addEventListener("click",function(){
   var btn=document.getElementById("run-btn"); btn.disabled=true; btn.textContent="Scanning…";
@@ -645,7 +844,7 @@ function makeIssueRow(key, issue, fixable) {
     btn.addEventListener("click", doRename);
     input.addEventListener("keydown", function(e){ if(e.key==="Enter") doRename(); });
     // AI suggest button (single node)
-    if (key === "naming" && (_bhProxyHealthy || _bhApiKey)) {
+    if (key === "naming" && _bhApiKey) {
       var aiBtn = document.createElement("button");
       aiBtn.className = "action-btn ai-name-btn";
       aiBtn.textContent = "✨";
@@ -858,14 +1057,14 @@ function renderAudit(data){
     var aiWrap = document.createElement("div"); aiWrap.className = "ai-review-wrap";
     var aiBtn = document.createElement("button"); aiBtn.className = "ai-review-btn";
     aiBtn.innerHTML = "✨ AI Review — Get a prioritized action plan";
-    var aiHasAccess = (_bhProxyHealthy || _bhApiKey);
-    if (!aiHasAccess) { aiBtn.disabled = true; aiBtn.title = "Set up AI access in Build HTML tab first"; aiBtn.innerHTML = "✨ AI Review — requires API key or proxy"; }
+    var aiHasAccess = _bhApiKey;
+    if (!aiHasAccess) { aiBtn.disabled = true; aiBtn.title = "Set up AI access in Settings tab first"; aiBtn.innerHTML = "✨ AI Review — requires API key or proxy"; }
     var aiPanel = document.createElement("div"); aiPanel.className = "ai-review-panel"; aiPanel.style.display = "none";
     aiBtn.addEventListener("click", function(){
       aiBtn.disabled = true; aiBtn.innerHTML = "✨ Analyzing…";
       aiPanel.style.display = "block";
       aiPanel.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
-      bhCallAuditAI(data, function(err, text){
+      bhCallWithRetry(function(retryCb) { bhCallAuditAI(data, retryCb); }, 2, function(err, text){
         aiBtn.style.display = "none";
         if (err) {
           aiPanel.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
@@ -917,7 +1116,7 @@ function renderAudit(data){
           header.appendChild(fixAllBtn);
         }
         // AI Name All button for naming checks
-        if (key === "naming" && (_bhProxyHealthy || _bhApiKey)) {
+        if (key === "naming" && _bhApiKey) {
           var aiNameAllBtn = document.createElement("button");
           aiNameAllBtn.className = "action-btn ai-name-all-btn";
           aiNameAllBtn.textContent = "✨ AI Name All (" + count + ")";
@@ -3445,7 +3644,7 @@ function renderStep4(container) {
               chdr.appendChild(fixAllBtnWf);
             }
             // AI Name All button for naming checks (workflow tab)
-            if (key === "naming" && (_bhProxyHealthy || _bhApiKey)) {
+            if (key === "naming" && _bhApiKey) {
               var aiNameAllBtnWf = document.createElement("button");
               aiNameAllBtnWf.className = "action-btn ai-name-all-btn";
               aiNameAllBtnWf.textContent = "✨ AI Name All (" + count + ")";
@@ -3495,14 +3694,14 @@ function renderStep4(container) {
         var aiWrapWf = document.createElement("div"); aiWrapWf.className = "ai-review-wrap";
         var aiBtnWf = document.createElement("button"); aiBtnWf.className = "ai-review-btn";
         aiBtnWf.innerHTML = "✨ AI Review — Get a prioritized action plan";
-        var aiHasAccessWf = (_bhProxyHealthy || _bhApiKey);
-        if (!aiHasAccessWf) { aiBtnWf.disabled = true; aiBtnWf.title = "Set up AI access in Build HTML tab first"; aiBtnWf.innerHTML = "✨ AI Review — requires API key or proxy"; }
+        var aiHasAccessWf = _bhApiKey;
+        if (!aiHasAccessWf) { aiBtnWf.disabled = true; aiBtnWf.title = "Set up AI access in Settings tab first"; aiBtnWf.innerHTML = "✨ AI Review — requires API key or proxy"; }
         var aiPanelWf = document.createElement("div"); aiPanelWf.className = "ai-review-panel"; aiPanelWf.style.display = "none";
         aiBtnWf.addEventListener("click", function(){
           aiBtnWf.disabled = true; aiBtnWf.innerHTML = "✨ Analyzing…";
           aiPanelWf.style.display = "block";
           aiPanelWf.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
-          bhCallAuditAI(wfAuditData, function(err, text){
+          bhCallWithRetry(function(retryCb) { bhCallAuditAI(wfAuditData, retryCb); }, 2, function(err, text){
             aiBtnWf.style.display = "none";
             if (err) {
               aiPanelWf.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
@@ -3985,7 +4184,7 @@ window.onmessage=function(event){
       _aiNamingPendingBatch = false;
       return;
     }
-    bhCallNamingAI(nodes, function(err, names) {
+    bhCallWithRetry(function(retryCb) { bhCallNamingAI(nodes, retryCb); }, 2, function(err, names) {
       if (err) {
         // Reset UI state on error
         if (_aiNamingPendingSingle) {
@@ -4170,7 +4369,7 @@ window.onmessage=function(event){
       var bar = document.getElementById("bh-progress-bar");
       if (bar) bar.style.width = "90%";
       bhTermLog("Sending to Claude AI for enhancement…", "info");
-      bhCallClaudeAPI(msg.htmlFiles, msg.css, msg.screenshots || [], function(err, refined) {
+      bhEnhanceWithAI(msg.htmlFiles, msg.css, msg.screenshots || [], function(err, refined) {
         var progR = document.getElementById("bh-progress");
         if (progR) progR.style.display = "none";
         if (err) {
@@ -4209,7 +4408,26 @@ window.onmessage=function(event){
     _figmaUserId = msg.userId || "";
     _figmaUserName = msg.userName || "";
   }
-  // API key is session-only — no api-key-loaded handler needed
+  if(msg.type==="ai-config-loaded"){
+    var cfg = msg.config || {};
+    if (cfg.apiKey) {
+      _bhApiKey = cfg.apiKey;
+      var settingsInp = document.getElementById("settings-api-key");
+      if (settingsInp) settingsInp.value = cfg.apiKey;
+      var settingsStatus = document.getElementById("settings-key-status");
+      if (settingsStatus) { settingsStatus.textContent = "Key loaded."; settingsStatus.style.color = "#a6e3a1"; }
+    }
+    if (cfg.proxyUrl) {
+      _bhProxyUrl = cfg.proxyUrl;
+      var proxyInp = document.getElementById("settings-proxy-url");
+      if (proxyInp) proxyInp.value = cfg.proxyUrl;
+    }
+    // Show welcome overlay if first time
+    if (!cfg.welcomeDone) {
+      document.getElementById("welcome-overlay").style.display = "";
+    }
+    bhUpdateAiModeUI();
+  }
 };
 
 // ── Terminal log helper ──
@@ -4250,35 +4468,105 @@ var _figmaUserId = "";
 var _figmaUserName = "";
 var _bhApiKey = "";
 
-// Proxy URL — update this after deploying the Cloudflare Worker
-// Set to empty string "" to disable proxy mode (API key only)
-var _bhProxyUrl = "https://figma-dev-ready-proxy.wow-kp.workers.dev";
+// Proxy URL — set via build (proxy-config.json), Settings tab, or clientStorage
+var _bhProxyUrl = "";
+var _bhBuiltinProxyUrl = _bhProxyUrl; // Remember the build-time value
 
 var _bhProxyHealthy = false;
 var _bhProxyChecked = false;
 
 function bhHasProxy() {
-  return _bhProxyUrl && _bhProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhProxyUrl.indexOf("workers.dev") !== -1;
+  return _bhProxyUrl && _bhProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhProxyUrl.length > 10;
+}
+
+function bhHasBuiltinProxy() {
+  return _bhBuiltinProxyUrl && _bhBuiltinProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhBuiltinProxyUrl.length > 10;
+}
+
+function bhUpdateProxyUI() {
+  var proxyHealthy = bhHasProxy() && _bhProxyHealthy;
+
+  // Settings tab: update API key label/description based on proxy status
+  var keyLabel = document.getElementById("settings-key-label");
+  var keyDesc = document.getElementById("settings-key-desc");
+  if (proxyHealthy) {
+    if (keyLabel) keyLabel.textContent = "Anthropic API Key (optional)";
+    if (keyDesc) keyDesc.innerHTML = "Proxy is active — API key is optional. Enter one to use your own credits instead of the proxy's server key. Get your key at <a href='https://console.anthropic.com/' target='_blank' style='color:#89b4fa;text-decoration:underline;'>console.anthropic.com</a>";
+  } else {
+    if (keyLabel) keyLabel.textContent = "Anthropic API Key";
+    if (keyDesc) keyDesc.innerHTML = "Get your key at <a href='https://console.anthropic.com/' target='_blank' style='color:#89b4fa;text-decoration:underline;'>console.anthropic.com</a>";
+  }
+
+  // Settings tab: show built-in notice and pre-fill URL if build-time proxy exists
+  var notice = document.getElementById("settings-proxy-builtin-notice");
+  var proxyDetails = document.getElementById("settings-proxy-details");
+  var proxyInp = document.getElementById("settings-proxy-url");
+  if (bhHasBuiltinProxy()) {
+    if (proxyDetails) proxyDetails.open = true;
+    if (notice) {
+      notice.style.display = "";
+      if (_bhProxyHealthy) {
+        notice.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Pre-configured proxy is healthy. You can override it below.";
+        notice.style.color = "#a6e3a1";
+      } else if (_bhProxyChecked) {
+        notice.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Pre-configured proxy is unreachable. Your API key will be used directly.";
+        notice.style.color = "#f38ba8";
+      } else {
+        notice.innerHTML = "&#8635; Checking pre-configured proxy...";
+        notice.style.color = "#6c7086";
+      }
+    }
+    // Pre-fill the input if user hasn't overridden it
+    if (proxyInp && !proxyInp.value) proxyInp.value = _bhProxyUrl;
+  } else if (bhHasProxy() && proxyInp) {
+    // User-entered proxy (from clientStorage) — also update notice area
+    if (proxyDetails) proxyDetails.open = true;
+  }
+
+  // Welcome screen proxy notice
+  var welcomeNotice = document.getElementById("welcome-proxy-notice");
+  var welcomeIcon = document.getElementById("welcome-proxy-icon");
+  var welcomeText = document.getElementById("welcome-proxy-text");
+  if (bhHasProxy() && welcomeNotice) {
+    welcomeNotice.style.display = "";
+    if (_bhProxyHealthy) {
+      welcomeIcon.innerHTML = "&#10003;"; welcomeIcon.style.color = "#a6e3a1";
+      welcomeText.innerHTML = "Team proxy connected. API key is optional — enter one to use your own credits, or skip to use the shared proxy.";
+      welcomeText.style.color = "#a6e3a1";
+    } else if (_bhProxyChecked) {
+      welcomeIcon.innerHTML = "&#10007;"; welcomeIcon.style.color = "#f38ba8";
+      welcomeText.innerHTML = "Team proxy is unreachable. Enter your own API key below.";
+      welcomeText.style.color = "#f38ba8";
+    } else {
+      welcomeIcon.innerHTML = "&#8635;"; welcomeIcon.style.color = "#6c7086";
+      welcomeText.innerHTML = "Checking team proxy...";
+      welcomeText.style.color = "#6c7086";
+    }
+  }
 }
 
 function bhCheckProxyHealth() {
-  if (!bhHasProxy()) { _bhProxyChecked = true; _bhProxyHealthy = false; bhUpdateAiModeUI(); return; }
+  if (!bhHasProxy()) { _bhProxyChecked = true; _bhProxyHealthy = false; bhUpdateProxyUI(); bhUpdateAiModeUI(); return; }
+  bhUpdateProxyUI(); // Show "checking..." state
   var xhr = new XMLHttpRequest();
   xhr.open("GET", _bhProxyUrl + "/health", true);
   xhr.timeout = 5000;
   xhr.onload = function() {
     _bhProxyChecked = true;
     _bhProxyHealthy = (xhr.status === 200);
+    bhUpdateProxyUI();
     bhUpdateAiModeUI();
   };
   xhr.onerror = function() {
     _bhProxyChecked = true;
     _bhProxyHealthy = false;
+    bhUpdateProxyUI();
     bhUpdateAiModeUI();
   };
   xhr.ontimeout = function() {
     _bhProxyChecked = true;
     _bhProxyHealthy = false;
+    bhUpdateProxyUI();
     bhUpdateAiModeUI();
   };
   xhr.send();
@@ -4292,67 +4580,54 @@ function bhUpdateAiModeUI() {
   if (details) details.style.display = checked ? "" : "none";
   if (!checked) return;
 
-  if (bhHasProxy() && _bhProxyHealthy) {
-    // Proxy available and healthy
-    if (keySection) keySection.style.display = "none";
-    if (modeInfo) { modeInfo.style.display = ""; modeInfo.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Using secure proxy. <a href='#' id='bh-switch-to-key' style='color:#89b4fa;text-decoration:underline;'>Use own API key instead</a>"; }
-    var switchLink = document.getElementById("bh-switch-to-key");
-    if (switchLink) {
-      switchLink.addEventListener("click", function(e) {
-        e.preventDefault();
-        if (keySection) keySection.style.display = "";
-        // API key is session-only — no persistence
-        if (modeInfo) modeInfo.innerHTML = "API key mode. <a href='#' id='bh-switch-to-proxy' style='color:#89b4fa;text-decoration:underline;'>Switch back to proxy</a>";
-        var backLink = document.getElementById("bh-switch-to-proxy");
-        if (backLink) backLink.addEventListener("click", function(ev) { ev.preventDefault(); _bhApiKey = ""; var inp = document.getElementById("bh-api-key"); if (inp) inp.value = ""; bhUpdateAiModeUI(); });
-      });
-    }
-  } else if (bhHasProxy() && !_bhProxyChecked) {
-    // Still checking proxy
-    if (keySection) keySection.style.display = "none";
-    if (modeInfo) { modeInfo.style.display = ""; modeInfo.textContent = "Checking proxy connection…"; modeInfo.style.color = "#6c7086"; }
-  } else if (bhHasProxy() && !_bhProxyHealthy) {
-    // Proxy configured but down — show warning and API key input
-    if (keySection) keySection.style.display = "";
-    if (modeInfo) { modeInfo.style.display = ""; modeInfo.innerHTML = "<span style='color:#fab387;'>&#9888;</span> <span style='color:#fab387;'>Proxy unavailable.</span> Enter your own API key to use AI enhancement."; }
+  // Hide the old inline key section — config is now in Settings tab
+  if (keySection) keySection.style.display = "none";
+
+  var hasKey = !!_bhApiKey;
+  var hasProxy = bhHasProxy() && _bhProxyHealthy;
+  var statusHtml = "";
+  if (hasKey && hasProxy) {
+    statusHtml = "<span style='color:#a6e3a1;'>&#10003;</span> AI ready via proxy. <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Settings</a>";
+  } else if (hasKey) {
+    statusHtml = "<span style='color:#a6e3a1;'>&#10003;</span> AI ready. <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Settings</a>";
+  } else if (hasProxy) {
+    statusHtml = "<span style='color:#a6e3a1;'>&#10003;</span> AI ready via proxy (no personal key). <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Settings</a>";
   } else {
-    // No proxy configured — API key required
-    if (keySection) keySection.style.display = "";
-    if (modeInfo) modeInfo.style.display = "none";
+    statusHtml = "No API key set. <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Configure in Settings</a>";
   }
+  if (modeInfo) { modeInfo.style.display = ""; modeInfo.innerHTML = statusHtml; }
+  var gotoLink = document.getElementById("bh-goto-settings");
+  if (gotoLink) gotoLink.addEventListener("click", function(e) {
+    e.preventDefault();
+    document.querySelectorAll(".tab-btn").forEach(function(b){b.classList.remove("active");});
+    document.querySelectorAll(".pane").forEach(function(p){p.classList.remove("active");});
+    document.querySelector('.tab-btn[data-tab="settings"]').classList.add("active");
+    document.getElementById("pane-settings").classList.add("active");
+  });
 }
 
 document.getElementById("bh-ai-enhance").addEventListener("change", function() {
   bhUpdateAiModeUI();
-  if (this.checked && !bhHasProxy() && !_bhApiKey) {
-    // API key is session-only — no persistence
-  }
 });
 
-document.getElementById("bh-key-toggle").addEventListener("click", function() {
-  var inp = document.getElementById("bh-api-key");
-  if (inp.type === "password") { inp.type = "text"; this.textContent = "Hide"; }
-  else { inp.type = "password"; this.textContent = "Show"; }
-});
-
-document.getElementById("bh-api-key").addEventListener("change", function() {
-  var key = this.value.trim();
-  _bhApiKey = key;
-  // Session-only — not persisted to client storage for security
-  var status = document.getElementById("bh-key-status");
-  if (key && key.indexOf("sk-ant-") === 0) {
-    status.textContent = "Key set for this session.";
-    status.style.color = "#a6e3a1";
-  } else if (key) {
-    status.textContent = "Key set (does not look like a standard Anthropic key).";
-    status.style.color = "#fab387";
-  } else {
-    status.textContent = "";
-  }
-});
+// Old bh-key-toggle and bh-api-key handlers removed — AI config now in Settings tab
 
 // Initialize AI mode — check proxy health, then update UI
 setTimeout(function() { bhCheckProxyHealth(); }, 100);
+
+// Show welcome overlay if no ai-config was loaded after a brief delay
+var _aiConfigReceived = false;
+// Patch: track if ai-config-loaded was received
+var _origOnMsg = window.onmessage;
+window.addEventListener("message", function(ev) {
+  var msg = ev.data && ev.data.pluginMessage;
+  if (msg && msg.type === "ai-config-loaded") _aiConfigReceived = true;
+});
+setTimeout(function() {
+  if (!_aiConfigReceived && !_bhApiKey) {
+    document.getElementById("welcome-overlay").style.display = "";
+  }
+}, 500);
 
 function bhBuildDesignContext() {
   var ctx = "## Design System Context\n";
@@ -4399,17 +4674,151 @@ function bhBuildDesignContext() {
     if (wfPromoSections[sk]) activeSections.push(sk);
   }
   if (activeSections.length) ctx += "- Active sections: " + activeSections.join(", ") + "\n";
-  // Utility classes
-  ctx += "- Utility CSS classes are included (Tailwind-inspired): layout (.flex, .flex-col, .items-center, .justify-center, etc.), spacing (.gap-{n}, .p-{n}, .px-{n}, .py-{n}), typography (.text-{size}, .font-{weight}, .leading-{name}), colors (.bg-{name}, .text-{name}), radius (.rounded-{name})\n";
-  ctx += "- Component classes hold only unique properties not covered by utilities. Prefer utility classes where possible.\n";
+  // Utility classes — enumerate actual available classes
+  ctx += "- Layout utilities: .flex, .flex-col, .flex-row, .flex-wrap, .items-center, .items-start, .items-end, .items-stretch, .justify-center, .justify-between, .justify-start, .justify-end, .relative, .absolute, .hidden, .overflow-hidden, .w-full, .h-full, .min-h-screen\n";
+  // Spacing utilities from actual spacing scale
+  if (wfSpacing && wfSpacing.length) {
+    var spNames = [];
+    for (var spu = 0; spu < wfSpacing.length; spu++) {
+      var sp = wfSpacing[spu];
+      spNames.push(".gap-" + sp.name + " (" + sp.value + "px)");
+      spNames.push(".p-" + sp.name);
+      spNames.push(".px-" + sp.name);
+      spNames.push(".py-" + sp.name);
+    }
+    ctx += "- Spacing utilities: " + spNames.join(", ") + "\n";
+  }
+  // Typography utilities from text styles
+  if (wfTextStyles && wfTextStyles.length) {
+    var tyNames = [];
+    for (var tyu = 0; tyu < wfTextStyles.length; tyu++) {
+      var ts2 = wfTextStyles[tyu];
+      tyNames.push(".text-" + ts2.name.toLowerCase().replace(/\s+/g, "-") + " (" + ts2.fontSize + "px/" + ts2.fontWeight + ")");
+    }
+    ctx += "- Typography utilities: " + tyNames.join(", ") + "\n";
+  }
+  // Color utilities from custom colors
+  if (wfCustomColors && wfCustomColors.length) {
+    var colNames = [];
+    for (var cu = 0; cu < wfCustomColors.length; cu++) {
+      var cc = wfCustomColors[cu];
+      var slug = cc.name.toLowerCase().replace(/[\s/]+/g, "-");
+      colNames.push(".bg-" + slug + " (" + cc.hex + ")");
+      colNames.push(".text-" + slug);
+    }
+    ctx += "- Color utilities: " + colNames.join(", ") + "\n";
+  }
+  // CSS custom properties (variables) — enumerate what's defined
+  var cssVars = [];
+  if (wfCustomColors && wfCustomColors.length) {
+    for (var cvi = 0; cvi < wfCustomColors.length; cvi++) {
+      var cv = wfCustomColors[cvi];
+      cssVars.push("--color-" + cv.name.toLowerCase().replace(/[\s/]+/g, "-") + ": " + cv.hex);
+    }
+  }
+  if (wfSpacing && wfSpacing.length) {
+    for (var svi = 0; svi < wfSpacing.length; svi++) {
+      cssVars.push("--spacing-" + wfSpacing[svi].name + ": " + wfSpacing[svi].value + "px");
+    }
+  }
+  if (cssVars.length) ctx += "- CSS custom properties: " + cssVars.join(", ") + "\n";
+  ctx += "- Component classes hold only unique properties not covered by utilities. If a component CSS property duplicates a utility, remove it from component CSS and ensure the utility class is on the element.\n";
   return ctx;
+}
+
+// ── Retry helper for transient API errors ────────────────────────────────────
+function bhIsRetryableError(errMsg) {
+  if (!errMsg) return false;
+  return errMsg.indexOf("429") !== -1 || errMsg.indexOf("529") !== -1
+    || errMsg.indexOf("Network error") !== -1 || errMsg.indexOf("overloaded") !== -1;
+}
+
+function bhCallWithRetry(callFn, maxRetries, callback) {
+  var attempt = 0;
+  function tryCall() {
+    try {
+      callFn(function(err, result) {
+        if (err && attempt < maxRetries && bhIsRetryableError(err)) {
+          attempt++;
+          var delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+          bhTermLog("[retry] Attempt " + (attempt + 1) + " after " + delay + "ms — " + err, "warn");
+          setTimeout(tryCall, delay);
+        } else {
+          callback(err, result);
+        }
+      });
+    } catch(e) {
+      bhTermLog("AI call crashed: " + (e.message || e), "error");
+      callback("Internal error: " + (e.message || e), null);
+    }
+  }
+  tryCall();
+}
+
+// Per-frame processing: splits large designs into individual AI requests
+function bhEnhanceWithAI(htmlFiles, css, screenshots, callback, pageType) {
+  // Estimate total size
+  var totalChars = (css || "").length;
+  for (var i = 0; i < htmlFiles.length; i++) totalChars += htmlFiles[i].content.length;
+
+  // If small enough or single file, process as one request
+  if (totalChars <= 32000 || htmlFiles.length <= 1) {
+    bhCallWithRetry(function(retryCb) {
+      bhCallClaudeAPI(htmlFiles, css, screenshots, retryCb, pageType);
+    }, 2, callback);
+    return;
+  }
+
+  // Large design: process each frame individually
+  bhTermLog("Large design detected (" + htmlFiles.length + " frames, ~" + Math.round(totalChars / 1000) + "k chars) — processing per-frame", "info");
+  var refinedHtmlFiles = [];
+  var refinedCss = null;
+  var frameIndex = 0;
+  var frameErrors = [];
+
+  function processNextFrame() {
+    if (frameIndex >= htmlFiles.length) {
+      // All frames done — merge results
+      if (refinedHtmlFiles.length === 0) {
+        callback("All frame refinements failed: " + frameErrors.join("; "), null);
+        return;
+      }
+      callback(null, { htmlFiles: refinedHtmlFiles, css: refinedCss || css });
+      return;
+    }
+    var fi = frameIndex++;
+    var frameFile = [htmlFiles[fi]];
+    // Find matching screenshot
+    var frameSS = [];
+    if (screenshots) {
+      for (var si = 0; si < screenshots.length; si++) {
+        if (screenshots[si].name === htmlFiles[fi].name.replace(".html", "")) frameSS.push(screenshots[si]);
+      }
+    }
+    bhTermLog("Enhancing frame " + (fi + 1) + "/" + htmlFiles.length + ": " + htmlFiles[fi].name, "info");
+    bhCallWithRetry(function(retryCb) {
+      bhCallClaudeAPI(frameFile, css, frameSS, retryCb, pageType);
+    }, 2, function(err, result) {
+      if (err) {
+        bhTermLog("Frame " + htmlFiles[fi].name + " failed: " + err, "warn");
+        frameErrors.push(htmlFiles[fi].name + ": " + err);
+        // Use original HTML for this frame
+        refinedHtmlFiles.push(htmlFiles[fi]);
+      } else {
+        if (result.htmlFiles && result.htmlFiles.length) refinedHtmlFiles.push(result.htmlFiles[0]);
+        // Take CSS from first successful frame refinement
+        if (!refinedCss && result.css) refinedCss = result.css;
+      }
+      processNextFrame();
+    });
+  }
+  processNextFrame();
 }
 
 function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
   pageType = pageType || "promo";
-  var useProxy = _bhProxyHealthy && !_bhApiKey;
-  if (useProxy && !_figmaUserId) { callback("Unable to identify Figma user. Please reload the plugin.", null); return; }
-  if (!useProxy && !_bhApiKey) { callback("No API key configured. Enter your Anthropic API key to use AI enhancement.", null); return; }
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var htmlSummary = "";
   for (var i = 0; i < htmlFiles.length; i++) {
@@ -4454,7 +4863,6 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
     for (var si = 0; si < screenshots.length; si++) {
       var sc = screenshots[si];
       if (!sc.bytes || !sc.bytes.length) continue;
-      // Convert byte array to base64
       var binary = "";
       var bytes = sc.bytes;
       for (var bi = 0; bi < bytes.length; bi++) binary += String.fromCharCode(bytes[bi]);
@@ -4467,66 +4875,199 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
     userContent = userTextContent;
   }
 
-  var body = JSON.stringify({
-    model: "claude-sonnet-4-20250514",
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  var reqHeaders = { "Content-Type": "application/json" };
+  if (_bhApiKey) reqHeaders["x-api-key"] = _bhApiKey;
+  if (useProxy) {
+    reqHeaders["X-Figma-User-Id"] = _figmaUserId;
+    reqHeaders["X-Figma-User-Name"] = _figmaUserName;
+  } else {
+    reqHeaders["anthropic-version"] = "2025-04-15";
+    reqHeaders["anthropic-dangerous-direct-browser-access"] = "true";
+  }
+
+  var msgPayload = {
+    model: "claude-sonnet-4-6",
     max_tokens: 16384,
+    thinking: { type: "enabled", budget_tokens: 10000 },
     system: systemPrompt,
     messages: [{ role: "user", content: userContent }]
-  });
+  };
 
-  var xhr = new XMLHttpRequest();
-  if (useProxy) {
-    xhr.open("POST", _bhProxyUrl + "/v1/messages", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
-    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
-  } else {
-    xhr.open("POST", "https://api.anthropic.com/v1/messages", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.setRequestHeader("x-api-key", _bhApiKey);
-    xhr.setRequestHeader("anthropic-version", "2023-06-01");
-    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  // Helper to strip markdown fences and parse JSON
+  function parseResponseText(text) {
+    text = text.replace(/^```json\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    return JSON.parse(text);
   }
-  xhr.onload = function() {
-    if (xhr.status === 200) {
+
+  // Helper to build error message from HTTP status
+  function buildErrorMsg(status, bodyText) {
+    if (status === 401) return "Authentication failed (401). Check your API key in Settings.";
+    if (status === 403) return "User not authorized for AI enhancement (403).";
+    if (status === 429) return "Rate limit exceeded (429). Please wait and try again.";
+    if (status === 529) return "AI service is overloaded (529). Please try again later.";
+    var errMsg = "API error (" + status + ")";
+    try { var eb = JSON.parse(bodyText); errMsg += ": " + (eb.error && eb.error.message || "Unknown error"); } catch(e) { /* no extra detail */ }
+    return errMsg;
+  }
+
+  // Helper to extract text and thinking content from SSE stream data
+  function parseSSEResponse(sseText) {
+    var fullText = "";
+    var thinkingText = "";
+    var lines = sseText.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.indexOf("data: ") !== 0) continue;
+      var data = line.substring(6);
+      if (data === "[DONE]") continue;
       try {
-        var resp = JSON.parse(xhr.responseText);
-        var text = "";
-        for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        var evt = JSON.parse(data);
+        if (evt.type === "content_block_delta" && evt.delta) {
+          if (evt.delta.type === "text_delta" && evt.delta.text) {
+            fullText += evt.delta.text;
+          } else if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
+            thinkingText += evt.delta.thinking;
+          }
         }
-        // Strip markdown fences if Claude wrapped the JSON
-        text = text.replace(/^```json\s*/i, "").replace(/\s*```\s*$/, "").trim();
-        var refined = JSON.parse(text);
-        callback(null, refined);
-      } catch(e) {
-        callback("Failed to parse AI response: " + e.message, null);
-      }
-    } else if (xhr.status === 401) {
-      callback("Authentication failed. Please reload the plugin.", null);
-    } else if (xhr.status === 403) {
-      callback("User not authorized for AI enhancement.", null);
-    } else if (xhr.status === 429) {
-      callback("Rate limit exceeded. Please wait and try again.", null);
-    } else if (xhr.status === 529) {
-      callback("AI service is overloaded. Please try again later.", null);
-    } else {
-      try {
-        var errBody = JSON.parse(xhr.responseText);
-        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
-      } catch(e2) {
-        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
-      }
+      } catch(e) { /* skip */ }
     }
-  };
-  xhr.onerror = function() {
-    callback("Network error. Check your connection.", null);
-  };
-  xhr.timeout = 120000;
-  xhr.ontimeout = function() {
-    callback("AI request timed out (120s). The design may be too large for a single request.", null);
-  };
-  xhr.send(body);
+    return { text: fullText, thinking: thinkingText };
+  }
+
+  // ── Live terminal line helpers ──
+  var _startTime = Date.now();
+  var _liveLineEl = null;
+  var _livePhase = "waiting";
+  var _liveChars = 0;
+
+  function updateLiveLine(msg, icon, color) {
+    var log = document.getElementById("bh-terminal-log");
+    if (!log) return;
+    var elapsed = ((Date.now() - _startTime) / 1000).toFixed(0);
+    var ts = new Date();
+    var timeStr = String(ts.getHours()).padStart(2, "0") + ":" + String(ts.getMinutes()).padStart(2, "0") + ":" + String(ts.getSeconds()).padStart(2, "0");
+    var html = "<span style='color:#585858;'>" + timeStr + "</span> " +
+      "<span style='color:" + color + ";'>" + icon + "</span> " +
+      esc(msg) + " <span style='color:#585858;'>(" + elapsed + "s)</span>";
+    if (!_liveLineEl) {
+      _liveLineEl = document.createElement("div");
+      _liveLineEl.style.color = color;
+      log.appendChild(_liveLineEl);
+    }
+    _liveLineEl.style.color = color;
+    _liveLineEl.innerHTML = html;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function tickLive() {
+    if (_livePhase === "thinking") {
+      updateLiveLine("Claude is thinking…", "◐", "#cba6f7");
+    } else if (_livePhase === "generating") {
+      var label = _liveChars > 0 ? "Generating code… ~" + _liveChars + " chars" : "Generating code…";
+      updateLiveLine(label, "◑", "#89b4fa");
+    } else {
+      updateLiveLine("Processing…", "◌", "#585858");
+    }
+  }
+
+  // Start 1s ticker (only shows once thinking/generating begins)
+  var _tickInterval = setInterval(tickLive, 1000);
+
+  function finishStream(fullText, thinkingText, err) {
+    clearInterval(_tickInterval);
+    _liveLineEl = null;
+    var elapsed = ((Date.now() - _startTime) / 1000).toFixed(1);
+
+    if (err) {
+      bhTermLog(err + " (" + elapsed + "s)", "error");
+      callback(err, null);
+      return;
+    }
+
+    // Log AI reasoning summary
+    if (thinkingText) {
+      var summary = thinkingText.length > 300 ? thinkingText.substring(0, 300) : thinkingText;
+      var lastDot = summary.lastIndexOf(".");
+      if (lastDot > 100) summary = summary.substring(0, lastDot + 1);
+      else if (thinkingText.length > 300) summary += "…";
+      bhTermLog("AI reasoning: " + summary, "dim");
+    }
+    if (!fullText) {
+      bhTermLog("Empty response from AI (" + elapsed + "s)", "error");
+      callback("Empty response from AI. Try again.", null);
+      return;
+    }
+    bhTermLog("Response received — " + fullText.length + " chars in " + elapsed + "s", "done");
+    try {
+      callback(null, parseResponseText(fullText));
+    } catch(e) {
+      bhTermLog("Failed to parse AI response: " + e.message, "error");
+      callback("Failed to parse AI response: " + e.message, null);
+    }
+  }
+
+  // ── XHR streaming (ReadableStream not supported in Figma sandbox) ──
+  function sendWithXHR() {
+    var payload = Object.assign({}, msgPayload, { stream: true });
+    var body = JSON.stringify(payload);
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", apiUrl, true);
+    var hKeys = Object.keys(reqHeaders);
+    for (var hi = 0; hi < hKeys.length; hi++) xhr.setRequestHeader(hKeys[hi], reqHeaders[hKeys[hi]]);
+
+    var _lastParsedIdx = 0; // Track how far we've parsed for incremental char counting
+    xhr.onprogress = function() {
+      var raw = xhr.responseText || "";
+      if (_livePhase === "waiting" && raw.indexOf('"type":"thinking"') !== -1) {
+        _livePhase = "thinking"; _liveLineEl = null;
+      }
+      if (_livePhase !== "generating" && raw.indexOf('"type":"text"') !== -1) {
+        _livePhase = "generating"; _liveLineEl = null;
+      }
+      // Incremental char counting from new data only
+      if (_livePhase === "generating" && raw.length > _lastParsedIdx) {
+        var newData = raw.substring(_lastParsedIdx);
+        var matches = newData.match(/"text_delta"/g);
+        if (matches) {
+          // Rough count: scan for "text":"..." in new portion
+          var idx = 0;
+          while (true) {
+            idx = newData.indexOf('"text_delta"', idx);
+            if (idx === -1) break;
+            var tIdx = newData.indexOf('"text":', idx);
+            if (tIdx === -1) break;
+            var qStart = newData.indexOf('"', tIdx + 7);
+            var qEnd = qStart > -1 ? newData.indexOf('"', qStart + 1) : -1;
+            if (qStart > -1 && qEnd > qStart) _liveChars += (qEnd - qStart - 1);
+            idx = tIdx + 10;
+          }
+        }
+        _lastParsedIdx = raw.length;
+      }
+      tickLive();
+    };
+
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        var parsed = parseSSEResponse(xhr.responseText);
+        finishStream(parsed.text, parsed.thinking, null);
+      } else {
+        finishStream("", "", buildErrorMsg(xhr.status, xhr.responseText));
+      }
+    };
+    xhr.onerror = function() {
+      finishStream("", "", "Network error. Check your connection and API key.");
+    };
+    xhr.timeout = 180000;
+    xhr.ontimeout = function() {
+      finishStream("", "", "AI request timed out (180s). The design may be too large for a single request.");
+    };
+    xhr.send(body);
+  }
+
+  bhTermLog("Sending request to " + (useProxy ? "proxy" : "Anthropic API") + " (streaming)…", "info");
+  sendWithXHR();
 }
 
 // ── AI Audit Review ──────────────────────────────────────────────────────────
@@ -4569,9 +5110,8 @@ var _aiNamingPendingSingle = null; // { nodeId, input, btn }
 var _aiNamingPendingBatch = false;
 
 function bhCallNamingAI(serializedNodes, callback) {
-  var useProxy = _bhProxyHealthy && !_bhApiKey;
-  if (useProxy && !_figmaUserId) { callback("Unable to identify Figma user.", null); return; }
-  if (!useProxy && !_bhApiKey) { callback("No API key or proxy configured.", null); return; }
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var systemPrompt = "You are a Figma layer naming expert. Given a JSON array of unnamed UI layers with their context (type, size, children, parent, siblings), suggest semantic kebab-case names.\n\n"
     + "Rules:\n"
@@ -4589,20 +5129,22 @@ function bhCallNamingAI(serializedNodes, callback) {
     model: "claude-haiku-4-5-20251001",
     max_tokens: 2048,
     system: systemPrompt,
-    messages: [{ role: "user", content: JSON.stringify(serializedNodes) }]
+    messages: [
+      { role: "user", content: JSON.stringify(serializedNodes) },
+      { role: "assistant", content: "[" }
+    ]
   });
 
   var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
   if (useProxy) {
-    xhr.open("POST", _bhProxyUrl + "/v1/messages", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
     xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
     xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
   } else {
-    xhr.open("POST", "https://api.anthropic.com/v1/messages", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.setRequestHeader("x-api-key", _bhApiKey);
-    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-version", "2025-04-15");
     xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
   }
   xhr.onload = function() {
@@ -4613,8 +5155,8 @@ function bhCallNamingAI(serializedNodes, callback) {
         for (var ti = 0; ti < resp.content.length; ti++) {
           if (resp.content[ti].type === "text") text += resp.content[ti].text;
         }
-        // Strip markdown code fences if present
-        text = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        // Prepend "[" prefix from assistant prefill, strip markdown fences if any
+        text = "[" + text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
         var names = JSON.parse(text);
         if (!Array.isArray(names)) throw new Error("Expected JSON array");
         callback(null, names);
@@ -4639,9 +5181,8 @@ function bhCallNamingAI(serializedNodes, callback) {
 }
 
 function bhCallAuditAI(data, callback) {
-  var useProxy = _bhProxyHealthy && !_bhApiKey;
-  if (useProxy && !_figmaUserId) { callback("Unable to identify Figma user. Please reload the plugin.", null); return; }
-  if (!useProxy && !_bhApiKey) { callback("No API key or proxy configured. Set up AI access in the Build HTML tab to use AI Review.", null); return; }
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var auditText = bhSerializeAuditForAI(data);
 
@@ -4659,23 +5200,22 @@ function bhCallAuditAI(data, callback) {
     + "8. Format with markdown: use **bold** for emphasis, bullet lists with - dashes.";
 
   var body = JSON.stringify({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system: systemPrompt,
     messages: [{ role: "user", content: "Here are the audit results for my Figma file:\n\n" + auditText + "\n\nGive me a prioritized action plan to improve my score." }]
   });
 
   var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
   if (useProxy) {
-    xhr.open("POST", _bhProxyUrl + "/v1/messages", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
     xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
     xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
   } else {
-    xhr.open("POST", "https://api.anthropic.com/v1/messages", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.setRequestHeader("x-api-key", _bhApiKey);
-    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-version", "2025-04-15");
     xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
   }
   xhr.onload = function() {

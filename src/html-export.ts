@@ -872,8 +872,7 @@ export async function htmlExportImage(node, progressCb) {
 }
 
 export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
-  if (!node) return null;
-  if (node.visible === false) { console.log("[walk-skip] invisible node:", node.name, "type:", node.type, "size:", node.width + "x" + node.height); return null; }
+  if (!node || node.visible === false) return null;
   if (depth > 20) return null; // safety limit
 
   var tag = htmlGetSemanticTag(node, depth, pageType);
@@ -1015,12 +1014,11 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   }
 
   // Helper to detect small icon nodes (close-x, chevron, etc.) in a child tree
-  var findIconInChildren = function(childList, _depth) {
-    var d = _depth || 0;
+  var findIconInChildren = function(childList) {
     for (var fi = 0; fi < childList.length; fi++) {
       var fc = childList[fi];
       var fcNode = figma.getNodeById(fc.nodeId);
-      if (!fcNode) { console.log("[findIcon] " + "  ".repeat(d) + fc.nodeName + " — node not found"); continue; }
+      if (!fcNode) continue;
       var hasExport = fcNode.exportSettings && fcNode.exportSettings.length > 0;
       var fcName = (fcNode.name || "").toLowerCase();
       var isNamedIcon = fcName.indexOf("icon") !== -1;
@@ -1031,13 +1029,11 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
       var hasVisualChildren = fcNode.children && fcNode.children.length > 0;
       var isSmallIcon = fcNode.type !== "TEXT" && fcNode.width <= 32 && fcNode.height <= 32
         && (hasFills || hasStrokes || hasVisualChildren);
-      var isIcon = isNamedIcon || isSmallIcon;
-      console.log("[findIcon] " + "  ".repeat(d) + fc.nodeName + " type:" + fcNode.type + " size:" + fcNode.width + "x" + fcNode.height + " export:" + hasExport + " isIcon:" + isIcon + " named:" + isNamedIcon + " walkedChildren:" + (fc.children ? fc.children.length : 0) + " figmaChildren:" + (fcNode.children ? fcNode.children.length : "N/A"));
-      if (hasExport || isIcon) {
+      if (hasExport || isNamedIcon || isSmallIcon) {
         return { nodeId: fc.nodeId, nodeName: fc.nodeName, width: fcNode.width, height: fcNode.height, hasExport: hasExport };
       }
       if (fc.children && fc.children.length > 0) {
-        var found = findIconInChildren(fc.children, d + 1);
+        var found = findIconInChildren(fc.children);
         if (found) return found;
       }
     }
@@ -1049,19 +1045,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
 
   // For any select: detect chevron icon, remove from children so it renders as background-image
   if (isSelect && children.length > 0) {
-    console.log("[select-chevron] isSelect node:", node.name, "children count:", children.length);
-    for (var dci = 0; dci < children.length; dci++) {
-      var dcNode = figma.getNodeById(children[dci].nodeId);
-      console.log("[select-chevron]   child:", children[dci].nodeName, "type:", dcNode ? dcNode.type : "?", "size:", dcNode ? dcNode.width + "x" + dcNode.height : "?", "text:", children[dci].text);
-      if (children[dci].children) {
-        for (var dci2 = 0; dci2 < children[dci].children.length; dci2++) {
-          var dcNode2 = figma.getNodeById(children[dci].children[dci2].nodeId);
-          console.log("[select-chevron]     nested:", children[dci].children[dci2].nodeName, "type:", dcNode2 ? dcNode2.type : "?", "size:", dcNode2 ? dcNode2.width + "x" + dcNode2.height : "?");
-        }
-      }
-    }
-    var selIconInfo = findIconInChildren(children, 0);
-    console.log("[select-chevron] icon found:", selIconInfo ? selIconInfo.nodeName + " (" + selIconInfo.nodeId + ")" : "NONE");
+    var selIconInfo = findIconInChildren(children);
     if (selIconInfo) {
       iconNodeId = selIconInfo.nodeId;
       iconNodeName = selIconInfo.nodeName;
@@ -1085,7 +1069,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   // For collapsed elements (button, input, a), propagate child styles upward
   // since children won't appear in the HTML output.
   if (tag === "button" || tag === "input" || tag === "a") {
-    var iconInfo = findIconInChildren(children, 0);
+    var iconInfo = findIconInChildren(children);
     if (iconInfo) {
       iconNodeId = iconInfo.nodeId;
       iconNodeName = iconInfo.nodeName;

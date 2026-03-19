@@ -13,6 +13,7 @@ The plugin has three main tabs:
 | **Workflow** | 5-step guided setup: file structure, tokens, wireframes, audit, handoff | Always visible (default tab) |
 | **Tools** | Design audit, token debugger, variable import | Always visible |
 | **Build HTML** | Generate production HTML/CSS from your wireframes | Unlocked after "Dev Ready" handoff in Step 5 |
+| **Settings** | AI configuration: API key, optional proxy URL, connection test | Always visible |
 
 The **Tools** tab has three sub-tabs:
 
@@ -82,6 +83,10 @@ The **Tools** tab has three sub-tabs:
 │   ├── components-complex.ts  # Components from existing variables
 │   ├── wireframes.ts          # Promotional wireframe generator (hero, popup, banner)
 │   └── html-export.ts         # HTML/CSS export engine
+├── .githooks/
+│   └── pre-commit             # Strips build-injected proxy URL before commit
+├── docs/
+│   └── proxy-setup.md         # Self-hosted proxy deployment guide
 └── proxy/                     # Cloudflare Worker proxy for Claude API
     ├── src/index.ts           # Worker entry point (CORS, rate limiting, forwarding)
     ├── package.json           # Proxy dependencies (wrangler, workers-types)
@@ -645,155 +650,73 @@ Unlocked after completing Step 5 (marking as "Dev Ready") in the Workflow tab. G
 | Control | Description |
 |---------|-------------|
 | **Include mobile responsive styles** | Checkbox (on by default) — includes Mobile page diff as `@media` overrides |
-| **Enhance with Claude AI** | Checkbox (on by default) — sends screenshots to Claude for semantic HTML improvements |
-| **Anthropic API Key** | Password field (shown only if proxy is down or you switch to key mode) — your Claude API key |
+| **Enhance with Claude AI** | Checkbox (on by default) — sends screenshots to Claude for semantic HTML improvements. Requires API key configured in Settings tab. |
 | **Generate HTML** | Primary action button — starts the export pipeline |
 
 ### Claude AI Enhancement
 
 When **Enhance with Claude AI** is checked, the plugin sends your generated HTML, CSS, and frame screenshots to Claude for semantic improvements — better tag choices, accessibility attributes, and CSS quality.
 
-There are two ways to authenticate with the Claude API:
+AI configuration is managed in the **Settings** tab. On first launch, a welcome screen guides you through setup.
 
-#### Option A: Cloudflare Worker Proxy (Recommended for Teams)
+#### API Key (Default)
 
-The proxy keeps your Anthropic API key on the server side so individual designers never see it. It also adds per-user rate limiting and an optional allowlist.
+Each user provides their own Anthropic API key:
 
-**How it works:**
-1. The plugin checks `proxy/health` on load
-2. If the proxy is healthy, AI enhancement uses it automatically — no API key input needed
-3. The plugin sends the user's Figma User ID via `X-Figma-User-Id` header for rate limiting and allowlisting
-4. The proxy forwards requests to `https://api.anthropic.com/v1/messages` with the server-side API key
-5. If the proxy is down, the plugin falls back to asking for a personal API key
+1. Go to [console.anthropic.com](https://console.anthropic.com/)
+2. Sign up or log in
+3. Navigate to **API Keys**
+4. Create a new key (starts with `sk-ant-...`)
+5. Paste it into the **Settings** tab → **API Key** field (or into the welcome screen on first launch)
 
-**Setting up the Cloudflare Worker:**
+The key is **persisted** in Figma's `clientStorage` (sandboxed per-plugin, per-user) and restored automatically when the plugin reopens. Use the **Test Connection** button in Settings to verify it works.
 
-Prerequisites:
-- A [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier works)
-- [Node.js](https://nodejs.org/) v18+
-- An [Anthropic API key](https://console.anthropic.com/) with credits
+In this mode, the plugin calls the Anthropic API directly from the Figma sandbox using the `anthropic-dangerous-direct-browser-access` header. This requires `https://api.anthropic.com` in `manifest.json`'s `networkAccess.allowedDomains`.
 
-Steps:
+#### Custom Proxy (Optional, for Teams)
 
-```bash
-# 1. Install Wrangler (Cloudflare's CLI)
-npm install -g wrangler
+Teams that want centralized API key management can deploy a self-hosted Cloudflare Worker proxy. This keeps the Anthropic API key on the server side and adds per-user rate limiting and an optional allowlist.
 
-# 2. Log in to Cloudflare
-wrangler login
+1. Deploy the proxy from the `proxy/` directory — see [docs/proxy-setup.md](docs/proxy-setup.md) for step-by-step instructions
+2. In the plugin **Settings** tab, expand **Advanced: Custom Proxy URL**
+3. Paste your proxy URL (e.g., `https://figma-dev-ready-proxy.your-subdomain.workers.dev`)
+4. Click **Check** to verify the connection
 
-# 3. Navigate to the proxy directory
-cd proxy
+When a proxy URL is configured, all AI requests route through it. The plugin still sends the user's API key in the `x-api-key` header — the proxy can either use that key or fall back to a server-side key.
 
-# 4. Install dependencies
-npm install
+> **Build-time proxy config:** You can also bake a proxy URL into the build via `proxy-config.json`. See [Build-Time Proxy Config](#build-time-proxy-config) below.
 
-# 5. Copy the example config and fill in your KV namespace ID (see step 6)
-cp wrangler.example.toml wrangler.toml
+**Proxy details:**
 
-# 6. Create a KV namespace for rate limiting
-wrangler kv namespace create "RATE_LIMIT_KV"
-#    This outputs an ID like: { id = "abc123..." }
-#    Paste that ID into wrangler.toml under [[kv_namespaces]]
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Health check — plugin pings this to verify proxy availability |
+| `/v1/messages` | POST | Proxied Claude API call — forwards to `api.anthropic.com/v1/messages` |
 
-# 7. Store your Anthropic API key as a secret (never in wrangler.toml)
-wrangler secret put ANTHROPIC_API_KEY
-#    Paste your sk-ant-... key when prompted
+Rate limiting is tracked per Figma User ID in Cloudflare KV (rolling 1-hour window, default 30 requests/hour, configurable via `RATE_LIMIT_MAX`).
 
-# 8. Deploy
-npm run deploy
-#    Output: https://figma-dev-ready-proxy.<your-subdomain>.workers.dev
-```
+#### Build-Time Proxy Config
 
-**Configure `wrangler.toml`:**
-
-```toml
-name = "figma-dev-ready-proxy"
-main = "src/index.ts"
-compatibility_date = "2024-12-01"
-
-[vars]
-# Comma-separated Figma user IDs allowed to use the proxy.
-# Leave empty to allow anyone (open mode).
-ALLOWED_USERS = ""
-# Max requests per user per rolling 1-hour window.
-RATE_LIMIT_MAX = "30"
-
-[[kv_namespaces]]
-binding = "RATE_LIMIT_KV"
-id = "<paste-your-kv-namespace-id-here>"
-```
-
-**Point the plugin to your worker:**
-
-Copy the example config and paste your worker URL:
+For deployments where every user should use the same proxy, you can inject the URL at build time:
 
 ```bash
-cd ..   # back to project root
 cp proxy-config.example.json proxy-config.json
 ```
 
 Edit `proxy-config.json`:
-
 ```json
 {
   "proxyUrl": "https://figma-dev-ready-proxy.YOUR_SUBDOMAIN.workers.dev"
 }
 ```
 
-Replace `YOUR_SUBDOMAIN` with the subdomain from your `wrangler deploy` output. Then rebuild:
-
-```bash
-npm run build
-```
-
-The build script (`build.js`) reads `proxy-config.json` and automatically:
+Then rebuild (`npm run build`). The build script automatically:
 - Injects the proxy URL into `ui.html` (the `_bhProxyUrl` variable)
-- Adds your worker domain to `manifest.json`'s `networkAccess.allowedDomains`
+- Adds the proxy domain to `manifest.json`'s `networkAccess.allowedDomains`
 
-If `proxy-config.json` is missing or contains `YOUR_SUBDOMAIN`, the plugin builds in **API-key-only mode** (proxy disabled).
+If `proxy-config.json` is missing or contains `YOUR_SUBDOMAIN`, the plugin builds in **API-key-only mode** (no build-time proxy). Users can still add a proxy URL in the Settings tab at runtime.
 
 > **Note:** `proxy-config.json` is gitignored — each developer/deployment has its own config. Only `proxy-config.example.json` is committed.
-
-**Finding Figma User IDs for the allowlist:**
-
-Each designer's Figma User ID is sent as the `X-Figma-User-Id` header. To find it:
-1. Have each designer open the plugin and click **Generate HTML** with AI enhancement on
-2. Check Cloudflare Worker logs: `wrangler tail` — the user ID appears in each request
-3. Add the IDs to `ALLOWED_USERS` in `wrangler.toml` as a comma-separated list, then redeploy
-
-**Proxy endpoints:**
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/health` | GET | Health check — plugin calls this on load to detect proxy availability |
-| `/v1/messages` | POST | Proxied Claude API call — forwards to `api.anthropic.com/v1/messages` |
-
-**Rate limiting:**
-
-- Tracked per Figma User ID in Cloudflare KV
-- Rolling 1-hour window, default 30 requests/hour
-- Configurable via `RATE_LIMIT_MAX` in `wrangler.toml`
-- If KV is unreachable, requests are allowed (fail-open)
-
-#### Option B: Personal API Key (Individual Use)
-
-If no proxy is configured or the proxy is down, the plugin shows an API key input field.
-
-1. Go to [console.anthropic.com](https://console.anthropic.com/)
-2. Sign up or log in
-3. Navigate to **API Keys**
-4. Create a new key (starts with `sk-ant-...`)
-5. Paste it into the **Anthropic API Key** field in the Build HTML tab
-6. The key is **session-only** — it stays in memory while the plugin is open and is never persisted to storage. You'll need to re-enter it each time you reopen the plugin
-
-In this mode, the plugin calls the Anthropic API directly from the Figma sandbox using the `anthropic-dangerous-direct-browser-access` header. This requires `https://api.anthropic.com` in `manifest.json`'s `networkAccess.allowedDomains`.
-
-**Switching between modes:**
-
-- When the proxy is healthy, the plugin shows: **"Using secure proxy"** with a link to switch to personal key mode
-- When in key mode, a link to switch back to proxy mode appears (if proxy is available)
-- The toggle is session-only — on next plugin open, proxy is auto-detected again
 
 ### Export Pipeline
 
@@ -1115,7 +1038,7 @@ The plugin works with **DTCG (Design Token Community Group)** format JSON. Each 
 - Mark images for export by adding **Export Settings** in Figma's right panel — nodes without export settings won't become `<img>` tags
 - Component instances of form fields (`Input / Floating Label`) auto-structure as `<label>` + `<input>` in HTML
 - For background images, use the Background Image component or ensure `pluginData("role")` is set to `background-image`
-- Enable **AI enhancement** for better semantic HTML (requires Anthropic API key)
+- Enable **AI enhancement** for better semantic HTML (configure your Anthropic API key in the Settings tab)
 
 ---
 
@@ -1134,14 +1057,39 @@ Defined in `src/constants.ts`, modifiable:
 
 ---
 
+## Settings Tab
+
+The Settings tab manages AI configuration. It is always visible regardless of workflow progress.
+
+### AI Configuration
+
+| Setting | Description |
+|---------|-------------|
+| **API Key** | Anthropic API key (`sk-ant-...`). Saved to `figma.clientStorage` (per-user, per-plugin). Restored on reload. |
+| **Test Connection** | Sends a minimal API call to verify the key works. Shows green checkmark on success, red X with error message on failure. |
+| **Custom Proxy URL** | (Advanced, collapsed by default) Self-hosted proxy URL. When set, AI requests route through the proxy instead of directly to Anthropic. |
+| **Proxy Health Check** | Tests the proxy `/health` endpoint when a URL is entered. |
+
+### Welcome Screen
+
+On first launch (no saved configuration), a welcome overlay appears offering:
+- Brief description of the plugin's capabilities
+- API key input field with link to `console.anthropic.com`
+- **Skip** option to set up later in Settings
+- **Get Started** button to save and proceed
+
+The welcome screen only appears once. After dismissal, AI can be configured at any time via the Settings tab.
+
+---
+
 ## Technical Notes
 
 - The audit runs on the **current page only** — switch pages and re-run to audit others
 - The token debugger requires **exactly one layer selected**
 - The plugin requires **Edit access** to create or update variables
 - Figma's plugin sandbox uses an older JS engine — the codebase uses `var` declarations, explicit `&&` guards instead of `?.`, and avoids ES2020+ features
-- Network access is restricted to `https://api.anthropic.com` plus your proxy domain (set via `proxy-config.json` at build time — see [Claude AI Enhancement](#claude-ai-enhancement))
-- Workflow state is persisted to Figma client storage and restored when the plugin reopens
+- Network access is restricted to `https://api.anthropic.com` plus your proxy domain (set via `proxy-config.json` at build time or Settings tab at runtime — see [Claude AI Enhancement](#claude-ai-enhancement))
+- Workflow state and AI configuration (API key, proxy URL) are persisted to Figma client storage and restored when the plugin reopens
 
 ---
 
@@ -1149,6 +1097,10 @@ Defined in `src/constants.ts`, modifiable:
 
 Issues and PRs welcome. When editing source files:
 
+- Enable the pre-commit hook (strips build-injected proxy URLs before commit):
+  ```bash
+  git config core.hooksPath .githooks
+  ```
 - Use `var` declarations throughout — no `let` or `const`
 - Replace all `?.` optional chaining with explicit `&&` guards
 - Avoid `??`, `Array.prototype.flat`, and other ES2020+ features

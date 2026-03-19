@@ -25,6 +25,13 @@ figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for De
       figma.ui.postMessage({ type: "load-settings", settings: saved });
     }
   } catch(e) {}
+  // Load saved AI config
+  try {
+    var aiConfig = await figma.clientStorage.getAsync("ai-config");
+    if (aiConfig) {
+      figma.ui.postMessage({ type: "ai-config-loaded", config: aiConfig });
+    }
+  } catch(e) {}
   // Send Figma user info for proxy auth
   if (figma.currentUser) {
     figma.ui.postMessage({
@@ -799,6 +806,12 @@ figma.ui.onmessage = async function(msg) {
   if (msg.type === "save-settings") {
     try {
       await figma.clientStorage.setAsync("wf-settings", msg.settings);
+    } catch(e) {}
+  }
+
+  if (msg.type === "save-ai-config") {
+    try {
+      await figma.clientStorage.setAsync("ai-config", msg.config);
     } catch(e) {}
   }
 

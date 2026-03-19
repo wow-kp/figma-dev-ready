@@ -8,7 +8,7 @@ export interface Env {
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Figma-User-Id, X-Figma-User-Name",
+  "Access-Control-Allow-Headers": "Content-Type, X-Figma-User-Id, X-Figma-User-Name, x-api-key",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -92,17 +92,42 @@ export default {
     // Forward to Anthropic
     try {
       const body = await request.text();
+      // Use client's API key if provided, otherwise fall back to server key
+      const clientKey = request.headers.get("x-api-key");
+      const apiKey = clientKey || env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return errorResponse(401, "No API key provided and no server key configured.");
+      }
+
+      // Detect streaming requests
+      let isStream = false;
+      try { isStream = JSON.parse(body).stream === true; } catch { /* ignore */ }
+
       const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
+          "x-api-key": apiKey,
+          "anthropic-version": "2025-04-15",
         },
         body,
+        redirect: "follow",
       });
 
-      // Pass through Anthropic's response with CORS headers
+      if (isStream && anthropicResponse.ok && anthropicResponse.body) {
+        // Stream SSE response directly through with CORS headers
+        return new Response(anthropicResponse.body, {
+          status: anthropicResponse.status,
+          headers: {
+            ...CORS_HEADERS,
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+          },
+        });
+      }
+
+      // Non-streaming or error: buffer and return with CORS headers
+      // This also handles streaming requests that got error responses (4xx, 5xx, 3xx)
       const responseBody = await anthropicResponse.text();
       return new Response(responseBody, {
         status: anthropicResponse.status,

@@ -691,7 +691,7 @@ export async function generateComponentsPageComplex() {
     dText.layoutSizingHorizontal = "FILL";
 
     var chevron = figma.createRectangle();
-    chevron.name = "chevron";
+    chevron.name = "icon-chevron";
     chevron.resize(17, 10);
     chevron.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: chevronImageHash }];
     chevron.exportSettings = STANDARD_EXPORT_SETTINGS;

@@ -715,7 +715,7 @@ export async function generateComponentsPage(msg) {
 
     // Chevron arrow (base64 PNG)
     var chevron = figma.createRectangle();
-    chevron.name = "chevron";
+    chevron.name = "icon-chevron";
     chevron.resize(17, 10);
     chevron.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: chevronImageHash }];
     chevron.exportSettings = STANDARD_EXPORT_SETTINGS;

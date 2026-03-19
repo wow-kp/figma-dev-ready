@@ -872,7 +872,8 @@ export async function htmlExportImage(node, progressCb) {
 }
 
 export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
-  if (!node || node.visible === false) return null;
+  if (!node) return null;
+  if (node.visible === false) { console.log("[walk-skip] invisible node:", node.name, "type:", node.type, "size:", node.width + "x" + node.height); return null; }
   if (depth > 20) return null; // safety limit
 
   var tag = htmlGetSemanticTag(node, depth, pageType);
@@ -880,7 +881,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
 
   var nodeName = (node.name || "").toLowerCase();
   var compHint = "";
-  try { if ("componentPropertyReferences" in node) { var mp = node.mainComponent || node; compHint = ((mp.parent && mp.parent.name) || "").toLowerCase(); } } catch(e) {}
+  try { if (node.type === "INSTANCE" || node.type === "COMPONENT") { var mp = node.mainComponent || node; compHint = ((mp.parent && mp.parent.name) || "").toLowerCase(); } } catch(e) {}
   var isSelect = nodeName.indexOf("dropdown") !== -1 || nodeName.indexOf("select") !== -1
     || compHint.indexOf("dropdown") !== -1 || compHint.indexOf("select") !== -1;
 
@@ -1014,22 +1015,29 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   }
 
   // Helper to detect small icon nodes (close-x, chevron, etc.) in a child tree
-  var findIconInChildren = function(childList) {
+  var findIconInChildren = function(childList, _depth) {
+    var d = _depth || 0;
     for (var fi = 0; fi < childList.length; fi++) {
       var fc = childList[fi];
       var fcNode = figma.getNodeById(fc.nodeId);
-      if (!fcNode) continue;
+      if (!fcNode) { console.log("[findIcon] " + "  ".repeat(d) + fc.nodeName + " — node not found"); continue; }
       var hasExport = fcNode.exportSettings && fcNode.exportSettings.length > 0;
-      var isSmallIcon = (fcNode.type === "VECTOR" || fcNode.type === "INSTANCE" || fcNode.type === "COMPONENT"
-        || fcNode.type === "BOOLEAN_OPERATION" || fcNode.type === "STAR" || fcNode.type === "POLYGON"
-        || fcNode.type === "LINE" || fcNode.type === "FRAME" || fcNode.type === "GROUP"
-        || fcNode.type === "IMAGE") && fcNode.width <= 32 && fcNode.height <= 32
-        && !(fcNode.type === "FRAME" && fcNode.children && fcNode.children.length === 0);
-      if (hasExport || isSmallIcon) {
+      var fcName = (fcNode.name || "").toLowerCase();
+      var isNamedIcon = fcName.indexOf("icon") !== -1;
+      var hasFills = false;
+      try { var ff = fcNode.fills; hasFills = ff && ff.length > 0 && ff[0].visible !== false; } catch(e) {}
+      var hasStrokes = false;
+      try { var ss = fcNode.strokes; hasStrokes = ss && ss.length > 0; } catch(e) {}
+      var hasVisualChildren = fcNode.children && fcNode.children.length > 0;
+      var isSmallIcon = fcNode.type !== "TEXT" && fcNode.width <= 32 && fcNode.height <= 32
+        && (hasFills || hasStrokes || hasVisualChildren);
+      var isIcon = isNamedIcon || isSmallIcon;
+      console.log("[findIcon] " + "  ".repeat(d) + fc.nodeName + " type:" + fcNode.type + " size:" + fcNode.width + "x" + fcNode.height + " export:" + hasExport + " isIcon:" + isIcon + " named:" + isNamedIcon + " walkedChildren:" + (fc.children ? fc.children.length : 0) + " figmaChildren:" + (fcNode.children ? fcNode.children.length : "N/A"));
+      if (hasExport || isIcon) {
         return { nodeId: fc.nodeId, nodeName: fc.nodeName, width: fcNode.width, height: fcNode.height, hasExport: hasExport };
       }
       if (fc.children && fc.children.length > 0) {
-        var found = findIconInChildren(fc.children);
+        var found = findIconInChildren(fc.children, d + 1);
         if (found) return found;
       }
     }
@@ -1039,11 +1047,45 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   var iconNodeId = null;
   var iconNodeName = "";
 
+  // For any select: detect chevron icon, remove from children so it renders as background-image
+  if (isSelect && children.length > 0) {
+    console.log("[select-chevron] isSelect node:", node.name, "children count:", children.length);
+    for (var dci = 0; dci < children.length; dci++) {
+      var dcNode = figma.getNodeById(children[dci].nodeId);
+      console.log("[select-chevron]   child:", children[dci].nodeName, "type:", dcNode ? dcNode.type : "?", "size:", dcNode ? dcNode.width + "x" + dcNode.height : "?", "text:", children[dci].text);
+      if (children[dci].children) {
+        for (var dci2 = 0; dci2 < children[dci].children.length; dci2++) {
+          var dcNode2 = figma.getNodeById(children[dci].children[dci2].nodeId);
+          console.log("[select-chevron]     nested:", children[dci].children[dci2].nodeName, "type:", dcNode2 ? dcNode2.type : "?", "size:", dcNode2 ? dcNode2.width + "x" + dcNode2.height : "?");
+        }
+      }
+    }
+    var selIconInfo = findIconInChildren(children, 0);
+    console.log("[select-chevron] icon found:", selIconInfo ? selIconInfo.nodeName + " (" + selIconInfo.nodeId + ")" : "NONE");
+    if (selIconInfo) {
+      iconNodeId = selIconInfo.nodeId;
+      iconNodeName = selIconInfo.nodeName;
+      // Remove the icon node from children so it doesn't render as a child div
+      var filteredForIcon = [];
+      var removeIconChild = function(list) {
+        var result = [];
+        for (var ri = 0; ri < list.length; ri++) {
+          if (list[ri].nodeId === selIconInfo.nodeId) continue;
+          if (list[ri].children && list[ri].children.length > 0) {
+            list[ri].children = removeIconChild(list[ri].children);
+          }
+          result.push(list[ri]);
+        }
+        return result;
+      };
+      children = removeIconChild(children);
+    }
+  }
+
   // For collapsed elements (button, input, a), propagate child styles upward
   // since children won't appear in the HTML output.
-  // Select is NOT collapsed — it goes through form-field-floating path.
   if (tag === "button" || tag === "input" || tag === "a") {
-    var iconInfo = findIconInChildren(children);
+    var iconInfo = findIconInChildren(children, 0);
     if (iconInfo) {
       iconNodeId = iconInfo.nodeId;
       iconNodeName = iconInfo.nodeName;
@@ -1552,7 +1594,7 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
           tree.iconImageHeight = iconImg.displayHeight;
           pushImageVariants(iconImg, images);
         } else {
-          // Select chevron — inline as base64 data URL
+          // Icon as inline base64 data URL (select chevron, etc.)
           var iconBytes = iconImg.bytes;
           var iconFormat = iconImg.format || "png";
           var iconBgUrl = "";
@@ -1562,7 +1604,15 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
             iconBgUrl = "url('assets/" + iconImg.name + "')";
             pushImageVariants(iconImg, images);
           }
-          tree.styles["background-image"] = iconBgUrl;
+          // For select fields: put chevron on _inputStyles (the <select> element)
+          if (tree.isSelect && tree._inputStyles) {
+            tree._inputStyles["background-image"] = iconBgUrl;
+            tree._inputStyles["background-repeat"] = "no-repeat";
+            tree._inputStyles["background-position"] = "right 14px center";
+            tree._inputStyles["background-size"] = iconImg.displayWidth + "px " + iconImg.displayHeight + "px";
+          } else {
+            tree.styles["background-image"] = iconBgUrl;
+          }
         }
       }
     }

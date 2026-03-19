@@ -48,6 +48,28 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .bind-btn   { background: transparent; color: #89b4fa; border: 1px solid #89b4fa30; }
 .bind-btn:hover   { background: #89b4fa15; }
 .bind-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.fix-all-btn { background: #a6e3a120; color: #a6e3a1; border: 1px solid #a6e3a130; }
+.fix-all-btn:hover { background: #a6e3a135; }
+.fix-all-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.bind-hint { font-size: 10px; color: #a6e3a1; margin-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; display: inline-block; vertical-align: middle; }
+.bind-no-match { font-size: 10px; color: #f9e2af; margin-right: 4px; white-space: nowrap; }
+.create-btn { background: #f9e2af20; color: #f9e2af; border: 1px solid #f9e2af30; }
+.create-btn:hover { background: #f9e2af35; }
+.create-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.ai-review-wrap { margin: 8px 0 12px 0; }
+.ai-review-btn { width: 100%; padding: 10px 16px; border-radius: 8px; border: 1px dashed #cba6f730; background: #cba6f708; color: #cba6f7; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.ai-review-btn:hover { background: #cba6f715; border-color: #cba6f750; }
+.ai-review-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ai-review-panel { background: #1e1e2e; border: 1px solid #cba6f725; border-radius: 8px; padding: 12px 16px; margin-top: 8px; font-size: 11px; line-height: 1.6; color: #cdd6f4; }
+.ai-review-panel ul { margin: 4px 0 8px 0; padding-left: 18px; }
+.ai-review-panel li { margin: 3px 0; }
+.ai-review-panel strong { color: #cba6f7; }
+.ai-name-btn { min-width: 28px; padding: 2px 6px; font-size: 11px; background: #cba6f710; border: 1px solid #cba6f730; color: #cba6f7; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+.ai-name-btn:hover { background: #cba6f725; border-color: #cba6f750; }
+.ai-name-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ai-name-all-btn { border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+.ai-name-all-btn:hover { background: #cba6f725 !important; border-color: #cba6f760 !important; }
+.ai-name-all-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Check cards ── */
 /* FIX: use display:block (not flex) so cards render at natural height without flex-shrink compression */
@@ -351,6 +373,8 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 <div id="tabs">
   <button class="tab-btn active" data-tab="workflow">🗂 Workflow</button>
   <button class="tab-btn"        data-tab="tools">🛠 Tools</button>
+  <button class="tab-btn"        data-tab="buildhtml" id="tab-buildhtml" style="display:none;">🏗 Generate Code</button>
+  <button class="tab-btn"        data-tab="settings">⚙ Settings</button>
 </div>
 
 <!-- ── TOOLS (container with sub-tabs) ── -->
@@ -430,6 +454,154 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
   </div>
 </div>
 
+<!-- ── BUILD HTML ──────────────────────── -->
+<div class="pane" id="pane-buildhtml" style="overflow-y:auto;">
+  <div style="padding:20px 16px;text-align:center;">
+    <div style="font-size:28px;margin-bottom:8px;">🏗</div>
+    <div style="font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;">Generate Code</div>
+    <div style="font-size:11px;color:#6c7086;line-height:1.4;">Generate production-ready HTML from your dev-ready wireframes.</div>
+  </div>
+  <div id="buildhtml-content" style="padding:0 16px 20px;">
+    <div style="margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#a6adc8;cursor:pointer;">
+        <input type="checkbox" id="bh-include-mobile" checked style="accent-color:#89b4fa;" />
+        Include mobile responsive styles
+      </label>
+    </div>
+    <!-- AI Enhancement -->
+    <div style="margin-bottom:12px;padding:10px;background:#181825;border:1px solid #313244;border-radius:8px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#a6adc8;cursor:pointer;margin-bottom:0;">
+        <input type="checkbox" id="bh-ai-enhance" checked style="accent-color:#cba6f7;" />
+        Enhance with Claude AI
+      </label>
+      <div id="bh-ai-details" style="margin-top:8px;">
+        <div style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.4;">Claude refines semantics, accessibility, and CSS quality.</div>
+        <div id="bh-ai-key-section" style="display:none;">
+          <label style="display:block;font-size:10px;color:#a6adc8;margin-bottom:4px;">Anthropic API Key</label>
+          <div style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.5;">To get an API key: 1. Go to <a href="https://console.anthropic.com/" target="_blank" style="color:#89b4fa;text-decoration:underline;">console.anthropic.com</a> 2. Sign up or log in 3. Navigate to API Keys 4. Create a new key</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+            <input type="password" id="bh-api-key" placeholder="sk-ant-..."
+              style="flex:1;padding:6px 8px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;" />
+            <button id="bh-key-toggle" style="padding:4px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;font-size:10px;color:#a6adc8;cursor:pointer;">Show</button>
+          </div>
+          <div id="bh-key-status" style="font-size:10px;min-height:14px;"></div>
+        </div>
+        <div id="bh-ai-mode-info" style="font-size:10px;color:#6c7086;margin-top:4px;"></div>
+      </div>
+    </div>
+    <button id="bh-generate-btn" style="width:100%;padding:10px 16px;background:#89b4fa;color:#1e1e2e;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;">Generate HTML</button>
+    <!-- Terminal Console -->
+    <div id="bh-terminal" style="display:none;margin-top:12px;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:#1a1a1a;border-bottom:1px solid #2a2a2a;">
+        <span style="width:10px;height:10px;border-radius:50%;background:#f38ba8;"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#f9e2af;"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:#a6e3a1;"></span>
+        <span style="flex:1;text-align:center;font-size:10px;color:#585858;font-family:monospace;">generate-code</span>
+      </div>
+      <div id="bh-terminal-log" style="padding:10px 12px;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11px;line-height:1.6;max-height:220px;overflow-y:auto;min-height:60px;"></div>
+      <div id="bh-progress" style="display:none;padding:0 12px 8px;">
+        <div style="background:#1a1a1a;border-radius:3px;overflow:hidden;height:3px;">
+          <div id="bh-progress-bar" style="height:100%;background:#a6e3a1;width:0%;transition:width 0.3s;"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Error -->
+    <div id="bh-error" style="display:none;margin-top:12px;padding:10px;background:#45273a;border-radius:8px;font-size:11px;color:#f38ba8;"></div>
+    <!-- Results -->
+    <div id="bh-results" style="display:none;margin-top:16px;">
+      <div id="bh-version-toggle" style="display:none;margin-bottom:10px;">
+        <div style="display:flex;gap:4px;background:#181825;border-radius:6px;padding:3px;">
+          <button id="bh-view-raw" style="flex:1;padding:5px 8px;font-size:11px;font-weight:600;border:none;border-radius:4px;cursor:pointer;background:#313244;color:#cdd6f4;">Raw</button>
+          <button id="bh-view-ai" style="flex:1;padding:5px 8px;font-size:11px;font-weight:600;border:none;border-radius:4px;cursor:pointer;background:#cba6f7;color:#1e1e2e;">AI Enhanced</button>
+        </div>
+      </div>
+      <div id="bh-stats" style="font-size:11px;color:#a6adc8;margin-bottom:10px;text-align:center;"></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button id="bh-save-btn" style="flex:1;padding:8px 12px;background:#a6e3a1;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;">Save to Folder</button>
+        <button id="bh-copy-btn" style="flex:1;padding:8px 12px;background:#313244;color:#cdd6f4;font-size:12px;font-weight:500;border:1px solid #45475a;border-radius:6px;cursor:pointer;">Copy HTML</button>
+      </div>
+      <details style="margin-top:8px;">
+        <summary style="font-size:11px;color:#6c7086;cursor:pointer;margin-bottom:6px;">Preview HTML</summary>
+        <pre id="bh-preview" style="background:#181825;border:1px solid #313244;border-radius:6px;padding:10px;font-size:10px;color:#a6adc8;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
+      </details>
+      <details style="margin-top:8px;">
+        <summary style="font-size:11px;color:#6c7086;cursor:pointer;margin-bottom:6px;">Preview CSS</summary>
+        <pre id="bh-css-preview" style="background:#181825;border:1px solid #313244;border-radius:6px;padding:10px;font-size:10px;color:#a6adc8;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<!-- ── SETTINGS ────────────────────────── -->
+<div class="pane" id="pane-settings" style="overflow-y:auto;">
+  <div style="padding:20px 16px;">
+    <div style="font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:16px;">AI Configuration</div>
+
+    <!-- API Key (primary) -->
+    <div style="margin-bottom:16px;">
+      <label id="settings-key-label" style="display:block;font-size:11px;font-weight:600;color:#a6adc8;margin-bottom:6px;">Anthropic API Key</label>
+      <div id="settings-key-desc" style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.5;">Get your key at <a href="https://console.anthropic.com/" target="_blank" style="color:#89b4fa;text-decoration:underline;">console.anthropic.com</a></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+        <input type="password" id="settings-api-key" placeholder="sk-ant-..."
+          style="flex:1;padding:6px 8px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;" />
+        <button id="settings-key-toggle" style="padding:4px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;font-size:10px;color:#a6adc8;cursor:pointer;">Show</button>
+      </div>
+      <div id="settings-key-status" style="font-size:10px;min-height:14px;color:#6c7086;"></div>
+    </div>
+
+    <!-- Connection test -->
+    <div style="margin-bottom:16px;">
+      <button id="settings-test-btn" style="padding:8px 14px;background:#313244;border:1px solid #45475a;border-radius:6px;font-size:11px;font-weight:600;color:#cdd6f4;cursor:pointer;">Test Connection</button>
+      <span id="settings-test-status" style="font-size:10px;margin-left:8px;"></span>
+    </div>
+
+    <!-- Custom Proxy -->
+    <details id="settings-proxy-details" style="margin-top:16px;">
+      <summary style="font-size:11px;font-weight:600;color:#6c7086;cursor:pointer;margin-bottom:8px;">Advanced: Custom Proxy URL</summary>
+      <div style="padding-top:8px;">
+        <div style="font-size:10px;color:#6c7086;margin-bottom:6px;line-height:1.5;">Route API calls through your own proxy instead of calling Anthropic directly. <a href="https://github.com/wow-kp/figma-dev-ready/blob/main/docs/proxy-setup.md" target="_blank" style="color:#89b4fa;text-decoration:underline;">How to set up a proxy</a></div>
+        <div id="settings-proxy-builtin-notice" style="display:none;font-size:10px;color:#a6e3a1;margin-bottom:6px;line-height:1.5;padding:6px 8px;background:#181825;border:1px solid #313244;border-radius:6px;">&#10003; Pre-configured proxy baked into this build. You can override it below.</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+          <input type="text" id="settings-proxy-url" placeholder="https://your-proxy.workers.dev"
+            style="flex:1;padding:6px 8px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;" />
+          <button id="settings-proxy-check" style="padding:4px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;font-size:10px;color:#a6adc8;cursor:pointer;">Check</button>
+        </div>
+        <div id="settings-proxy-status" style="font-size:10px;min-height:14px;color:#6c7086;"></div>
+      </div>
+    </details>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #313244;text-align:center;">
+      <a href="#" id="settings-show-welcome" style="font-size:10px;color:#6c7086;text-decoration:underline;cursor:pointer;">Show welcome screen</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── WELCOME OVERLAY ────────────────── -->
+<div id="welcome-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:1000;overflow-y:auto;">
+  <div style="max-width:400px;margin:40px auto;padding:32px 28px;background:#1e1e2e;border:1px solid #313244;border-radius:16px;">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:32px;margin-bottom:8px;">🛠</div>
+      <div style="font-size:16px;font-weight:700;color:#cdd6f4;margin-bottom:6px;">Welcome to Dev-Ready Tools</div>
+      <div style="font-size:12px;color:#6c7086;line-height:1.5;">Prepare Figma designs for development with audit, auto-fixes, HTML/CSS export, and AI-powered enhancements.</div>
+    </div>
+
+    <div style="background:#181825;border:1px solid #313244;border-radius:10px;padding:16px;margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:600;color:#a6adc8;margin-bottom:10px;">AI Setup (optional)</div>
+      <div id="welcome-proxy-notice" style="display:none;font-size:10px;line-height:1.5;padding:8px 10px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;margin-bottom:10px;">
+        <span id="welcome-proxy-icon" style="color:#6c7086;">&#8635;</span> <span id="welcome-proxy-text" style="color:#6c7086;">Checking proxy...</span>
+      </div>
+      <div style="font-size:10px;color:#6c7086;margin-bottom:8px;line-height:1.5;">Enter your Anthropic API key to enable AI-powered features like smart naming, HTML refinement, and audit review.</div>
+      <input type="password" id="welcome-api-key" placeholder="sk-ant-..."
+        style="width:100%;padding:8px 10px;background:#1e1e2e;border:1px solid #45475a;border-radius:6px;font-size:11px;color:#cdd6f4;outline:none;font-family:monospace;box-sizing:border-box;margin-bottom:6px;" />
+      <div style="font-size:10px;color:#6c7086;line-height:1.5;">Get your key at <a href="https://console.anthropic.com/" target="_blank" style="color:#89b4fa;text-decoration:underline;">console.anthropic.com</a></div>
+    </div>
+
+    <button id="welcome-start-btn" style="width:100%;padding:12px 16px;background:#89b4fa;color:#1e1e2e;font-size:13px;font-weight:700;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;">Get Started</button>
+    <div style="text-align:center;">
+      <a href="#" id="welcome-skip" style="font-size:11px;color:#6c7086;text-decoration:underline;">Skip — set up later in Settings</a>
+    </div>
+  </div>
+</div>
+
 <!-- ── WORKFLOW ────────────────────────── -->
 <div class="pane active" id="pane-workflow" style="overflow-y:auto;">
   <div id="wf-container">
@@ -470,8 +642,151 @@ document.querySelectorAll(".sub-tab-btn").forEach(function(btn){
     if(btn.dataset.subtab==="debug")parent.postMessage({pluginMessage:{type:"request-debug"}},"*");
   });
 });
+// Show/hide Build HTML top-level tab based on dev-ready status
+function updateBuildHtmlTab() {
+  var tab = document.getElementById("tab-buildhtml");
+  if (tab) tab.style.display = wfDevReady ? "" : "none";
+  // If Build HTML tab was active but dev-ready revoked, switch back to workflow
+  if (!wfDevReady && tab && tab.classList.contains("active")) {
+    tab.classList.remove("active");
+    document.getElementById("pane-buildhtml").classList.remove("active");
+    var wfBtn = document.querySelector('.tab-btn[data-tab="workflow"]');
+    if (wfBtn) wfBtn.classList.add("active");
+    var wfPane = document.getElementById("pane-workflow");
+    if (wfPane) wfPane.classList.add("active");
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+  }
+}
 // Workflow is the first tab — load it immediately on plugin open
 parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+
+// ── Settings tab ─────────────────────────────────────────────────────────────
+document.getElementById("settings-key-toggle").addEventListener("click", function() {
+  var inp = document.getElementById("settings-api-key");
+  if (inp.type === "password") { inp.type = "text"; this.textContent = "Hide"; }
+  else { inp.type = "password"; this.textContent = "Show"; }
+});
+
+document.getElementById("settings-api-key").addEventListener("change", function() {
+  var key = this.value.trim();
+  _bhApiKey = key;
+  var status = document.getElementById("settings-key-status");
+  if (key && key.indexOf("sk-ant-") === 0) {
+    status.textContent = "Key set.";
+    status.style.color = "#a6e3a1";
+  } else if (key) {
+    status.textContent = "Key set (does not look like a standard Anthropic key).";
+    status.style.color = "#fab387";
+  } else {
+    status.textContent = "";
+  }
+  // Persist to clientStorage
+  bhSaveAiConfig();
+});
+
+document.getElementById("settings-proxy-url").addEventListener("change", function() {
+  var url = this.value.trim();
+  if (url) _bhProxyUrl = url;
+  bhSaveAiConfig();
+});
+
+document.getElementById("settings-proxy-check").addEventListener("click", function() {
+  var url = document.getElementById("settings-proxy-url").value.trim();
+  var status = document.getElementById("settings-proxy-status");
+  if (!url) { status.textContent = "Enter a URL first."; status.style.color = "#fab387"; return; }
+  status.textContent = "Checking…"; status.style.color = "#6c7086";
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", url + "/health", true);
+  xhr.timeout = 5000;
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      _bhProxyUrl = url; _bhProxyHealthy = true; _bhProxyChecked = true;
+      status.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Proxy healthy.";
+      bhUpdateProxyUI(); bhUpdateAiModeUI();
+    } else {
+      _bhProxyHealthy = false; _bhProxyChecked = true;
+      status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Proxy returned " + xhr.status;
+      bhUpdateProxyUI(); bhUpdateAiModeUI();
+    }
+  };
+  xhr.onerror = function() { _bhProxyHealthy = false; _bhProxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Could not reach proxy."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
+  xhr.ontimeout = function() { _bhProxyHealthy = false; _bhProxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Proxy timed out."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
+  xhr.send();
+});
+
+document.getElementById("settings-test-btn").addEventListener("click", function() {
+  var btn = this;
+  var status = document.getElementById("settings-test-status");
+  var proxyUrlVal = document.getElementById("settings-proxy-url").value.trim();
+  var useProxy = proxyUrlVal && proxyUrlVal.indexOf("YOUR_SUBDOMAIN") === -1 && proxyUrlVal.length > 10;
+  if (!_bhApiKey && !useProxy) { status.innerHTML = "<span style='color:#fab387;'>Enter an API key or configure a proxy first.</span>"; return; }
+  btn.disabled = true; btn.textContent = "Testing…";
+  status.textContent = "";
+
+  var url = useProxy ? proxyUrlVal + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  var headers = { "Content-Type": "application/json" };
+  if (useProxy) {
+    headers["X-Figma-User-Id"] = _figmaUserId;
+    headers["X-Figma-User-Name"] = _figmaUserName;
+    if (_bhApiKey) headers["x-api-key"] = _bhApiKey;
+  } else {
+    headers["x-api-key"] = _bhApiKey;
+    headers["anthropic-version"] = "2025-04-15";
+    headers["anthropic-dangerous-direct-browser-access"] = "true";
+  }
+
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", url, true);
+  for (var h in headers) xhr.setRequestHeader(h, headers[h]);
+  xhr.timeout = 15000;
+  xhr.onload = function() {
+    btn.disabled = false; btn.textContent = "Test Connection";
+    if (xhr.status === 200) {
+      status.innerHTML = "<span style='color:#a6e3a1;'>&#10003; Connected successfully.</span>";
+    } else if (xhr.status === 401) {
+      status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Invalid API key.</span>";
+    } else {
+      status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Error " + xhr.status + "</span>";
+    }
+  };
+  xhr.onerror = function() { btn.disabled = false; btn.textContent = "Test Connection"; status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Network error.</span>"; };
+  xhr.ontimeout = function() { btn.disabled = false; btn.textContent = "Test Connection"; status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Timed out.</span>"; };
+  xhr.send(JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] }));
+});
+
+function bhSaveAiConfig() {
+  var config = {};
+  if (_bhApiKey) config.apiKey = _bhApiKey;
+  var proxyUrl = document.getElementById("settings-proxy-url").value.trim();
+  if (proxyUrl) config.proxyUrl = proxyUrl;
+  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: config } }, "*");
+}
+
+// ── Welcome overlay ──────────────────────────────────────────────────────────
+document.getElementById("welcome-start-btn").addEventListener("click", function() {
+  var key = document.getElementById("welcome-api-key").value.trim();
+  if (key) {
+    _bhApiKey = key;
+    var inp = document.getElementById("settings-api-key");
+    if (inp) inp.value = key;
+  }
+  bhSaveAiConfig();
+  // Mark welcome as done
+  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: { apiKey: _bhApiKey || "", welcomeDone: true } } }, "*");
+  document.getElementById("welcome-overlay").style.display = "none";
+});
+
+document.getElementById("welcome-skip").addEventListener("click", function(e) {
+  e.preventDefault();
+  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: { welcomeDone: true } } }, "*");
+  document.getElementById("welcome-overlay").style.display = "none";
+});
+
+document.getElementById("settings-show-welcome").addEventListener("click", function(e) {
+  e.preventDefault();
+  document.getElementById("welcome-overlay").style.display = "";
+  if (bhHasBuiltinProxy && bhHasBuiltinProxy()) bhCheckProxyHealth();
+});
 
 // ── Audit ──────────────────────────────────────────────────────────────────────
 document.getElementById("run-btn").addEventListener("click",function(){
@@ -480,12 +795,12 @@ document.getElementById("run-btn").addEventListener("click",function(){
 });
 var GROUPS_ORDER=[
   {label:"Naming & Structure",keys:["naming","namingFormat","deepNesting"]},
-  {label:"Layout",            keys:["autoLayout"]},
-  {label:"Variables & Styles",keys:["colors","spacingVars","radiusVars","opacityVars"]},
+  {label:"Layout",            keys:["autoLayout","fixedSize"]},
+  {label:"Variables & Styles",keys:["colors","spacingVars","radiusVars","opacityVars","borderVars","inconsistentSpacing"]},
   {label:"Typography",        keys:["textStyles","mixedText"]},
   {label:"Hygiene",           keys:["hidden","empty","unsavedStyles"]},
 ];
-var WEIGHTS_UI={autoLayout:5,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+var WEIGHTS_UI={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,borderVars:3,inconsistentSpacing:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
 function priorityBadge(key){var w=WEIGHTS_UI[key]||1;if(w>=5)return"<span class='priority p-critical'>Critical</span>";if(w>=4)return"<span class='priority p-high'>High</span>";if(w>=3)return"<span class='priority p-medium'>Medium</span>";return"<span class='priority p-low'>Low</span>";}
 // Returns true when all Critical + High priority audit checks have 0 issues
 function auditCritHighPass(data) {
@@ -497,7 +812,7 @@ function auditCritHighPass(data) {
 }
 
 // Build one issue row with the appropriate inline action for its check type
-function makeIssueRow(key, issue, hasColorVars) {
+function makeIssueRow(key, issue, fixable) {
   var row = document.createElement("div");
   row.className = "issue-row";
 
@@ -519,6 +834,7 @@ function makeIssueRow(key, issue, hasColorVars) {
     action.addEventListener("click", function(e){ e.stopPropagation(); });
     var input = action.querySelector(".rename-input");
     var btn   = action.querySelector(".apply-btn");
+    if (key === "naming") _namingInputsByNodeId[issue.id] = input;
     function doRename() {
       var name = input.value.trim();
       if (!name) { input.focus(); return; }
@@ -527,6 +843,21 @@ function makeIssueRow(key, issue, hasColorVars) {
     }
     btn.addEventListener("click", doRename);
     input.addEventListener("keydown", function(e){ if(e.key==="Enter") doRename(); });
+    // AI suggest button (single node)
+    if (key === "naming" && _bhApiKey) {
+      var aiBtn = document.createElement("button");
+      aiBtn.className = "action-btn ai-name-btn";
+      aiBtn.textContent = "✨";
+      aiBtn.title = "AI suggest name";
+      (function(nodeId, inp, ab) {
+        ab.addEventListener("click", function() {
+          ab.disabled = true; ab.textContent = "…";
+          _aiNamingPendingSingle = { nodeId: nodeId, input: inp, btn: ab };
+          parent.postMessage({pluginMessage:{type:"ai-name-suggest",nodeIds:[nodeId]}},"*");
+        });
+      })(issue.id, input, aiBtn);
+      action.appendChild(aiBtn);
+    }
     row.appendChild(action);
 
   } else if (key === "hidden" || key === "empty") {
@@ -540,19 +871,153 @@ function makeIssueRow(key, issue, hasColorVars) {
     });
     row.appendChild(action);
 
-  } else if (key === "colors") {
+  } else if (key === "colors" || key === "spacingVars" || key === "radiusVars" || key === "opacityVars" || key === "borderVars") {
     var action = document.createElement("div");
     action.className = "issue-action";
-    var bindBtn = document.createElement("button");
-    bindBtn.className = "action-btn bind-btn";
-    bindBtn.textContent = "Bind";
-    if (!hasColorVars) { bindBtn.disabled = true; bindBtn.title = "No color variables in this file"; }
     action.addEventListener("click", function(e){ e.stopPropagation(); });
-    bindBtn.addEventListener("click", function(){
-      this.disabled = true; this.textContent = "…";
-      parent.postMessage({pluginMessage:{type:"bind-fill",id:issue.id}},"*");
-    });
-    action.appendChild(bindBtn);
+
+    var hasVars = key === "colors" ? fixable.hasColorVars : fixable.hasFloatVars;
+    var sv = issue.suggestedVar;
+
+    if (sv) {
+      // Has a matching variable — show suggestion + Bind button
+      var hint = document.createElement("span");
+      hint.className = "bind-hint";
+      hint.textContent = "→ " + sv.name;
+      hint.title = sv.collection + " / " + sv.name;
+      action.appendChild(hint);
+
+      var bindBtn = document.createElement("button");
+      bindBtn.className = "action-btn bind-btn";
+      bindBtn.textContent = "Bind";
+      bindBtn.addEventListener("click", function(){
+        this.disabled = true; this.textContent = "…";
+        var msgMap = { colors: (issue.bindType === "stroke" ? "bind-stroke" : "bind-fill"), spacingVars: "bind-spacing", radiusVars: "bind-radius", opacityVars: "bind-opacity", borderVars: "bind-border-width" };
+        parent.postMessage({pluginMessage:{type:msgMap[key],id:issue.id}},"*");
+      });
+      action.appendChild(bindBtn);
+    } else {
+      // No matching variable — show create form
+      var defaultCol = { colors: "Colors", spacingVars: "Spacing", radiusVars: "Radius", opacityVars: "Opacity", borderVars: "Border" }[key] || "Variables";
+      var rawDisp = issue.rawValue != null ? String(issue.rawValue) : "";
+      if (key === "colors") rawDisp = issue.rawValue || "";
+      else if (key === "opacityVars") rawDisp = Math.round((issue.rawValue || 0) * 100) + "%";
+      else rawDisp = (issue.rawValue || 0) + "px";
+
+      var noMatch = document.createElement("span");
+      noMatch.className = "bind-no-match";
+      noMatch.textContent = "No match (" + rawDisp + ")";
+      action.appendChild(noMatch);
+
+      var createInput = document.createElement("input");
+      createInput.className = "rename-input";
+      createInput.placeholder = defaultCol.toLowerCase() + "/name";
+      createInput.style.width = "90px";
+      action.appendChild(createInput);
+
+      var createBtn = document.createElement("button");
+      createBtn.className = "action-btn create-btn";
+      createBtn.textContent = "+ Create & Bind";
+      (function(inp, btn, iss, defCol, ky) {
+        function doCreate() {
+          var name = inp.value.trim();
+          if (!name) { inp.focus(); return; }
+          btn.disabled = true; btn.textContent = "…";
+          parent.postMessage({pluginMessage:{
+            type: "create-and-bind",
+            nodeId: iss.id,
+            varName: name,
+            varType: ky === "colors" ? "COLOR" : "FLOAT",
+            rawValue: String(iss.rawValue || ""),
+            bindType: iss.bindType || "",
+            bindIndex: iss.bindIndex || 0,
+            collection: defCol
+          }},"*");
+        }
+        btn.addEventListener("click", doCreate);
+        inp.addEventListener("keydown", function(e){ if(e.key==="Enter") doCreate(); });
+      })(createInput, createBtn, issue, defaultCol, key);
+      action.appendChild(createBtn);
+    }
+
+    row.appendChild(action);
+
+  } else if (key === "textStyles") {
+    var action = document.createElement("div");
+    action.className = "issue-action";
+    action.addEventListener("click", function(e){ e.stopPropagation(); });
+
+    var ss = issue.suggestedStyle;
+    var allTS = (window._auditAllTextStyles || []);
+
+    if (ss) {
+      // Has a matching text style — show suggestion + Bind button
+      var hint = document.createElement("span");
+      hint.className = "bind-hint";
+      hint.textContent = "→ " + ss.name;
+      hint.title = "Text style: " + ss.name;
+      action.appendChild(hint);
+
+      var bindBtn = document.createElement("button");
+      bindBtn.className = "action-btn bind-btn";
+      bindBtn.textContent = "Apply";
+      bindBtn.addEventListener("click", function(){
+        this.disabled = true; this.textContent = "…";
+        parent.postMessage({pluginMessage:{type:"bind-text-style",id:issue.id,styleId:ss.id}},"*");
+      });
+      action.appendChild(bindBtn);
+    }
+
+    // Dropdown to pick from all existing styles
+    if (allTS.length > 0) {
+      var sel = document.createElement("select");
+      sel.className = "rename-input";
+      sel.style.cssText = "width:120px;margin-left:4px;font-size:10px;";
+      var defOpt = document.createElement("option");
+      defOpt.value = "";
+      defOpt.textContent = ss ? "or pick…" : "Pick style…";
+      sel.appendChild(defOpt);
+      for (var tsi = 0; tsi < allTS.length; tsi++) {
+        var opt = document.createElement("option");
+        opt.value = allTS[tsi].id;
+        opt.textContent = allTS[tsi].name;
+        if (ss && allTS[tsi].id === ss.id) opt.disabled = true;
+        sel.appendChild(opt);
+      }
+      (function(select, iss) {
+        select.addEventListener("change", function() {
+          if (!select.value) return;
+          select.disabled = true;
+          parent.postMessage({pluginMessage:{type:"bind-text-style",id:iss.id,styleId:select.value}},"*");
+        });
+      })(sel, issue);
+      action.appendChild(sel);
+    }
+
+    if (!ss) {
+      // No matching text style — also show create form
+      var createInput = document.createElement("input");
+      createInput.className = "rename-input";
+      createInput.placeholder = "style/name";
+      createInput.style.width = "90px";
+      action.appendChild(createInput);
+
+      var createBtn = document.createElement("button");
+      createBtn.className = "action-btn create-btn";
+      createBtn.textContent = "+ Create & Apply";
+      (function(inp, btn, iss) {
+        function doCreate() {
+          var name = inp.value.trim();
+          if (!name) { inp.focus(); return; }
+          btn.disabled = true; btn.textContent = "…";
+          parent.postMessage({pluginMessage:{type:"create-text-style",id:iss.id,styleName:name}},"*");
+        }
+        btn.addEventListener("click", doCreate);
+        inp.addEventListener("keydown", function(e){ if(e.key==="Enter") doCreate(); });
+      })(createInput, createBtn, issue);
+      action.appendChild(createBtn);
+    }
+
     row.appendChild(action);
   }
 
@@ -564,12 +1029,14 @@ function clearAuditDisplay(){
   var sb=document.getElementById("score-bar"); if(sb) sb.style.display="none";
   var btn=document.getElementById("run-btn"); if(btn){btn.disabled=false;btn.textContent="Run audit on current page";}
 }
+var _auditOpenChecks = {};
+var _namingInputsByNodeId = {}; // maps nodeId → input element for AI naming
 function renderAudit(data){
   var btn=document.getElementById("run-btn"); btn.disabled=false; btn.textContent="Re-run audit";
   if(data.noPages){
     var container=document.getElementById("results"); container.innerHTML=""; container.style.display="block";
     var msg=document.createElement("div"); msg.style.cssText="text-align:center;color:#a6adc8;padding:24px 12px;font-size:12px;";
-    msg.textContent="No \"Mobile\" or \"Desktop\" pages found. The audit runs only on those pages.";
+    msg.textContent="No \"Mobile\", \"Desktop\", or \"Components\" pages found. The audit runs on those pages.";
     container.appendChild(msg);
     document.getElementById("score-bar").style.display="none";
     return;
@@ -581,8 +1048,36 @@ function renderAudit(data){
   document.getElementById("score-verdict").textContent=data.score>=80?"✅ Looking good!":data.score>=50?"⚠️ Needs some work":"❌ Not ready yet";
   document.getElementById("score-sub").textContent=data.totalIssues+" issue"+(data.totalIssues!==1?"s":"")+" · "+Object.keys(data.checks).filter(function(k){return data.checks[k].issues.length===0;}).length+"/"+Object.keys(data.checks).length+" passing";
   document.getElementById("score-bar").style.display="flex";
+  _namingInputsByNodeId = {};
 
   var container=document.getElementById("results"); container.innerHTML=""; container.style.display="block";
+
+  // AI Review panel
+  if (data.totalIssues > 0) {
+    var aiWrap = document.createElement("div"); aiWrap.className = "ai-review-wrap";
+    var aiBtn = document.createElement("button"); aiBtn.className = "ai-review-btn";
+    aiBtn.innerHTML = "✨ AI Review — Get a prioritized action plan";
+    var aiHasAccess = _bhApiKey;
+    if (!aiHasAccess) { aiBtn.disabled = true; aiBtn.title = "Set up AI access in Settings tab first"; aiBtn.innerHTML = "✨ AI Review — requires API key or proxy"; }
+    var aiPanel = document.createElement("div"); aiPanel.className = "ai-review-panel"; aiPanel.style.display = "none";
+    aiBtn.addEventListener("click", function(){
+      aiBtn.disabled = true; aiBtn.innerHTML = "✨ Analyzing…";
+      aiPanel.style.display = "block";
+      aiPanel.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
+      bhCallWithRetry(function(retryCb) { bhCallAuditAI(data, retryCb); }, 2, function(err, text){
+        aiBtn.style.display = "none";
+        if (err) {
+          aiPanel.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
+        } else {
+          aiPanel.innerHTML = markdownToHtml(text);
+        }
+      });
+    });
+    aiWrap.appendChild(aiBtn);
+    aiWrap.appendChild(aiPanel);
+    container.appendChild(aiWrap);
+  }
+
   GROUPS_ORDER.forEach(function(group){
     var hdr=document.createElement("div"); hdr.className="group-header"; hdr.textContent=group.label; container.appendChild(hdr);
     group.keys.forEach(function(key){
@@ -596,13 +1091,75 @@ function renderAudit(data){
       card.appendChild(header);
 
       if (count) {
-        // Issue list
+        // Fix All button for fixable check types
+        var fixableKeys = ["naming","namingFormat","hidden","empty","colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+        if (fixableKeys.indexOf(key) !== -1) {
+          var bindableChecks = ["colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+          var fixCount = count;
+          if (bindableChecks.indexOf(key) !== -1) {
+            fixCount = check.issues.filter(function(iss){ return key === "textStyles" ? !!iss.suggestedStyle : !!iss.suggestedVar; }).length;
+          }
+          var fixAllBtn = document.createElement("button");
+          fixAllBtn.className = "action-btn fix-all-btn";
+          fixAllBtn.textContent = "Fix All ("+fixCount+")";
+          fixAllBtn.style.cssText = "margin-left:auto;margin-right:8px;font-size:11px;padding:2px 8px;";
+          if (fixCount === 0 || (key === "colors" && !data.fixable.hasColorVars) || (["spacingVars","radiusVars","opacityVars","borderVars"].indexOf(key) !== -1 && !data.fixable.hasFloatVars) || (key === "textStyles" && !data.fixable.hasTextStyles)) {
+            fixAllBtn.disabled = true;
+          }
+          (function(ck){
+            fixAllBtn.addEventListener("click", function(e){
+              e.stopPropagation();
+              this.disabled = true; this.textContent = "Fixing…";
+              parent.postMessage({pluginMessage:{type:"fix-all-check",checkKey:ck}},"*");
+            });
+          })(key);
+          header.appendChild(fixAllBtn);
+        }
+        // AI Name All button for naming checks
+        if (key === "naming" && _bhApiKey) {
+          var aiNameAllBtn = document.createElement("button");
+          aiNameAllBtn.className = "action-btn ai-name-all-btn";
+          aiNameAllBtn.textContent = "✨ AI Name All (" + count + ")";
+          aiNameAllBtn.style.cssText = "margin-right:8px;font-size:11px;padding:2px 8px;background:#cba6f715;border-color:#cba6f740;color:#cba6f7;";
+          (function(ch) {
+            aiNameAllBtn.addEventListener("click", function(e) {
+              e.stopPropagation();
+              this.disabled = true; this.textContent = "✨ Asking AI…";
+              var ids = [];
+              for (var ai = 0; ai < ch.issues.length; ai++) {
+                if (ids.indexOf(ch.issues[ai].id) === -1) ids.push(ch.issues[ai].id);
+              }
+              _aiNamingPendingBatch = true;
+              parent.postMessage({pluginMessage:{type:"ai-name-suggest",nodeIds:ids}},"*");
+            });
+          })(check);
+          header.appendChild(aiNameAllBtn);
+        }
+        // Issue list — group duplicate node IDs
         var list = document.createElement("div"); list.className = "issue-list";
+        var seenIds = {};
         check.issues.forEach(function(issue){
-          list.appendChild(makeIssueRow(key, issue, data.fixable.hasColorVars));
+          if (seenIds[issue.id]) {
+            // Append to existing row's label
+            var existing = seenIds[issue.id];
+            var lbl = existing.querySelector(".issue-label");
+            if (lbl) {
+              var extraPart = issue.label.replace(/^"[^"]*"\s*/, "");
+              if (extraPart && lbl.textContent.indexOf(extraPart) === -1) {
+                lbl.textContent += "; " + extraPart;
+              }
+            }
+            return;
+          }
+          var row = makeIssueRow(key, issue, data.fixable);
+          seenIds[issue.id] = row;
+          list.appendChild(row);
         });
         card.appendChild(list);
-        header.addEventListener("click", function(){ card.classList.toggle("open"); });
+        (function(k){
+          if (_auditOpenChecks[k]) card.classList.add("open");
+          header.addEventListener("click", function(){ card.classList.toggle("open"); _auditOpenChecks[k] = card.classList.contains("open"); });
+        })(key);
       }
 
       container.appendChild(card);
@@ -831,7 +1388,10 @@ var wfGenerated = false;
 var wfStep2Color = "red";
 var wfStep3Color = "red";
 var wfStep4Color = "red";
-var wfAuditData = null; // last audit results for Step 4
+var wfAuditData = null; // last audit results for Step 4 (in-memory, not persisted)
+var wfAuditPassed = false; // persisted: crit+high all passed
+var wfAuditScore = -1; // persisted: last audit score
+var wfAuditIssues = 0; // persisted: last total issue count
 var wfDevReady = false; // Step 5 handoff
 var wfDevReadyDate = null;
 
@@ -862,6 +1422,7 @@ function equalSpans(n) { var s = []; var base = Math.floor(12 / n); var rem = 12
 function ensureColSpans(row) { if (!row.colSpans || row.colSpans.length !== row.cols) row.colSpans = equalSpans(row.cols); }
 var wfPromoGenerating = false;
 var wfPromoGenerated = false;
+var wfStep3Skipped = false;
 var wfPageType = "promo"; // "promo" | "landing" | "fullsite"
 var PAGE_TYPES = [
   { key: "promo",    label: "Promo" },
@@ -967,6 +1528,7 @@ function collectSettings() {
     tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled)),
     pageType: wfPageType,
     promoGenerated: wfPromoGenerated,
+    step3Skipped: wfStep3Skipped,
     promoSections: JSON.parse(JSON.stringify(wfPromoSections)),
     promoPopupIncludeForm: wfPromoPopupIncludeForm,
     promoFormFields: JSON.parse(JSON.stringify(wfPromoFormFields)),
@@ -974,7 +1536,10 @@ function collectSettings() {
     promoFormGrid: JSON.parse(JSON.stringify(wfPromoFormGrid)),
     _promoFieldsMigratedV2: true,
     devReady: wfDevReady,
-    devReadyDate: wfDevReadyDate
+    devReadyDate: wfDevReadyDate,
+    auditPassed: wfAuditPassed,
+    auditScore: wfAuditScore,
+    auditIssues: wfAuditIssues
   };
 }
 
@@ -1004,6 +1569,7 @@ function applyLoadedSettings(s) {
   if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
   if (s.pageType) wfPageType = s.pageType;
   if (s.promoGenerated !== undefined) wfPromoGenerated = s.promoGenerated;
+  if (s.step3Skipped !== undefined) wfStep3Skipped = s.step3Skipped;
   if (s.promoSections) { for (var pk in s.promoSections) { wfPromoSections[pk] = s.promoSections[pk]; } }
   if (s.promoPopupIncludeForm !== undefined) wfPromoPopupIncludeForm = s.promoPopupIncludeForm;
   if (s.promoFormFields) {
@@ -1038,6 +1604,9 @@ function applyLoadedSettings(s) {
   }
   if (s.devReady !== undefined) wfDevReady = s.devReady;
   if (s.devReadyDate) wfDevReadyDate = s.devReadyDate;
+  if (s.auditPassed !== undefined) wfAuditPassed = s.auditPassed;
+  if (s.auditScore !== undefined) wfAuditScore = s.auditScore;
+  if (s.auditIssues !== undefined) wfAuditIssues = s.auditIssues;
 }
 
 function getWfColors() {
@@ -2292,21 +2861,23 @@ function renderStep3(container) {
   var prev = document.getElementById("wf-step-3");
   if (prev) prev.remove();
 
-  var locked = wfStep2Color === "red";
-  var indicatorColor = locked ? "red" : (wfPromoGenerated ? "green" : "yellow");
+  var step3Done = wfPromoGenerated || wfStep3Skipped;
+  var locked = wfStep2Color === "red" && !step3Done;
+  var indicatorColor = step3Done ? "green" : (locked ? "red" : "yellow");
   var stepOpen = locked ? false : wfFormState.step3Open;
 
   var step = document.createElement("div");
   step.id = "wf-step-3";
-  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (wfPromoGenerated ? " complete" : "");
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (step3Done ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
+  var step3Status = wfPromoGenerated ? " — Generated" : (wfStep3Skipped ? " — Skipped" : "");
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
       "<div class='wf-step-num'>Step 3</div>" +
-      "<div class='wf-step-title'>Page Structures" + (locked ? "" : (wfPromoGenerated ? " — Generated" : "")) + "</div>" +
+      "<div class='wf-step-title'>Page Structures" + (locked ? "" : step3Status) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
        (stepOpen ? "<div class='wf-step-desc'>Choose a page type, configure sections, then generate desktop & mobile wireframes.</div>" : "")) +
     "</div>" +
@@ -2324,6 +2895,39 @@ function renderStep3(container) {
 
   var body = document.createElement("div");
   body.className = "wf-step-body";
+
+  // Helper: append skip/unskip button to a container
+  function appendSkipBtn(container) {
+    if (!wfPromoGenerated && !wfStep3Skipped) {
+      var skipBtn = document.createElement("button");
+      skipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#6c7086;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+      skipBtn.textContent = "Skip — I'll design my own pages";
+      skipBtn.addEventListener("mouseenter", function() { skipBtn.style.borderColor = "#89b4fa"; skipBtn.style.color = "#89b4fa"; });
+      skipBtn.addEventListener("mouseleave", function() { skipBtn.style.borderColor = "#45475a"; skipBtn.style.color = "#6c7086"; });
+      skipBtn.addEventListener("click", function() {
+        wfStep3Skipped = true;
+        wfFormState.step3Open = false;
+        wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
+        wfFormState.step4Open = true;
+        saveSettings();
+        renderWorkflow();
+      });
+      container.appendChild(skipBtn);
+    }
+    if (wfStep3Skipped && !wfPromoGenerated) {
+      var unskipBtn = document.createElement("button");
+      unskipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+      unskipBtn.textContent = "Undo skip";
+      unskipBtn.addEventListener("mouseenter", function() { unskipBtn.style.borderColor = "#f9e2af"; unskipBtn.style.color = "#f9e2af"; });
+      unskipBtn.addEventListener("mouseleave", function() { unskipBtn.style.borderColor = "#45475a"; unskipBtn.style.color = "#a6adc8"; });
+      unskipBtn.addEventListener("click", function() {
+        wfStep3Skipped = false;
+        saveSettings();
+        renderWorkflow();
+      });
+      container.appendChild(unskipBtn);
+    }
+  }
 
   if (!locked) {
     var list = document.createElement("div");
@@ -2885,6 +3489,9 @@ function renderStep3(container) {
     });
     btnWrap.appendChild(delBtn);
 
+    // Skip / Unskip button — right below delete
+    appendSkipBtn(btnWrap);
+
     list.appendChild(btnWrap);
     } else {
       // Landing Page / Full Site Build — coming soon
@@ -2903,6 +3510,12 @@ function renderStep3(container) {
       csDesc.textContent = "Coming soon — this page type is under development.";
       csPanel.appendChild(csDesc);
       list.appendChild(csPanel);
+
+      // Skip / Unskip button — below coming soon
+      var skipWrapCs = document.createElement("div");
+      skipWrapCs.style.cssText = "padding:0 10px 8px;";
+      appendSkipBtn(skipWrapCs);
+      list.appendChild(skipWrapCs);
     }
 
     body.appendChild(list);
@@ -2927,9 +3540,11 @@ function renderStep4(container) {
 
   var locked = wfStep3Color === "red";
   var hasResults = wfAuditData && !wfAuditData.noPages;
-  var score = hasResults ? wfAuditData.score : -1;
-  var critHighOk = hasResults && auditCritHighPass(wfAuditData);
-  var indicatorColor = locked ? "red" : (!hasResults ? "yellow" : (critHighOk ? "green" : (score >= 50 ? "yellow" : "red")));
+  var hasPersistedResults = !hasResults && wfAuditScore >= 0;
+  var score = hasResults ? wfAuditData.score : wfAuditScore;
+  var critHighOk = hasResults ? auditCritHighPass(wfAuditData) : wfAuditPassed;
+  var hasAnyResults = hasResults || hasPersistedResults;
+  var indicatorColor = locked ? "red" : (!hasAnyResults ? "yellow" : (critHighOk ? "green" : (score >= 50 ? "yellow" : "red")));
   var stepOpen = locked ? false : wfFormState.step4Open;
 
   var step = document.createElement("div");
@@ -2942,7 +3557,7 @@ function renderStep4(container) {
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
       "<div class='wf-step-num'>Step 4</div>" +
-      "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : (hasResults ? " — " + score + "/100" : "")) + "</div>" +
+      "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : ((hasResults || hasPersistedResults) ? " — " + score + "/100" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Generate wireframes first</div>" :
        (stepOpen ? "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>" : "")) +
     "</div>" +
@@ -2951,6 +3566,10 @@ function renderStep4(container) {
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step4Open = !wfFormState.step4Open;
+      // If opening and we have persisted results but no full data, auto re-run audit
+      if (wfFormState.step4Open && !wfAuditData && wfAuditScore >= 0) {
+        parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
+      }
       var prev4 = document.getElementById("wf-step-4");
       if (prev4) prev4.remove();
       renderStep4(container);
@@ -3001,22 +3620,111 @@ function renderStep4(container) {
           chdr.innerHTML = "<div class='check-icon " + (count ? "icon-fail" : "icon-pass") + "'>" + check.icon + "</div><div class='check-info'><div class='check-label'>" + esc(check.label) + "</div><div class='check-desc'>" + esc(check.description) + "</div></div>" + priorityBadge(key) + "<span class='check-badge " + (count ? "badge-fail" : "badge-pass") + "'>" + (count ? count + " issue" + (count !== 1 ? "s" : "") : "Pass") + "</span>" + (count ? "<span class='check-chevron'>▼</span>" : "");
           card.appendChild(chdr);
           if (count) {
+            var fixableKeysWf = ["naming","namingFormat","hidden","empty","colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+            if (fixableKeysWf.indexOf(key) !== -1) {
+              var bindableChecksWf = ["colors","spacingVars","radiusVars","opacityVars","borderVars","textStyles"];
+              var fixCountWf = count;
+              if (bindableChecksWf.indexOf(key) !== -1) {
+                fixCountWf = check.issues.filter(function(iss){ return key === "textStyles" ? !!iss.suggestedStyle : !!iss.suggestedVar; }).length;
+              }
+              var fixAllBtnWf = document.createElement("button");
+              fixAllBtnWf.className = "action-btn fix-all-btn";
+              fixAllBtnWf.textContent = "Fix All ("+fixCountWf+")";
+              fixAllBtnWf.style.cssText = "margin-left:auto;margin-right:8px;font-size:11px;padding:2px 8px;";
+              if (fixCountWf === 0 || (key === "colors" && !wfAuditData.fixable.hasColorVars) || (["spacingVars","radiusVars","opacityVars","borderVars"].indexOf(key) !== -1 && !wfAuditData.fixable.hasFloatVars) || (key === "textStyles" && !wfAuditData.fixable.hasTextStyles)) {
+                fixAllBtnWf.disabled = true;
+              }
+              (function(ck){
+                fixAllBtnWf.addEventListener("click", function(e){
+                  e.stopPropagation();
+                  this.disabled = true; this.textContent = "Fixing…";
+                  parent.postMessage({pluginMessage:{type:"fix-all-check",checkKey:ck}},"*");
+                });
+              })(key);
+              chdr.appendChild(fixAllBtnWf);
+            }
+            // AI Name All button for naming checks (workflow tab)
+            if (key === "naming" && _bhApiKey) {
+              var aiNameAllBtnWf = document.createElement("button");
+              aiNameAllBtnWf.className = "action-btn ai-name-all-btn";
+              aiNameAllBtnWf.textContent = "✨ AI Name All (" + count + ")";
+              aiNameAllBtnWf.style.cssText = "margin-right:8px;font-size:11px;padding:2px 8px;background:#cba6f715;border-color:#cba6f740;color:#cba6f7;";
+              (function(ch) {
+                aiNameAllBtnWf.addEventListener("click", function(e) {
+                  e.stopPropagation();
+                  this.disabled = true; this.textContent = "✨ Asking AI…";
+                  var ids = [];
+                  for (var ai = 0; ai < ch.issues.length; ai++) {
+                    if (ids.indexOf(ch.issues[ai].id) === -1) ids.push(ch.issues[ai].id);
+                  }
+                  _aiNamingPendingBatch = true;
+                  parent.postMessage({pluginMessage:{type:"ai-name-suggest",nodeIds:ids}},"*");
+                });
+              })(check);
+              chdr.appendChild(aiNameAllBtnWf);
+            }
             var list = document.createElement("div"); list.className = "issue-list";
+            var seenIdsWf = {};
             check.issues.forEach(function(issue) {
-              list.appendChild(makeIssueRow(key, issue, wfAuditData.fixable.hasColorVars));
+              if (seenIdsWf[issue.id]) {
+                var lbl = seenIdsWf[issue.id].querySelector(".issue-label");
+                if (lbl) {
+                  var extraPart = issue.label.replace(/^"[^"]*"\s*/, "");
+                  if (extraPart && lbl.textContent.indexOf(extraPart) === -1) lbl.textContent += "; " + extraPart;
+                }
+                return;
+              }
+              var row = makeIssueRow(key, issue, wfAuditData.fixable);
+              seenIdsWf[issue.id] = row;
+              list.appendChild(row);
             });
             card.appendChild(list);
-            chdr.addEventListener("click", function() { card.classList.toggle("open"); });
+            (function(k){
+              if (_auditOpenChecks[k]) card.classList.add("open");
+              chdr.addEventListener("click", function(){ card.classList.toggle("open"); _auditOpenChecks[k] = card.classList.contains("open"); });
+            })(key);
           }
           resultsDiv.appendChild(card);
         });
       });
       auditWrap.appendChild(resultsDiv);
+
+      // AI Review panel (workflow tab)
+      if (wfAuditData.totalIssues > 0) {
+        var aiWrapWf = document.createElement("div"); aiWrapWf.className = "ai-review-wrap";
+        var aiBtnWf = document.createElement("button"); aiBtnWf.className = "ai-review-btn";
+        aiBtnWf.innerHTML = "✨ AI Review — Get a prioritized action plan";
+        var aiHasAccessWf = _bhApiKey;
+        if (!aiHasAccessWf) { aiBtnWf.disabled = true; aiBtnWf.title = "Set up AI access in Settings tab first"; aiBtnWf.innerHTML = "✨ AI Review — requires API key or proxy"; }
+        var aiPanelWf = document.createElement("div"); aiPanelWf.className = "ai-review-panel"; aiPanelWf.style.display = "none";
+        aiBtnWf.addEventListener("click", function(){
+          aiBtnWf.disabled = true; aiBtnWf.innerHTML = "✨ Analyzing…";
+          aiPanelWf.style.display = "block";
+          aiPanelWf.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
+          bhCallWithRetry(function(retryCb) { bhCallAuditAI(wfAuditData, retryCb); }, 2, function(err, text){
+            aiBtnWf.style.display = "none";
+            if (err) {
+              aiPanelWf.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
+            } else {
+              aiPanelWf.innerHTML = markdownToHtml(text);
+            }
+          });
+        });
+        aiWrapWf.appendChild(aiBtnWf);
+        aiWrapWf.appendChild(aiPanelWf);
+        auditWrap.appendChild(aiWrapWf);
+      }
     } else if (wfAuditData && wfAuditData.noPages) {
       var noPages = document.createElement("div");
       noPages.style.cssText = "padding:24px 16px;text-align:center;font-size:11px;color:#a6adc8;";
-      noPages.textContent = "No Desktop or Mobile pages found. The audit runs only on those pages.";
+      noPages.textContent = "No Desktop, Mobile, or Components pages found. The audit runs on those pages.";
       auditWrap.appendChild(noPages);
+    } else if (hasPersistedResults) {
+      // We have a persisted score but no full data — show loading while auto re-run fetches results
+      var loadingDiv = document.createElement("div");
+      loadingDiv.style.cssText = "padding:16px;text-align:center;font-size:11px;color:#a6adc8;";
+      loadingDiv.textContent = "Loading audit details…";
+      auditWrap.appendChild(loadingDiv);
     }
 
     // Run / Re-run button
@@ -3025,7 +3733,7 @@ function renderStep4(container) {
     var runBtn = document.createElement("button");
     runBtn.className = "wf-gen-btn";
     runBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
-    runBtn.textContent = hasResults ? "Re-run Audit" : "Run Audit";
+    runBtn.textContent = (hasResults || hasPersistedResults) ? "Re-run Audit" : "Run Audit";
     runBtn.addEventListener("click", function() {
       runBtn.disabled = true; runBtn.textContent = "Scanning…";
       parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
@@ -3097,8 +3805,8 @@ function renderStep5(container) {
     var checks = [
       { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
       { label: "Design tokens generated", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
-      { label: "Wireframes built", done: wfStep3Color === "green" || wfPromoGenerated, detail: "Desktop & mobile page structures" },
-      { label: "Audit — all critical & high passed", done: auditCritHighPass(wfAuditData), detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : "Not run yet" }
+      { label: "Wireframes built", done: wfStep3Color === "green" || wfPromoGenerated || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
+      { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
     ];
 
     checks.forEach(function(c) {
@@ -3196,9 +3904,21 @@ function sendPromoGenerate() {
       row.fields.forEach(function(fi, ci) {
         if (fi !== null && wfPromoFormFields[fi] && wfPromoFormFields[fi].label.trim()) {
           var f = wfPromoFormFields[fi];
-          fields.push({ label: f.label.trim(), dropdown: f.dropdown, required: !!f.required, colSpan: row.colSpans[ci] });
+          fields.push({ label: f.label.trim(), dropdown: f.dropdown, required: !!f.required });
+          spans.push(row.colSpans[ci] || 0);
         }
       });
+      // Recalculate colSpans: redistribute proportionally so they always add to 12
+      if (fields.length > 0) {
+        var total = 0; for (var si = 0; si < spans.length; si++) total += spans[si];
+        if (total !== 12 || spans.length !== row.cols) {
+          // Field count changed or spans don't add up — reset to equal
+          var eq = equalSpans(fields.length);
+          for (var ei = 0; ei < fields.length; ei++) fields[ei].colSpan = eq[ei];
+        } else {
+          for (var pi = 0; pi < fields.length; pi++) fields[pi].colSpan = spans[pi];
+        }
+      }
       return fields;
     }).filter(function(r) { return r.length > 0; }),
     brandColor: colors.primary,
@@ -3344,6 +4064,10 @@ window.onmessage=function(event){
   var msg=event.data.pluginMessage; if(!msg)return;
   if(msg.type==="load-settings"){
     applyLoadedSettings(msg.settings);
+    // Collapse completed steps by default on load
+    if (wfPromoGenerated || wfStep3Skipped) wfFormState.step3Open = false;
+    if (wfAuditPassed) wfFormState.step4Open = false;
+    updateBuildHtmlTab();
     // Re-render workflow if it's visible
     var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
   }
@@ -3441,22 +4165,82 @@ window.onmessage=function(event){
       { cols: 2, colSpans: [6, 6], fields: [2, 3] },
       { cols: 1, colSpans: [12], fields: [4] }
     ];
-    wfAuditData = null;
+    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfFormState.step2Open = true;
     wfFormState.step2Toggled = false;
     wfFormState.step4Open = true;
     wfFormState.step5Open = true;
     wfDevReady = false;
     wfDevReadyDate = null;
+    updateBuildHtmlTab();
     // Re-render workflow
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
+  // ── AI Naming response: serialized nodes came back, call AI ──────────────
+  if (msg.type === "ai-name-context") {
+    var nodes = msg.nodes || [];
+    if (nodes.length === 0) {
+      _aiNamingPendingSingle = null;
+      _aiNamingPendingBatch = false;
+      return;
+    }
+    bhCallWithRetry(function(retryCb) { bhCallNamingAI(nodes, retryCb); }, 2, function(err, names) {
+      if (err) {
+        // Reset UI state on error
+        if (_aiNamingPendingSingle) {
+          _aiNamingPendingSingle.btn.disabled = false;
+          _aiNamingPendingSingle.btn.textContent = "✨";
+          _aiNamingPendingSingle = null;
+        }
+        _aiNamingPendingBatch = false;
+        console.error("AI naming error:", err);
+        return;
+      }
+      if (_aiNamingPendingSingle && names.length > 0) {
+        // Single node — update the input field with the AI suggestion
+        var match = names.filter(function(n) { return n.id === _aiNamingPendingSingle.nodeId; })[0];
+        if (match && match.name) {
+          _aiNamingPendingSingle.input.value = match.name;
+          _aiNamingPendingSingle.btn.textContent = "✨";
+          _aiNamingPendingSingle.btn.disabled = false;
+        } else {
+          _aiNamingPendingSingle.btn.textContent = "✨";
+          _aiNamingPendingSingle.btn.disabled = false;
+        }
+        _aiNamingPendingSingle = null;
+      } else if (_aiNamingPendingBatch && names.length > 0) {
+        // Batch — update all input fields with AI suggestions (user reviews before applying)
+        for (var bi = 0; bi < names.length; bi++) {
+          var entry = names[bi];
+          if (entry.id && entry.name && _namingInputsByNodeId[entry.id]) {
+            _namingInputsByNodeId[entry.id].value = entry.name;
+            _namingInputsByNodeId[entry.id].style.borderColor = "#cba6f750";
+          }
+        }
+        // Re-enable AI Name All buttons
+        var aiAllBtns = document.querySelectorAll(".ai-name-all-btn");
+        for (var abi = 0; abi < aiAllBtns.length; abi++) {
+          aiAllBtns[abi].disabled = false;
+          aiAllBtns[abi].textContent = "✨ AI Name All (" + names.length + ")";
+        }
+        _aiNamingPendingBatch = false;
+      } else {
+        _aiNamingPendingBatch = false;
+        _aiNamingPendingSingle = null;
+      }
+    });
+    return;
+  }
   if(msg.type==="audit-results"){
+    window._auditAllTextStyles = (msg.results && msg.results.fixable && msg.results.fixable.allTextStyles) || [];
     renderAudit(msg.results);
     wfAuditData = msg.results;
-    if (msg.results && msg.results.score === 100) {
-      wfFormState.step4Open = false;
-    }
+    // Persist audit summary
+    wfAuditPassed = auditCritHighPass(msg.results);
+    wfAuditScore = (msg.results && !msg.results.noPages) ? msg.results.score : -1;
+    wfAuditIssues = (msg.results && msg.results.totalIssues !== undefined) ? msg.results.totalIssues : 0;
+    // Never auto-collapse — user should always see audit results after running
+    saveSettings();
     var sc = document.getElementById("wf-container");
     if (sc) renderStep4(sc);
   }
@@ -3496,20 +4280,24 @@ window.onmessage=function(event){
     wfPromoGenerating = false;
     wfPromoGenerated = true;
     wfFormState.step3Open = false;
-    wfAuditData = null;
+    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfFormState.step4Open = true;
     wfDevReady = false;
     wfDevReadyDate = null;
     wfFormState.step5Open = true;
     clearAuditDisplay();
+    updateBuildHtmlTab();
     saveSettings();
     var pc = document.getElementById("wf-container");
     if (pc) renderStep3(pc);
   }
   if(msg.type==="wireframes-deleted"){
     wfPromoGenerated = false;
-    wfAuditData = null;
+    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
+    wfDevReady = false;
+    wfDevReadyDate = null;
     clearAuditDisplay();
+    updateBuildHtmlTab();
     saveSettings();
     var pc2 = document.getElementById("wf-container");
     if (pc2) renderStep3(pc2);
@@ -3518,10 +4306,1241 @@ window.onmessage=function(event){
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
   if(msg.type==="cover-status-updated"){
     if (wfDevReady) wfFormState.step5Open = false;
+    updateBuildHtmlTab();
     var sc5 = document.getElementById("wf-container");
     if (sc5) renderStep5(sc5);
   }
+  // ── Image export pre-check ──
+  if (msg.type === "check-images-export-result") {
+    var missing = msg.missing || [];
+    if (missing.length > 0) {
+      var names = missing.length <= 5 ? missing.join(", ") : missing.slice(0, 5).join(", ") + " and " + (missing.length - 5) + " more";
+      if (confirm("Warning: " + missing.length + " image(s) in your design have no export settings configured and won't be included in the export:\n\n" + names + "\n\nTo include them, select each image in Figma and add export settings (e.g. SVG or PNG @1x/@2x).\n\nContinue anyway?")) {
+        bhStartHtmlGeneration();
+      } else {
+        var btn = document.getElementById("bh-generate-btn");
+        if (btn) { btn.disabled = false; btn.textContent = "Generate Code"; }
+      }
+    } else {
+      bhStartHtmlGeneration();
+    }
+  }
+  // ── Build HTML messages ──
+  if (msg.type === "build-html-warning") {
+    bhTermLog("WARNING: " + (msg.message || ""), "warn");
+  }
+  if(msg.type==="build-html-progress"){
+    var term = document.getElementById("bh-terminal");
+    if (term) term.style.display = "";
+    var prog = document.getElementById("bh-progress");
+    if (prog) prog.style.display = "";
+    var bar = document.getElementById("bh-progress-bar");
+    if (bar) bar.style.width = (msg.percent || 0) + "%";
+    // For image export updates, overwrite the last line instead of appending
+    var phase = msg.phase || "";
+    if (phase.indexOf("Exporting images") === 0) {
+      var logEl = document.getElementById("bh-terminal-log");
+      if (logEl && logEl.lastChild && logEl.lastChild._bhImgLine) {
+        logEl.removeChild(logEl.lastChild);
+      }
+      bhTermLog(phase, "info");
+      if (logEl && logEl.lastChild) logEl.lastChild._bhImgLine = true;
+    } else {
+      bhTermLog(phase, msg.percent >= 100 ? "done" : "info");
+    }
+  }
+  if(msg.type==="build-html-error"){
+    bhTermLog("ERROR: " + (msg.error || "Unknown error"), "error");
+    var errDiv = document.getElementById("bh-error");
+    if (errDiv) { errDiv.style.display = ""; errDiv.textContent = msg.error || "Unknown error"; }
+    var progE = document.getElementById("bh-progress");
+    if (progE) progE.style.display = "none";
+    var genBtn = document.getElementById("bh-generate-btn");
+    if (genBtn) { genBtn.disabled = false; genBtn.textContent = "Generate HTML"; }
+  }
+  if(msg.type==="build-html-result"){
+    _bhLastRawResult = JSON.parse(JSON.stringify(msg));
+    var aiEnabled = document.getElementById("bh-ai-enhance").checked;
+    bhTermLog("Raw HTML generated — " + (msg.stats ? msg.stats.nodes + " nodes, " + msg.stats.images + " images" : ""), "done");
+    if (msg.screenshots && msg.screenshots.length) {
+      bhTermLog("Captured " + msg.screenshots.length + " design screenshot" + (msg.screenshots.length !== 1 ? "s" : "") + " for AI context", "done");
+    }
+    if (aiEnabled) {
+      var bar = document.getElementById("bh-progress-bar");
+      if (bar) bar.style.width = "90%";
+      bhTermLog("Sending to Claude AI for enhancement…", "info");
+      bhEnhanceWithAI(msg.htmlFiles, msg.css, msg.screenshots || [], function(err, refined) {
+        var progR = document.getElementById("bh-progress");
+        if (progR) progR.style.display = "none";
+        if (err) {
+          bhTermLog("AI enhancement failed: " + err, "error");
+          bhTermLog("Showing raw output instead", "warn");
+          var errDiv = document.getElementById("bh-error");
+          if (errDiv) { errDiv.style.display = ""; errDiv.textContent = "AI enhancement failed: " + err + " — showing raw output."; }
+          _bhLastEnhancedResult = null;
+          bhShowResults(_bhLastRawResult, null);
+        } else {
+          bhTermLog("AI enhancement complete", "done");
+          _bhLastEnhancedResult = {
+            htmlFiles: refined.htmlFiles,
+            css: refined.css,
+            images: msg.images,
+            stats: msg.stats
+          };
+          _bhViewingEnhanced = true;
+          bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
+        }
+        bhTermLog("Ready — files available for download", "done");
+        var genBtn2 = document.getElementById("bh-generate-btn");
+        if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
+      }, wfPageType);
+    } else {
+      var progR = document.getElementById("bh-progress");
+      if (progR) progR.style.display = "none";
+      _bhLastEnhancedResult = null;
+      bhShowResults(msg, null);
+      bhTermLog("Ready — files available for download", "done");
+      var genBtn2 = document.getElementById("bh-generate-btn");
+      if (genBtn2) { genBtn2.disabled = false; genBtn2.textContent = "Re-generate HTML"; }
+    }
+  }
+  if(msg.type==="user-info"){
+    _figmaUserId = msg.userId || "";
+    _figmaUserName = msg.userName || "";
+  }
+  if(msg.type==="ai-config-loaded"){
+    var cfg = msg.config || {};
+    if (cfg.apiKey) {
+      _bhApiKey = cfg.apiKey;
+      var settingsInp = document.getElementById("settings-api-key");
+      if (settingsInp) settingsInp.value = cfg.apiKey;
+      var settingsStatus = document.getElementById("settings-key-status");
+      if (settingsStatus) { settingsStatus.textContent = "Key loaded."; settingsStatus.style.color = "#a6e3a1"; }
+    }
+    if (cfg.proxyUrl) {
+      _bhProxyUrl = cfg.proxyUrl;
+      var proxyInp = document.getElementById("settings-proxy-url");
+      if (proxyInp) proxyInp.value = cfg.proxyUrl;
+    }
+    // Show welcome overlay if first time
+    if (!cfg.welcomeDone) {
+      document.getElementById("welcome-overlay").style.display = "";
+    }
+    bhUpdateAiModeUI();
+  }
 };
+
+// ── Terminal log helper ──
+function bhTermLog(text, type) {
+  var log = document.getElementById("bh-terminal-log");
+  if (!log) return;
+  var line = document.createElement("div");
+  var ts = new Date();
+  var timeStr = String(ts.getHours()).padStart(2, "0") + ":" + String(ts.getMinutes()).padStart(2, "0") + ":" + String(ts.getSeconds()).padStart(2, "0");
+  var prefix = "<span style='color:#585858;'>" + timeStr + "</span> ";
+  if (type === "done") {
+    prefix += "<span style='color:#a6e3a1;'>✓</span> ";
+    line.style.color = "#a6e3a1";
+  } else if (type === "error") {
+    prefix += "<span style='color:#f38ba8;'>✗</span> ";
+    line.style.color = "#f38ba8";
+  } else if (type === "warn") {
+    prefix += "<span style='color:#f9e2af;'>⚠</span> ";
+    line.style.color = "#f9e2af";
+  } else if (type === "dim") {
+    prefix += "  ";
+    line.style.color = "#585858";
+  } else {
+    prefix += "<span style='color:#89b4fa;'>›</span> ";
+    line.style.color = "#a6adc8";
+  }
+  line.innerHTML = prefix + esc(text);
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── Build HTML button handlers ──
+var _bhLastResult = null;
+var _bhLastRawResult = null;
+var _bhLastEnhancedResult = null;
+var _bhViewingEnhanced = false;
+var _figmaUserId = "";
+var _figmaUserName = "";
+var _bhApiKey = "";
+
+// Proxy URL — set via build (proxy-config.json), Settings tab, or clientStorage
+var _bhProxyUrl = "";
+var _bhBuiltinProxyUrl = _bhProxyUrl; // Remember the build-time value
+
+var _bhProxyHealthy = false;
+var _bhProxyChecked = false;
+
+function bhHasProxy() {
+  return _bhProxyUrl && _bhProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhProxyUrl.length > 10;
+}
+
+function bhHasBuiltinProxy() {
+  return _bhBuiltinProxyUrl && _bhBuiltinProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhBuiltinProxyUrl.length > 10;
+}
+
+function bhUpdateProxyUI() {
+  var proxyHealthy = bhHasProxy() && _bhProxyHealthy;
+
+  // Settings tab: update API key label/description based on proxy status
+  var keyLabel = document.getElementById("settings-key-label");
+  var keyDesc = document.getElementById("settings-key-desc");
+  if (proxyHealthy) {
+    if (keyLabel) keyLabel.textContent = "Anthropic API Key (optional)";
+    if (keyDesc) keyDesc.innerHTML = "Proxy is active — API key is optional. Enter one to use your own credits instead of the proxy's server key. Get your key at <a href='https://console.anthropic.com/' target='_blank' style='color:#89b4fa;text-decoration:underline;'>console.anthropic.com</a>";
+  } else {
+    if (keyLabel) keyLabel.textContent = "Anthropic API Key";
+    if (keyDesc) keyDesc.innerHTML = "Get your key at <a href='https://console.anthropic.com/' target='_blank' style='color:#89b4fa;text-decoration:underline;'>console.anthropic.com</a>";
+  }
+
+  // Settings tab: show built-in notice and pre-fill URL if build-time proxy exists
+  var notice = document.getElementById("settings-proxy-builtin-notice");
+  var proxyDetails = document.getElementById("settings-proxy-details");
+  var proxyInp = document.getElementById("settings-proxy-url");
+  if (bhHasBuiltinProxy()) {
+    if (proxyDetails) proxyDetails.open = true;
+    if (notice) {
+      notice.style.display = "";
+      if (_bhProxyHealthy) {
+        notice.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Pre-configured proxy is healthy. You can override it below.";
+        notice.style.color = "#a6e3a1";
+      } else if (_bhProxyChecked) {
+        notice.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Pre-configured proxy is unreachable. Your API key will be used directly.";
+        notice.style.color = "#f38ba8";
+      } else {
+        notice.innerHTML = "&#8635; Checking pre-configured proxy...";
+        notice.style.color = "#6c7086";
+      }
+    }
+    // Pre-fill the input if user hasn't overridden it
+    if (proxyInp && !proxyInp.value) proxyInp.value = _bhProxyUrl;
+  } else if (bhHasProxy() && proxyInp) {
+    // User-entered proxy (from clientStorage) — also update notice area
+    if (proxyDetails) proxyDetails.open = true;
+  }
+
+  // Welcome screen proxy notice
+  var welcomeNotice = document.getElementById("welcome-proxy-notice");
+  var welcomeIcon = document.getElementById("welcome-proxy-icon");
+  var welcomeText = document.getElementById("welcome-proxy-text");
+  if (bhHasProxy() && welcomeNotice) {
+    welcomeNotice.style.display = "";
+    if (_bhProxyHealthy) {
+      welcomeIcon.innerHTML = "&#10003;"; welcomeIcon.style.color = "#a6e3a1";
+      welcomeText.innerHTML = "Team proxy connected. API key is optional — enter one to use your own credits, or skip to use the shared proxy.";
+      welcomeText.style.color = "#a6e3a1";
+    } else if (_bhProxyChecked) {
+      welcomeIcon.innerHTML = "&#10007;"; welcomeIcon.style.color = "#f38ba8";
+      welcomeText.innerHTML = "Team proxy is unreachable. Enter your own API key below.";
+      welcomeText.style.color = "#f38ba8";
+    } else {
+      welcomeIcon.innerHTML = "&#8635;"; welcomeIcon.style.color = "#6c7086";
+      welcomeText.innerHTML = "Checking team proxy...";
+      welcomeText.style.color = "#6c7086";
+    }
+  }
+}
+
+function bhCheckProxyHealth() {
+  if (!bhHasProxy()) { _bhProxyChecked = true; _bhProxyHealthy = false; bhUpdateProxyUI(); bhUpdateAiModeUI(); return; }
+  bhUpdateProxyUI(); // Show "checking..." state
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", _bhProxyUrl + "/health", true);
+  xhr.timeout = 5000;
+  xhr.onload = function() {
+    _bhProxyChecked = true;
+    _bhProxyHealthy = (xhr.status === 200);
+    bhUpdateProxyUI();
+    bhUpdateAiModeUI();
+  };
+  xhr.onerror = function() {
+    _bhProxyChecked = true;
+    _bhProxyHealthy = false;
+    bhUpdateProxyUI();
+    bhUpdateAiModeUI();
+  };
+  xhr.ontimeout = function() {
+    _bhProxyChecked = true;
+    _bhProxyHealthy = false;
+    bhUpdateProxyUI();
+    bhUpdateAiModeUI();
+  };
+  xhr.send();
+}
+
+function bhUpdateAiModeUI() {
+  var keySection = document.getElementById("bh-ai-key-section");
+  var modeInfo = document.getElementById("bh-ai-mode-info");
+  var details = document.getElementById("bh-ai-details");
+  var checked = document.getElementById("bh-ai-enhance").checked;
+  if (details) details.style.display = checked ? "" : "none";
+  if (!checked) return;
+
+  // Hide the old inline key section — config is now in Settings tab
+  if (keySection) keySection.style.display = "none";
+
+  var hasKey = !!_bhApiKey;
+  var hasProxy = bhHasProxy() && _bhProxyHealthy;
+  var statusHtml = "";
+  if (hasKey && hasProxy) {
+    statusHtml = "<span style='color:#a6e3a1;'>&#10003;</span> AI ready via proxy. <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Settings</a>";
+  } else if (hasKey) {
+    statusHtml = "<span style='color:#a6e3a1;'>&#10003;</span> AI ready. <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Settings</a>";
+  } else if (hasProxy) {
+    statusHtml = "<span style='color:#a6e3a1;'>&#10003;</span> AI ready via proxy (no personal key). <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Settings</a>";
+  } else {
+    statusHtml = "No API key set. <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Configure in Settings</a>";
+  }
+  if (modeInfo) { modeInfo.style.display = ""; modeInfo.innerHTML = statusHtml; }
+  var gotoLink = document.getElementById("bh-goto-settings");
+  if (gotoLink) gotoLink.addEventListener("click", function(e) {
+    e.preventDefault();
+    document.querySelectorAll(".tab-btn").forEach(function(b){b.classList.remove("active");});
+    document.querySelectorAll(".pane").forEach(function(p){p.classList.remove("active");});
+    document.querySelector('.tab-btn[data-tab="settings"]').classList.add("active");
+    document.getElementById("pane-settings").classList.add("active");
+  });
+}
+
+document.getElementById("bh-ai-enhance").addEventListener("change", function() {
+  bhUpdateAiModeUI();
+});
+
+// Old bh-key-toggle and bh-api-key handlers removed — AI config now in Settings tab
+
+// Initialize AI mode — check proxy health, then update UI
+setTimeout(function() { bhCheckProxyHealth(); }, 100);
+
+// Show welcome overlay if no ai-config was loaded after a brief delay
+var _aiConfigReceived = false;
+// Patch: track if ai-config-loaded was received
+var _origOnMsg = window.onmessage;
+window.addEventListener("message", function(ev) {
+  var msg = ev.data && ev.data.pluginMessage;
+  if (msg && msg.type === "ai-config-loaded") _aiConfigReceived = true;
+});
+setTimeout(function() {
+  if (!_aiConfigReceived && !_bhApiKey) {
+    document.getElementById("welcome-overlay").style.display = "";
+  }
+}, 500);
+
+function bhBuildDesignContext() {
+  var ctx = "## Design System Context\n";
+  // Colors
+  ctx += "- Primary color: " + (wfColors.primary || "#3B82F6");
+  if (wfColors.secondary) ctx += ", Secondary: " + wfColors.secondary;
+  if (wfColors.tertiary) ctx += ", Tertiary: " + wfColors.tertiary;
+  ctx += ", Text: " + (wfColors.textColor || "#1A1A1A") + "\n";
+  // Custom colors
+  if (wfCustomColors && wfCustomColors.length) {
+    var ccNames = [];
+    for (var cci = 0; cci < wfCustomColors.length; cci++) {
+      ccNames.push(wfCustomColors[cci].name + ": " + wfCustomColors[cci].hex);
+    }
+    ctx += "- Custom colors: " + ccNames.join(", ") + "\n";
+  }
+  // Fonts
+  ctx += "- Primary font: " + (wfFonts.primary || "Inter");
+  if (wfFonts.secondary) ctx += ", Secondary: " + wfFonts.secondary;
+  if (wfFonts.tertiary) ctx += ", Tertiary: " + wfFonts.tertiary;
+  ctx += "\n";
+  // Text styles
+  if (wfTextStyles && wfTextStyles.length) {
+    ctx += "- Text styles: ";
+    var tsNames = [];
+    for (var tsi = 0; tsi < wfTextStyles.length; tsi++) {
+      var ts = wfTextStyles[tsi];
+      tsNames.push(ts.name + " (" + ts.fontSize + "px/" + ts.fontWeight + ")");
+    }
+    ctx += tsNames.join(", ") + "\n";
+  }
+  // Spacing
+  if (wfSpacing && wfSpacing.length) {
+    var spVals = [];
+    for (var spi = 0; spi < wfSpacing.length; spi++) {
+      spVals.push(wfSpacing[spi].name + ": " + wfSpacing[spi].value + "px");
+    }
+    ctx += "- Spacing scale: " + spVals.join(", ") + "\n";
+  }
+  // Page structure
+  ctx += "- Page type: " + (wfPageType || "promo") + "\n";
+  var activeSections = [];
+  for (var sk in wfPromoSections) {
+    if (wfPromoSections[sk]) activeSections.push(sk);
+  }
+  if (activeSections.length) ctx += "- Active sections: " + activeSections.join(", ") + "\n";
+  // Utility classes — enumerate actual available classes
+  ctx += "- Layout utilities: .flex, .flex-col, .flex-row, .flex-wrap, .items-center, .items-start, .items-end, .items-stretch, .justify-center, .justify-between, .justify-start, .justify-end, .relative, .absolute, .hidden, .overflow-hidden, .w-full, .h-full, .min-h-screen\n";
+  // Spacing utilities from actual spacing scale
+  if (wfSpacing && wfSpacing.length) {
+    var spNames = [];
+    for (var spu = 0; spu < wfSpacing.length; spu++) {
+      var sp = wfSpacing[spu];
+      spNames.push(".gap-" + sp.name + " (" + sp.value + "px)");
+      spNames.push(".p-" + sp.name);
+      spNames.push(".px-" + sp.name);
+      spNames.push(".py-" + sp.name);
+    }
+    ctx += "- Spacing utilities: " + spNames.join(", ") + "\n";
+  }
+  // Typography utilities from text styles
+  if (wfTextStyles && wfTextStyles.length) {
+    var tyNames = [];
+    for (var tyu = 0; tyu < wfTextStyles.length; tyu++) {
+      var ts2 = wfTextStyles[tyu];
+      tyNames.push(".text-" + ts2.name.toLowerCase().replace(/\s+/g, "-") + " (" + ts2.fontSize + "px/" + ts2.fontWeight + ")");
+    }
+    ctx += "- Typography utilities: " + tyNames.join(", ") + "\n";
+  }
+  // Color utilities from custom colors
+  if (wfCustomColors && wfCustomColors.length) {
+    var colNames = [];
+    for (var cu = 0; cu < wfCustomColors.length; cu++) {
+      var cc = wfCustomColors[cu];
+      var slug = cc.name.toLowerCase().replace(/[\s/]+/g, "-");
+      colNames.push(".bg-" + slug + " (" + cc.hex + ")");
+      colNames.push(".text-" + slug);
+    }
+    ctx += "- Color utilities: " + colNames.join(", ") + "\n";
+  }
+  // CSS custom properties (variables) — enumerate what's defined
+  var cssVars = [];
+  if (wfCustomColors && wfCustomColors.length) {
+    for (var cvi = 0; cvi < wfCustomColors.length; cvi++) {
+      var cv = wfCustomColors[cvi];
+      cssVars.push("--color-" + cv.name.toLowerCase().replace(/[\s/]+/g, "-") + ": " + cv.hex);
+    }
+  }
+  if (wfSpacing && wfSpacing.length) {
+    for (var svi = 0; svi < wfSpacing.length; svi++) {
+      cssVars.push("--spacing-" + wfSpacing[svi].name + ": " + wfSpacing[svi].value + "px");
+    }
+  }
+  if (cssVars.length) ctx += "- CSS custom properties: " + cssVars.join(", ") + "\n";
+  ctx += "- Component classes hold only unique properties not covered by utilities. If a component CSS property duplicates a utility, remove it from component CSS and ensure the utility class is on the element.\n";
+  return ctx;
+}
+
+// ── Retry helper for transient API errors ────────────────────────────────────
+function bhIsRetryableError(errMsg) {
+  if (!errMsg) return false;
+  return errMsg.indexOf("429") !== -1 || errMsg.indexOf("529") !== -1
+    || errMsg.indexOf("Network error") !== -1 || errMsg.indexOf("overloaded") !== -1;
+}
+
+function bhCallWithRetry(callFn, maxRetries, callback) {
+  var attempt = 0;
+  function tryCall() {
+    try {
+      callFn(function(err, result) {
+        if (err && attempt < maxRetries && bhIsRetryableError(err)) {
+          attempt++;
+          var delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+          bhTermLog("[retry] Attempt " + (attempt + 1) + " after " + delay + "ms — " + err, "warn");
+          setTimeout(tryCall, delay);
+        } else {
+          callback(err, result);
+        }
+      });
+    } catch(e) {
+      bhTermLog("AI call crashed: " + (e.message || e), "error");
+      callback("Internal error: " + (e.message || e), null);
+    }
+  }
+  tryCall();
+}
+
+// Per-frame processing: splits large designs into individual AI requests
+function bhEnhanceWithAI(htmlFiles, css, screenshots, callback, pageType) {
+  // Estimate total size
+  var totalChars = (css || "").length;
+  for (var i = 0; i < htmlFiles.length; i++) totalChars += htmlFiles[i].content.length;
+
+  // If small enough or single file, process as one request
+  if (totalChars <= 32000 || htmlFiles.length <= 1) {
+    bhCallWithRetry(function(retryCb) {
+      bhCallClaudeAPI(htmlFiles, css, screenshots, retryCb, pageType);
+    }, 2, callback);
+    return;
+  }
+
+  // Large design: process each frame individually
+  bhTermLog("Large design detected (" + htmlFiles.length + " frames, ~" + Math.round(totalChars / 1000) + "k chars) — processing per-frame", "info");
+  var refinedHtmlFiles = [];
+  var refinedCss = null;
+  var frameIndex = 0;
+  var frameErrors = [];
+
+  function processNextFrame() {
+    if (frameIndex >= htmlFiles.length) {
+      // All frames done — merge results
+      if (refinedHtmlFiles.length === 0) {
+        callback("All frame refinements failed: " + frameErrors.join("; "), null);
+        return;
+      }
+      callback(null, { htmlFiles: refinedHtmlFiles, css: refinedCss || css });
+      return;
+    }
+    var fi = frameIndex++;
+    var frameFile = [htmlFiles[fi]];
+    // Find matching screenshot
+    var frameSS = [];
+    if (screenshots) {
+      for (var si = 0; si < screenshots.length; si++) {
+        if (screenshots[si].name === htmlFiles[fi].name.replace(".html", "")) frameSS.push(screenshots[si]);
+      }
+    }
+    bhTermLog("Enhancing frame " + (fi + 1) + "/" + htmlFiles.length + ": " + htmlFiles[fi].name, "info");
+    bhCallWithRetry(function(retryCb) {
+      bhCallClaudeAPI(frameFile, css, frameSS, retryCb, pageType);
+    }, 2, function(err, result) {
+      if (err) {
+        bhTermLog("Frame " + htmlFiles[fi].name + " failed: " + err, "warn");
+        frameErrors.push(htmlFiles[fi].name + ": " + err);
+        // Use original HTML for this frame
+        refinedHtmlFiles.push(htmlFiles[fi]);
+      } else {
+        if (result.htmlFiles && result.htmlFiles.length) refinedHtmlFiles.push(result.htmlFiles[0]);
+        // Take CSS from first successful frame refinement
+        if (!refinedCss && result.css) refinedCss = result.css;
+      }
+      processNextFrame();
+    });
+  }
+  processNextFrame();
+}
+
+function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
+  pageType = pageType || "promo";
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+
+  var htmlSummary = "";
+  for (var i = 0; i < htmlFiles.length; i++) {
+    htmlSummary += "<!-- FILE: " + htmlFiles[i].name + " -->\n" + htmlFiles[i].content + "\n\n";
+  }
+
+  var designContext = bhBuildDesignContext();
+
+  var systemPrompt = "You are an expert frontend developer refining auto-generated HTML/CSS from a Figma design tool. "
+    + "Your job is to improve the code while keeping it functionally and visually identical. "
+    + "You may receive screenshots of the original Figma design — use them as the visual source of truth to verify your output matches the intended design.\n\n"
+    + designContext + "\n"
+    + "Rules:\n"
+    + "1. PRESERVE all class names exactly — both component classes AND utility classes (like 'relative', 'flex', 'flex-col', 'items-center', 'justify-center', 'hidden', etc.) connect HTML to CSS and must not be removed, renamed, or absorbed into component styles.\n"
+    + "2. PRESERVE all asset paths (assets/*.png etc) exactly.\n"
+    + "3. Improve semantic HTML: replace generic divs with section, article, nav, header, footer, aside, figure, figcaption, ul/li, etc. where appropriate. "
+    + (pageType === "promo"
+      ? "This is a promo page — each top-level frame is a standalone <section>. Do NOT use <main>, <article>, or <header> tags. Keep the structure flat: <section> at the top level with <div>, <form>, <label>, <input>, <button>, <img>, <h1>-<h6>, and <p> inside.\n"
+      : "This is a " + pageType + " page — the top-level frame represents <body> and its direct children are page sections. You may use <main> to wrap the primary content area.\n")
+    + "4. Add ARIA attributes (aria-label, role) and meaningful alt text for accessibility.\n"
+    + "5. Clean up CSS: merge duplicate rules, use shorthand properties, remove redundant declarations. If a property is already covered by a utility class, remove it from the component CSS.\n"
+    + "6. Add CSS comments grouping logical sections.\n"
+    + "7. Keep all CSS custom properties (var(--...)) and utility class definitions as-is.\n"
+    + "8. Do NOT add new features, animations, hover effects, or JavaScript.\n"
+    + "9. Do NOT change the visual appearance or layout.\n"
+    + "10. Keep the link to styles.css as an external reference.\n"
+    + "11. Return valid JSON only. No markdown fences, no explanation text outside the JSON.\n"
+    + "12. You may add additional utility classes from the available set if they reduce component CSS duplication.\n"
+    + "13. Do NOT derive class names from text content (e.g. no '.get-50-off-today' or '.sign-up-now'). Use short semantic names (btn, text, card, hero, etc.) and utility classes instead.\n"
+    + "14. You MAY reorder sibling elements for logical DOM order when it does not affect the visual result. For example, an absolute-positioned close button should appear before the content it overlays in the HTML source, even if it was generated last for layering reasons.";
+
+  var userTextContent = "Here is the raw HTML and CSS generated from a Figma design.\n\n"
+    + "## HTML Files\n```html\n" + htmlSummary + "```\n\n"
+    + "## CSS (styles.css)\n```css\n" + css + "```\n\n"
+    + "Please refine this code. Return ONLY a JSON object with this exact structure:\n"
+    + "{\"htmlFiles\":[{\"name\":\"filename.html\",\"content\":\"...full refined HTML...\"}],\"css\":\"...full refined CSS...\"}\n"
+    + "Return one entry in htmlFiles for each input file, preserving the file names.";
+
+  // Build multimodal user message with screenshots + text
+  var userContent = [];
+  if (screenshots && screenshots.length) {
+    for (var si = 0; si < screenshots.length; si++) {
+      var sc = screenshots[si];
+      if (!sc.bytes || !sc.bytes.length) continue;
+      var binary = "";
+      var bytes = sc.bytes;
+      for (var bi = 0; bi < bytes.length; bi++) binary += String.fromCharCode(bytes[bi]);
+      var b64 = btoa(binary);
+      userContent.push({ type: "text", text: "Screenshot of " + sc.page + " frame: \"" + sc.name + "\"" });
+      userContent.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } });
+    }
+    userContent.push({ type: "text", text: "Above are screenshots of the original Figma design frames. Use them as visual reference to ensure your refinements match the design exactly.\n\n" + userTextContent });
+  } else {
+    userContent = userTextContent;
+  }
+
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  var reqHeaders = { "Content-Type": "application/json" };
+  if (_bhApiKey) reqHeaders["x-api-key"] = _bhApiKey;
+  if (useProxy) {
+    reqHeaders["X-Figma-User-Id"] = _figmaUserId;
+    reqHeaders["X-Figma-User-Name"] = _figmaUserName;
+  } else {
+    reqHeaders["anthropic-version"] = "2025-04-15";
+    reqHeaders["anthropic-dangerous-direct-browser-access"] = "true";
+  }
+
+  var msgPayload = {
+    model: "claude-sonnet-4-6",
+    max_tokens: 16384,
+    thinking: { type: "enabled", budget_tokens: 10000 },
+    system: systemPrompt,
+    messages: [{ role: "user", content: userContent }]
+  };
+
+  // Helper to strip markdown fences and parse JSON
+  function parseResponseText(text) {
+    text = text.replace(/^```json\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    return JSON.parse(text);
+  }
+
+  // Helper to build error message from HTTP status
+  function buildErrorMsg(status, bodyText) {
+    if (status === 401) return "Authentication failed (401). Check your API key in Settings.";
+    if (status === 403) return "User not authorized for AI enhancement (403).";
+    if (status === 429) return "Rate limit exceeded (429). Please wait and try again.";
+    if (status === 529) return "AI service is overloaded (529). Please try again later.";
+    var errMsg = "API error (" + status + ")";
+    try { var eb = JSON.parse(bodyText); errMsg += ": " + (eb.error && eb.error.message || "Unknown error"); } catch(e) { /* no extra detail */ }
+    return errMsg;
+  }
+
+  // Helper to extract text and thinking content from SSE stream data
+  function parseSSEResponse(sseText) {
+    var fullText = "";
+    var thinkingText = "";
+    var lines = sseText.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.indexOf("data: ") !== 0) continue;
+      var data = line.substring(6);
+      if (data === "[DONE]") continue;
+      try {
+        var evt = JSON.parse(data);
+        if (evt.type === "content_block_delta" && evt.delta) {
+          if (evt.delta.type === "text_delta" && evt.delta.text) {
+            fullText += evt.delta.text;
+          } else if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
+            thinkingText += evt.delta.thinking;
+          }
+        }
+      } catch(e) { /* skip */ }
+    }
+    return { text: fullText, thinking: thinkingText };
+  }
+
+  // ── Live terminal line helpers ──
+  var _startTime = Date.now();
+  var _liveLineEl = null;
+  var _livePhase = "waiting";
+  var _liveChars = 0;
+
+  function updateLiveLine(msg, icon, color) {
+    var log = document.getElementById("bh-terminal-log");
+    if (!log) return;
+    var elapsed = ((Date.now() - _startTime) / 1000).toFixed(0);
+    var ts = new Date();
+    var timeStr = String(ts.getHours()).padStart(2, "0") + ":" + String(ts.getMinutes()).padStart(2, "0") + ":" + String(ts.getSeconds()).padStart(2, "0");
+    var html = "<span style='color:#585858;'>" + timeStr + "</span> " +
+      "<span style='color:" + color + ";'>" + icon + "</span> " +
+      esc(msg) + " <span style='color:#585858;'>(" + elapsed + "s)</span>";
+    if (!_liveLineEl) {
+      _liveLineEl = document.createElement("div");
+      _liveLineEl.style.color = color;
+      log.appendChild(_liveLineEl);
+    }
+    _liveLineEl.style.color = color;
+    _liveLineEl.innerHTML = html;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function tickLive() {
+    if (_livePhase === "thinking") {
+      updateLiveLine("Claude is thinking…", "◐", "#cba6f7");
+    } else if (_livePhase === "generating") {
+      var label = _liveChars > 0 ? "Generating code… ~" + _liveChars + " chars" : "Generating code…";
+      updateLiveLine(label, "◑", "#89b4fa");
+    } else {
+      updateLiveLine("Processing…", "◌", "#585858");
+    }
+  }
+
+  // Start 1s ticker (only shows once thinking/generating begins)
+  var _tickInterval = setInterval(tickLive, 1000);
+
+  function finishStream(fullText, thinkingText, err) {
+    clearInterval(_tickInterval);
+    _liveLineEl = null;
+    var elapsed = ((Date.now() - _startTime) / 1000).toFixed(1);
+
+    if (err) {
+      bhTermLog(err + " (" + elapsed + "s)", "error");
+      callback(err, null);
+      return;
+    }
+
+    // Log AI reasoning summary
+    if (thinkingText) {
+      var summary = thinkingText.length > 300 ? thinkingText.substring(0, 300) : thinkingText;
+      var lastDot = summary.lastIndexOf(".");
+      if (lastDot > 100) summary = summary.substring(0, lastDot + 1);
+      else if (thinkingText.length > 300) summary += "…";
+      bhTermLog("AI reasoning: " + summary, "dim");
+    }
+    if (!fullText) {
+      bhTermLog("Empty response from AI (" + elapsed + "s)", "error");
+      callback("Empty response from AI. Try again.", null);
+      return;
+    }
+    bhTermLog("Response received — " + fullText.length + " chars in " + elapsed + "s", "done");
+    try {
+      callback(null, parseResponseText(fullText));
+    } catch(e) {
+      bhTermLog("Failed to parse AI response: " + e.message, "error");
+      callback("Failed to parse AI response: " + e.message, null);
+    }
+  }
+
+  // ── XHR streaming (ReadableStream not supported in Figma sandbox) ──
+  function sendWithXHR() {
+    var payload = Object.assign({}, msgPayload, { stream: true });
+    var body = JSON.stringify(payload);
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", apiUrl, true);
+    var hKeys = Object.keys(reqHeaders);
+    for (var hi = 0; hi < hKeys.length; hi++) xhr.setRequestHeader(hKeys[hi], reqHeaders[hKeys[hi]]);
+
+    var _lastParsedIdx = 0; // Track how far we've parsed for incremental char counting
+    xhr.onprogress = function() {
+      var raw = xhr.responseText || "";
+      if (_livePhase === "waiting" && raw.indexOf('"type":"thinking"') !== -1) {
+        _livePhase = "thinking"; _liveLineEl = null;
+      }
+      if (_livePhase !== "generating" && raw.indexOf('"type":"text"') !== -1) {
+        _livePhase = "generating"; _liveLineEl = null;
+      }
+      // Incremental char counting from new data only
+      if (_livePhase === "generating" && raw.length > _lastParsedIdx) {
+        var newData = raw.substring(_lastParsedIdx);
+        var matches = newData.match(/"text_delta"/g);
+        if (matches) {
+          // Rough count: scan for "text":"..." in new portion
+          var idx = 0;
+          while (true) {
+            idx = newData.indexOf('"text_delta"', idx);
+            if (idx === -1) break;
+            var tIdx = newData.indexOf('"text":', idx);
+            if (tIdx === -1) break;
+            var qStart = newData.indexOf('"', tIdx + 7);
+            var qEnd = qStart > -1 ? newData.indexOf('"', qStart + 1) : -1;
+            if (qStart > -1 && qEnd > qStart) _liveChars += (qEnd - qStart - 1);
+            idx = tIdx + 10;
+          }
+        }
+        _lastParsedIdx = raw.length;
+      }
+      tickLive();
+    };
+
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        var parsed = parseSSEResponse(xhr.responseText);
+        finishStream(parsed.text, parsed.thinking, null);
+      } else {
+        finishStream("", "", buildErrorMsg(xhr.status, xhr.responseText));
+      }
+    };
+    xhr.onerror = function() {
+      finishStream("", "", "Network error. Check your connection and API key.");
+    };
+    xhr.timeout = 180000;
+    xhr.ontimeout = function() {
+      finishStream("", "", "AI request timed out (180s). The design may be too large for a single request.");
+    };
+    xhr.send(body);
+  }
+
+  bhTermLog("Sending request to " + (useProxy ? "proxy" : "Anthropic API") + " (streaming)…", "info");
+  sendWithXHR();
+}
+
+// ── AI Audit Review ──────────────────────────────────────────────────────────
+function bhSerializeAuditForAI(data) {
+  var lines = [];
+  lines.push("Score: " + data.score + "/100 | " + data.totalIssues + " issues | " + data.totalNodes + " nodes scanned");
+  lines.push("");
+  var keys = Object.keys(data.checks);
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    var check = data.checks[k];
+    var count = check.issues.length;
+    if (!count) continue;
+    var w = WEIGHTS_UI[k] || 1;
+    var pri = w >= 5 ? "CRITICAL" : w >= 4 ? "HIGH" : w >= 3 ? "MEDIUM" : "LOW";
+    lines.push("[" + pri + "] " + check.label + " — " + count + " issue(s): " + check.description);
+    // Include up to 5 sample issues
+    var samples = Math.min(count, 5);
+    for (var j = 0; j < samples; j++) {
+      lines.push("  • " + check.issues[j].label + " (" + check.issues[j].path + ")");
+    }
+    if (count > 5) lines.push("  … and " + (count - 5) + " more");
+    lines.push("");
+  }
+  // Mention which auto-fixes are available
+  var fixInfo = [];
+  if (data.fixable.hasColorVars) fixInfo.push("color variable auto-bind available");
+  if (data.fixable.hasFloatVars) fixInfo.push("float variable auto-bind available (spacing, radius, opacity, border)");
+  if (data.fixable.naming) fixInfo.push("auto-rename available for " + data.fixable.naming + " layers");
+  if (data.fixable.hidden) fixInfo.push(data.fixable.hidden + " hidden layers can be auto-deleted");
+  if (data.fixable.empty) fixInfo.push(data.fixable.empty + " empty containers can be auto-deleted");
+  if (fixInfo.length) {
+    lines.push("Available auto-fixes: " + fixInfo.join("; "));
+  }
+  return lines.join("\n");
+}
+
+// ── AI Naming ─────────────────────────────────────────────────────────────────
+var _aiNamingPendingSingle = null; // { nodeId, input, btn }
+var _aiNamingPendingBatch = false;
+
+function bhCallNamingAI(serializedNodes, callback) {
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+
+  var systemPrompt = "You are a Figma layer naming expert. Given a JSON array of unnamed UI layers with their context (type, size, children, parent, siblings), suggest semantic kebab-case names.\n\n"
+    + "Rules:\n"
+    + "1. Names MUST be kebab-case (lowercase, hyphens only), 2-4 words max.\n"
+    + "2. Names should reflect the UI purpose: hero-cta-btn, pricing-card, testimonial-section, nav-link-list, search-input, footer-social-icons.\n"
+    + "3. Use text content inside the node as the primary signal for naming.\n"
+    + "4. Consider parent and sibling context to understand the node's role.\n"
+    + "5. If siblings have similar structure, use a consistent naming pattern (e.g. feature-card-1, feature-card-2 or just feature-card if they are instances).\n"
+    + "6. Avoid generic names like container, wrapper, group, frame unless the node is truly generic.\n"
+    + "7. Common patterns: *-section (page-level), *-card, *-btn, *-input, *-icon, *-list, *-item, *-heading, *-text, *-image, *-badge, *-nav, *-link, *-divider.\n\n"
+    + "Return ONLY a valid JSON array: [{\"id\":\"nodeId\",\"name\":\"suggested-name\"}, ...]\n"
+    + "No markdown, no explanation, no extra text — just the JSON array.";
+
+  var body = JSON.stringify({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [
+      { role: "user", content: JSON.stringify(serializedNodes) },
+      { role: "assistant", content: "[" }
+    ]
+  });
+
+  var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
+  if (useProxy) {
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        // Prepend "[" prefix from assistant prefill, strip markdown fences if any
+        text = "[" + text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        var names = JSON.parse(text);
+        if (!Array.isArray(names)) throw new Error("Expected JSON array");
+        callback(null, names);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else if (xhr.status === 429) {
+      callback("Rate limit exceeded. Please wait and try again.", null);
+    } else {
+      try {
+        var errBody = JSON.parse(xhr.responseText);
+        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
+      } catch(e2) {
+        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
+      }
+    }
+  };
+  xhr.onerror = function() { callback("Network error.", null); };
+  xhr.timeout = 30000;
+  xhr.ontimeout = function() { callback("AI naming request timed out.", null); };
+  xhr.send(body);
+}
+
+function bhCallAuditAI(data, callback) {
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+
+  var auditText = bhSerializeAuditForAI(data);
+
+  var systemPrompt = "You are a Figma design systems expert reviewing a plugin-generated audit of a designer's file. "
+    + "The audit checks layer naming, auto layout usage, variable bindings, text styles, and hygiene.\n\n"
+    + "Your task: analyze the audit results and give the designer a SHORT, prioritized action plan.\n\n"
+    + "Rules:\n"
+    + "1. Start with the highest-impact fixes — what will improve the score the most.\n"
+    + "2. Tell them WHICH 'Fix All' buttons to click first (the plugin has Fix All for: naming, colors, spacing, radius, opacity, border, hidden, empty).\n"
+    + "3. For issues that can't be auto-fixed (auto layout, fixed sizing, text styles, deep nesting), give specific advice on what to change.\n"
+    + "4. Group related issues when possible (e.g. 'these 12 colors are all variants of your brand blue').\n"
+    + "5. If the score is above 80, congratulate briefly and focus on remaining polish items.\n"
+    + "6. Keep the total response under 250 words. Use short bullet points, not paragraphs.\n"
+    + "7. Use plain language a designer (not developer) would understand.\n"
+    + "8. Format with markdown: use **bold** for emphasis, bullet lists with - dashes.";
+
+  var body = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: "user", content: "Here are the audit results for my Figma file:\n\n" + auditText + "\n\nGive me a prioritized action plan to improve my score." }]
+  });
+
+  var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
+  if (useProxy) {
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        callback(null, text);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else if (xhr.status === 429) {
+      callback("Rate limit exceeded. Please wait and try again.", null);
+    } else {
+      try {
+        var errBody = JSON.parse(xhr.responseText);
+        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
+      } catch(e2) {
+        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
+      }
+    }
+  };
+  xhr.onerror = function() { callback("Network error. Check your connection.", null); };
+  xhr.timeout = 30000;
+  xhr.ontimeout = function() { callback("AI review request timed out.", null); };
+  xhr.send(body);
+}
+
+// Simple markdown to HTML: **bold**, - bullets, newlines
+function markdownToHtml(md) {
+  var lines = md.split("\n");
+  var html = "";
+  var inList = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var trimmed = line.trim();
+    if (!trimmed) {
+      if (inList) { html += "</ul>"; inList = false; }
+      continue;
+    }
+    // Bold
+    trimmed = trimmed.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    // Bullet list
+    if (/^[-•]\s/.test(trimmed)) {
+      if (!inList) { html += "<ul>"; inList = true; }
+      html += "<li>" + trimmed.replace(/^[-•]\s*/, "") + "</li>";
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      if (inList) { html += "</ul>"; inList = false; }
+      html += "<p style='margin:4px 0;'>" + trimmed + "</p>";
+    } else {
+      if (inList) { html += "</ul>"; inList = false; }
+      html += "<p style='margin:6px 0;font-weight:600;'>" + trimmed + "</p>";
+    }
+  }
+  if (inList) html += "</ul>";
+  return html;
+}
+
+function bhShowResults(rawResult, enhancedResult) {
+  var results = document.getElementById("bh-results");
+  if (results) results.style.display = "";
+
+  var toggle = document.getElementById("bh-version-toggle");
+  if (toggle) toggle.style.display = enhancedResult ? "" : "none";
+
+  var active = (_bhViewingEnhanced && enhancedResult) ? enhancedResult : rawResult;
+  _bhLastResult = active;
+
+  var label = enhancedResult ? (_bhViewingEnhanced ? " (AI Enhanced)" : " (Raw)") : "";
+  var stats = document.getElementById("bh-stats");
+  if (stats) stats.textContent = active.stats.files + " HTML files, " + active.stats.images + " images, " + active.stats.variables + " CSS variables" + label;
+
+  var preview = document.getElementById("bh-preview");
+  if (preview) {
+    var previewText = "";
+    var hf = active.htmlFiles || [];
+    for (var phi = 0; phi < hf.length; phi++) {
+      previewText += "/* \u2500\u2500 " + hf[phi].name + " \u2500\u2500 */\n" + hf[phi].content + "\n\n";
+    }
+    preview.textContent = previewText;
+  }
+  var cssPreview = document.getElementById("bh-css-preview");
+  if (cssPreview) cssPreview.textContent = active.css || "";
+
+  // Update toggle button styles
+  var rawBtn = document.getElementById("bh-view-raw");
+  var aiBtn = document.getElementById("bh-view-ai");
+  if (rawBtn && aiBtn) {
+    rawBtn.style.background = _bhViewingEnhanced ? "#313244" : "#89b4fa";
+    rawBtn.style.color = _bhViewingEnhanced ? "#cdd6f4" : "#1e1e2e";
+    aiBtn.style.background = _bhViewingEnhanced ? "#cba6f7" : "#313244";
+    aiBtn.style.color = _bhViewingEnhanced ? "#1e1e2e" : "#cdd6f4";
+  }
+}
+
+document.getElementById("bh-view-raw").addEventListener("click", function() {
+  _bhViewingEnhanced = false;
+  bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
+});
+document.getElementById("bh-view-ai").addEventListener("click", function() {
+  _bhViewingEnhanced = true;
+  bhShowResults(_bhLastRawResult, _bhLastEnhancedResult);
+});
+
+function bhStartHtmlGeneration() {
+  var btn = document.getElementById("bh-generate-btn");
+  btn.disabled = true;
+  btn.textContent = "Generating…";
+  document.getElementById("bh-error").style.display = "none";
+  document.getElementById("bh-results").style.display = "none";
+  // Initialize terminal
+  var termEl = document.getElementById("bh-terminal");
+  if (termEl) termEl.style.display = "";
+  var logEl = document.getElementById("bh-terminal-log");
+  if (logEl) logEl.innerHTML = "";
+  document.getElementById("bh-progress").style.display = "";
+  document.getElementById("bh-progress-bar").style.width = "0%";
+  bhTermLog("Starting HTML generation…", "info");
+  var includeMobile = document.getElementById("bh-include-mobile").checked;
+  if (includeMobile) bhTermLog("Mobile responsive styles enabled", "dim");
+  if (document.getElementById("bh-ai-enhance").checked) bhTermLog("AI enhancement enabled", "dim");
+  var aiEnabled = document.getElementById("bh-ai-enhance").checked;
+  parent.postMessage({ pluginMessage: { type: "build-html", options: { includeMobile: includeMobile, includeScreenshots: aiEnabled, pageType: wfPageType || "promo", tokens: { spacing: wfSpacing, typography: wfTypography, radius: wfRadius } } } }, "*");
+}
+
+document.getElementById("bh-generate-btn").addEventListener("click", function() {
+  // Pre-check: scan for images without export settings
+  parent.postMessage({ pluginMessage: { type: "check-images-export" } }, "*");
+});
+
+document.getElementById("bh-copy-btn").addEventListener("click", function() {
+  if (_bhLastResult && _bhLastResult.htmlFiles && _bhLastResult.htmlFiles.length) {
+    var allHtml = "";
+    for (var ci = 0; ci < _bhLastResult.htmlFiles.length; ci++) {
+      allHtml += "/* ── " + _bhLastResult.htmlFiles[ci].name + " ── */\n" + _bhLastResult.htmlFiles[ci].content + "\n\n";
+    }
+    var ta = document.createElement("textarea");
+    ta.value = allHtml;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    this.textContent = "Copied!";
+    var self = this;
+    setTimeout(function() { self.textContent = "Copy HTML"; }, 1500);
+  }
+});
+
+document.getElementById("bh-save-btn").addEventListener("click", async function() {
+  if (!_bhLastResult) return;
+  var btn = this;
+  try {
+    // Try File System Access API
+    if (window.showDirectoryPicker) {
+      var dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      // Write each HTML file
+      var hFiles = _bhLastResult.htmlFiles || [];
+      for (var hi = 0; hi < hFiles.length; hi++) {
+        var hf = await dirHandle.getFileHandle(hFiles[hi].name, { create: true });
+        var hw = await hf.createWritable();
+        await hw.write(hFiles[hi].content || "");
+        await hw.close();
+      }
+      // Write styles.css
+      var cssFile = await dirHandle.getFileHandle("styles.css", { create: true });
+      var cssWritable = await cssFile.createWritable();
+      await cssWritable.write(_bhLastResult.css || "");
+      await cssWritable.close();
+      // Write images to assets/
+      if (_bhLastResult.images && _bhLastResult.images.length > 0) {
+        var assetsDir = await dirHandle.getDirectoryHandle("assets", { create: true });
+        for (var ii = 0; ii < _bhLastResult.images.length; ii++) {
+          var img = _bhLastResult.images[ii];
+          var imgFile = await assetsDir.getFileHandle(img.name, { create: true });
+          var imgWritable = await imgFile.createWritable();
+          await imgWritable.write(new Uint8Array(img.bytes));
+          await imgWritable.close();
+        }
+      }
+      btn.textContent = "Saved!";
+      setTimeout(function() { btn.textContent = "Save to Folder"; }, 2000);
+    } else {
+      // Fallback: download as zip
+      bhDownloadAsZip(_bhLastResult);
+      btn.textContent = "Downloaded!";
+      setTimeout(function() { btn.textContent = "Save to Folder"; }, 2000);
+    }
+  } catch(e) {
+    if (e.name !== "AbortError") {
+      var errDiv = document.getElementById("bh-error");
+      if (errDiv) { errDiv.style.display = ""; errDiv.textContent = "Save failed: " + e.message; }
+    }
+  }
+});
+
+function bhDownloadAsZip(result) {
+  var files = [];
+  var hFiles = result.htmlFiles || [];
+  for (var hi = 0; hi < hFiles.length; hi++) {
+    files.push({ name: hFiles[hi].name, data: bhStrToBytes(hFiles[hi].content || "") });
+  }
+  files.push({ name: "styles.css", data: bhStrToBytes(result.css || "") });
+  if (result.images) {
+    for (var i = 0; i < result.images.length; i++) {
+      var img = result.images[i];
+      files.push({ name: "assets/" + img.name, data: new Uint8Array(img.bytes) });
+    }
+  }
+  var zipBytes = bhBuildZip(files);
+  var blob = new Blob([zipBytes], { type: "application/zip" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = (_bhViewingEnhanced && _bhLastEnhancedResult) ? "code-ai.zip" : "code-raw.zip";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function bhStrToBytes(str) {
+  var enc = new TextEncoder();
+  return enc.encode(str);
+}
+
+// Minimal ZIP builder (store method, no compression — simple & reliable)
+function bhBuildZip(files) {
+  var localHeaders = [];
+  var centralHeaders = [];
+  var offset = 0;
+
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var nameBytes = bhStrToBytes(f.name);
+    var data = f.data;
+    var crc = bhCrc32(data);
+
+    // Local file header (30 + nameLen + dataLen)
+    var lh = new Uint8Array(30 + nameBytes.length + data.length);
+    var lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true);  // signature
+    lv.setUint16(4, 20, true);           // version needed
+    lv.setUint16(6, 0, true);            // flags
+    lv.setUint16(8, 0, true);            // compression: store
+    lv.setUint16(10, 0, true);           // mod time
+    lv.setUint16(12, 0, true);           // mod date
+    lv.setUint32(14, crc, true);         // crc32
+    lv.setUint32(18, data.length, true); // compressed size
+    lv.setUint32(22, data.length, true); // uncompressed size
+    lv.setUint16(26, nameBytes.length, true); // name length
+    lv.setUint16(28, 0, true);           // extra length
+    lh.set(nameBytes, 30);
+    lh.set(data, 30 + nameBytes.length);
+    localHeaders.push(lh);
+
+    // Central directory header (46 + nameLen)
+    var ch = new Uint8Array(46 + nameBytes.length);
+    var cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);  // signature
+    cv.setUint16(4, 20, true);           // version made by
+    cv.setUint16(6, 20, true);           // version needed
+    cv.setUint16(8, 0, true);            // flags
+    cv.setUint16(10, 0, true);           // compression: store
+    cv.setUint16(12, 0, true);           // mod time
+    cv.setUint16(14, 0, true);           // mod date
+    cv.setUint32(16, crc, true);         // crc32
+    cv.setUint32(20, data.length, true); // compressed size
+    cv.setUint32(24, data.length, true); // uncompressed size
+    cv.setUint16(28, nameBytes.length, true); // name length
+    cv.setUint16(30, 0, true);           // extra length
+    cv.setUint16(32, 0, true);           // comment length
+    cv.setUint16(34, 0, true);           // disk number
+    cv.setUint16(36, 0, true);           // internal attrs
+    cv.setUint32(38, 0, true);           // external attrs
+    cv.setUint32(42, offset, true);      // local header offset
+    ch.set(nameBytes, 46);
+    centralHeaders.push(ch);
+
+    offset += lh.length;
+  }
+
+  // End of central directory
+  var cdOffset = offset;
+  var cdSize = 0;
+  for (var ci = 0; ci < centralHeaders.length; ci++) cdSize += centralHeaders[ci].length;
+
+  var eocd = new Uint8Array(22);
+  var ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);           // signature
+  ev.setUint16(4, 0, true);                     // disk number
+  ev.setUint16(6, 0, true);                     // cd disk
+  ev.setUint16(8, files.length, true);           // cd entries on disk
+  ev.setUint16(10, files.length, true);          // cd entries total
+  ev.setUint32(12, cdSize, true);                // cd size
+  ev.setUint32(16, cdOffset, true);              // cd offset
+  ev.setUint16(20, 0, true);                     // comment length
+
+  // Combine all parts
+  var total = offset + cdSize + 22;
+  var zip = new Uint8Array(total);
+  var pos = 0;
+  for (var li = 0; li < localHeaders.length; li++) { zip.set(localHeaders[li], pos); pos += localHeaders[li].length; }
+  for (var di = 0; di < centralHeaders.length; di++) { zip.set(centralHeaders[di], pos); pos += centralHeaders[di].length; }
+  zip.set(eocd, pos);
+  return zip;
+}
+
+// CRC32 lookup table
+var _bhCrcTable = null;
+function bhCrc32(data) {
+  if (!_bhCrcTable) {
+    _bhCrcTable = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); }
+      _bhCrcTable[n] = c;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < data.length; i++) { crc = _bhCrcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8); }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
 </script>
 </body>
 </html>

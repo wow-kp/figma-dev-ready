@@ -4,6 +4,17 @@
     "api": "1.0.0",
     "main": "code.js",
     "ui": "ui.html",
-    "editorType": ["figma", "dev"],
-    "permissions": ["currentuser"]
-  }
+    "editorType": [
+        "figma",
+        "dev"
+    ],
+    "permissions": [
+        "currentuser"
+    ],
+    "networkAccess": {
+        "allowedDomains": [
+            "https://figma-dev-ready-proxy.wow-kp.workers.dev",
+            "https://api.anthropic.com"
+        ]
+    }
+}

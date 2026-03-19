@@ -1,0 +1,13 @@
+name = "figma-dev-ready-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+# Comma-separated Figma user IDs to allow. Empty = open mode (any authenticated user).
+ALLOWED_USERS = ""
+# Max requests per user per hour
+RATE_LIMIT_MAX = "30"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "<your-kv-namespace-id>"

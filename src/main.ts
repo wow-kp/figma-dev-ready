@@ -492,7 +492,7 @@ figma.ui.onmessage = async function(msg) {
     await figma.loadAllPagesAsync();
     try {
       figma.ui.postMessage({ type: "import-progress", phase: "Archiving existing content…", percent: 10 });
-      var archiveResult = archiveExistingContent();
+      var archiveResult = await archiveExistingContent();
       figma.ui.postMessage({ type: "import-archive-done", count: archiveResult.count, pageCount: archiveResult.pageCount });
     } catch (e) {
       figma.ui.postMessage({ type: "import-error", error: "Archive failed: " + String(e) });
@@ -502,7 +502,7 @@ figma.ui.onmessage = async function(msg) {
     await figma.loadAllPagesAsync();
     try {
       figma.ui.postMessage({ type: "import-progress", phase: "Analyzing design…", percent: 30 });
-      var analysis = analyzeDesign();
+      var analysis = await analyzeDesign();
       figma.ui.postMessage({ type: "import-analysis", analysis: analysis });
     } catch (e) {
       figma.ui.postMessage({ type: "import-error", error: "Analysis failed: " + String(e) });
@@ -535,6 +535,7 @@ figma.ui.onmessage = async function(msg) {
           type: "import-apply-done",
           tokenResults: tokenResults,
           moved: reorgResult.moved,
+          skipped: reorgResult.skipped,
           bindStats: bindStats
         });
       } catch (e) {
@@ -724,16 +725,27 @@ figma.ui.onmessage = async function(msg) {
   if (msg.type === "delete-wireframes") {
     await figma.loadAllPagesAsync();
     try {
-      var promoNames = ["promo/hero", "promo/popup", "promo/popup-thankyou", "promo/banner"];
+      // Selective deletion: msg.sections = { hero: true, popup: true, banner: true }
+      // If no sections specified, delete all wireframes (backward compat)
+      var sectionsToDelete = msg.sections || null;
       var allPages = figma.root.children;
       for (var pi = 0; pi < allPages.length; pi++) {
         var pg = allPages[pi];
         var pgName = pg.name.toLowerCase().replace(/[^a-z]/g, "");
         if (pgName.indexOf("desktop") !== -1 || pgName.indexOf("mobile") !== -1) {
           var toRemove = pg.children.filter(function(n) {
-            return promoNames.indexOf(n.name) !== -1
+            if (sectionsToDelete) {
+              // Selective: only delete frames matching requested sections
+              if (n.name === "promo/hero" && sectionsToDelete.hero) return true;
+              if ((n.name === "promo/popup" || n.name === "promo/popup-thankyou") && sectionsToDelete.popup) return true;
+              if (n.name === "promo/banner" && sectionsToDelete.banner) return true;
+              // Also delete form helpers if popup is being deleted
+              if (sectionsToDelete.popup && (n.name === "form-row" || n.name === "form-div" || n.name.indexOf("input-") === 0)) return true;
+              return false;
+            }
+            // Delete all wireframes
+            return n.name.indexOf("promo/") === 0
               || n.name === "form-row" || n.name === "form-div"
-              || n.name.indexOf("promo/") === 0
               || n.name.indexOf("input-") === 0;
           });
           for (var ri = 0; ri < toRemove.length; ri++) {
@@ -744,6 +756,29 @@ figma.ui.onmessage = async function(msg) {
       figma.ui.postMessage({ type: "wireframes-deleted" });
     } catch(e) {
       figma.ui.postMessage({ type: "wireframes-deleted", error: String(e) });
+    }
+  }
+
+  if (msg.type === "check-wireframes") {
+    await figma.loadAllPagesAsync();
+    try {
+      var wfResult: any = { desktop: { hero: false, popup: false, banner: false }, mobile: { hero: false, popup: false, banner: false } };
+      var allPages2 = figma.root.children;
+      for (var pi2 = 0; pi2 < allPages2.length; pi2++) {
+        var pg2 = allPages2[pi2];
+        var pgn = pg2.name.toLowerCase().replace(/[^a-z]/g, "");
+        var pageKey = pgn.indexOf("desktop") !== -1 ? "desktop" : (pgn.indexOf("mobile") !== -1 ? "mobile" : null);
+        if (!pageKey) continue;
+        for (var ci2 = 0; ci2 < pg2.children.length; ci2++) {
+          var child = pg2.children[ci2];
+          if (child.name === "promo/hero") wfResult[pageKey].hero = true;
+          if (child.name === "promo/popup" || child.name === "promo/popup-thankyou") wfResult[pageKey].popup = true;
+          if (child.name === "promo/banner") wfResult[pageKey].banner = true;
+        }
+      }
+      figma.ui.postMessage({ type: "wireframes-data", wireframes: wfResult });
+    } catch(e) {
+      figma.ui.postMessage({ type: "wireframes-data", wireframes: null, error: String(e) });
     }
   }
 

@@ -345,19 +345,66 @@ export async function generatePromoStructure(msg) {
     if (!page) continue;
     await figma.setCurrentPageAsync(page);
 
-    // Remove existing promo frames and any orphaned wireframe elements
+    // Map existing promo frame positions before removing anything
+    var SECTION_ORDER = ["promo/hero", "promo/popup", "promo/popup-thankyou", "promo/banner"];
+    var existingPositions = {}; // name → { x, width }
+    for (var epi = 0; epi < page.children.length; epi++) {
+      var epChild = page.children[epi];
+      if (SECTION_ORDER.indexOf(epChild.name) !== -1) {
+        existingPositions[epChild.name] = { x: epChild.x, width: epChild.width };
+      }
+    }
+
+    // Remove only existing promo frames for sections being (re)generated
     var toRemove = page.children.filter(function(n) {
-      return PROMO_FRAME_NAMES.indexOf(n.name) !== -1
-        || n.name === "form-row" || n.name === "form-div"
-        || n.name.indexOf("promo/") === 0
-        || n.name.indexOf("input-") === 0;
+      if (n.name === "promo/hero" && sections.hero) return true;
+      if ((n.name === "promo/popup" || n.name === "promo/popup-thankyou") && sections.popup) return true;
+      if (n.name === "promo/banner" && sections.banner) return true;
+      // Remove orphaned wireframe helpers only if popup is being regenerated
+      if (sections.popup && (n.name === "form-row" || n.name === "form-div" || n.name.indexOf("input-") === 0)) return true;
+      return false;
     });
     toRemove.forEach(function(n) { try { n.remove(); } catch(e) {} });
 
     var W = bp.width;
     var isMobile = bp.hint === "mobile";
-    var pageX = 0;
     var GAP = 80;
+
+    // Calculate pageX: position new frames after existing ones that are kept,
+    // or in the correct slot if generating into a gap
+    var hasAnyExisting = false;
+    for (var ek in existingPositions) {
+      // Only count frames that were NOT removed (i.e. kept sections)
+      var isKept = true;
+      if (ek === "promo/hero" && sections.hero) isKept = false;
+      if ((ek === "promo/popup" || ek === "promo/popup-thankyou") && sections.popup) isKept = false;
+      if (ek === "promo/banner" && sections.banner) isKept = false;
+      if (isKept) hasAnyExisting = true;
+    }
+
+    // Build a slot map: for each section in order, determine the x position it should occupy
+    var pageX = 0;
+    if (hasAnyExisting) {
+      // Find the rightmost edge of all kept frames to place new frames after them,
+      // or use existing slot positions for sections that had a known position
+      var slotX = 0;
+      for (var si = 0; si < SECTION_ORDER.length; si++) {
+        var sName = SECTION_ORDER[si];
+        var ep = existingPositions[sName];
+        if (ep) {
+          // This section existed — if it's kept, advance past it; if removed, this is the slot for regeneration
+          var isRemoved = false;
+          if (sName === "promo/hero" && sections.hero) isRemoved = true;
+          if ((sName === "promo/popup" || sName === "promo/popup-thankyou") && sections.popup) isRemoved = true;
+          if (sName === "promo/banner" && sections.banner) isRemoved = true;
+          if (!isRemoved) {
+            slotX = ep.x + ep.width + GAP;
+          }
+        }
+      }
+      // Start new frames at the rightmost kept frame's edge
+      pageX = slotX;
+    }
 
     // Track created frames so we can fix layer order at the end
     var createdFrames = [];

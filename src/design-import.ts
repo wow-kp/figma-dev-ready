@@ -49,6 +49,7 @@ export interface AnalysisResult {
 
 var MOBILE_BREAKPOINT = 567;
 var DESKTOP_MIN_WIDTH = 900;
+var MIN_PAGE_HEIGHT = 400;
 
 var SPACING_NAMES = ["4xs", "3xs", "2xs", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl"];
 var RADIUS_NAMES = ["xs", "sm", "md", "lg", "xl", "2xl", "full"];
@@ -98,7 +99,8 @@ function shadowToCSS(e: Effect): string | null {
 
 // ── Analysis Engine ──────────────────────────────────────────────────────────
 
-export function analyzeDesign(): AnalysisResult {
+export async function analyzeDesign(): Promise<AnalysisResult> {
+  await figma.loadAllPagesAsync();
   var colorMap: {[hex:string]: ColorEntry} = {};
   var spacingMap: {[val:string]: number} = {};
   var radiusMap: {[val:string]: number} = {};
@@ -273,10 +275,12 @@ export function analyzeDesign(): AnalysisResult {
         var classification: "desktop" | "mobile" | "component" | "other" = "other";
         if (topNode.type === "COMPONENT" || topNode.type === "COMPONENT_SET") {
           classification = "component";
-        } else if (topNode.width > DESKTOP_MIN_WIDTH) {
+        } else if (topNode.width > DESKTOP_MIN_WIDTH && topNode.height >= MIN_PAGE_HEIGHT) {
           classification = "desktop";
-        } else if (topNode.width <= MOBILE_BREAKPOINT) {
+        } else if (topNode.width <= MOBILE_BREAKPOINT && topNode.height >= MIN_PAGE_HEIGHT) {
           classification = "mobile";
+        } else if (topNode.height < MIN_PAGE_HEIGHT) {
+          classification = "component";
         }
         frames.push({
           nodeId: topNode.id, name: topNode.name,
@@ -482,7 +486,8 @@ function nameTypography(combos: TypoCombo[]) {
 
 // ── Archive ──────────────────────────────────────────────────────────────────
 
-export function archiveExistingContent(): { count: number; pageCount: number } {
+export async function archiveExistingContent(): Promise<{ count: number; pageCount: number }> {
+  await figma.loadAllPagesAsync();
   var archivePage = findPageByHint("archive");
   var count = 0;
   var pageCount = 0;
@@ -673,11 +678,12 @@ export async function createTokensFromAnalysis(analysis: AnalysisResult): Promis
 
 // ── Page Reorganization ──────────────────────────────────────────────────────
 
-export async function reorganizeFrames(frames: FrameInfo[]): Promise<{ moved: number; pages: string[] }> {
+export async function reorganizeFrames(frames: FrameInfo[]): Promise<{ moved: number; skipped: number; pages: string[] }> {
   var desktopPage = findPageByHint("desktop");
   var mobilePage = findPageByHint("mobile");
   var componentsPage = findPageByHint("components");
   var moved = 0;
+  var skipped = 0;
   var pagesCreated: string[] = [];
 
   // Track which pages were created vs already existed
@@ -702,10 +708,12 @@ export async function reorganizeFrames(frames: FrameInfo[]): Promise<{ moved: nu
       } catch (e) {
         // Skip nodes that can't be moved
       }
+    } else if (!targetPage) {
+      skipped++;
     }
   }
 
-  return { moved: moved, pages: pagesCreated };
+  return { moved: moved, skipped: skipped, pages: pagesCreated };
 }
 
 // ── Variable Binding ─────────────────────────────────────────────────────────
@@ -928,6 +936,7 @@ export async function bindTokensToDesign(
 // ── File Type Detection ──────────────────────────────────────────────────────
 
 export async function detectFileType(): Promise<"existing" | "fresh" | "managed"> {
+  await figma.loadAllPagesAsync();
   var pages = figma.root.children;
   var contentPages = 0;
   var totalChildren = 0;

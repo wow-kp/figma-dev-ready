@@ -659,6 +659,7 @@ function updateBuildHtmlTab() {
 }
 // Workflow is the first tab — load it immediately on plugin open
 parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+parent.postMessage({pluginMessage:{type:"check-wireframes"}},"*");
 
 // ── Settings tab ─────────────────────────────────────────────────────────────
 document.getElementById("settings-key-toggle").addEventListener("click", function() {
@@ -1359,6 +1360,14 @@ function renderWorkflow(data) {
     footer.appendChild(createAll);
     body.appendChild(footer);
   }
+  // Import mode: show archive note when import completed this step
+  if (wfImportMode && wfImportStep >= 2) {
+    var archNote = document.createElement("div");
+    archNote.style.cssText = "margin-top:8px;padding:8px 10px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;color:#a6adc8;line-height:1.5;";
+    archNote.innerHTML = "📥 <b>Imported via design import.</b> Original content is safely archived in the 🗄️ Archive page.";
+    body.appendChild(archNote);
+  }
+
   step.appendChild(body);
   container.appendChild(step);
 
@@ -1435,6 +1444,7 @@ function ensureColSpans(row) { if (!row.colSpans || row.colSpans.length !== row.
 var wfPromoGenerating = false;
 var wfPromoGenerated = false;
 var wfStep3Skipped = false;
+var wfWireframeData = null; // { desktop: { hero: bool, popup: bool, banner: bool }, mobile: { ... } }
 var wfPageType = "promo"; // "promo" | "landing" | "fullsite"
 var PAGE_TYPES = [
   { key: "promo",    label: "Promo" },
@@ -1634,6 +1644,7 @@ function resetWorkflowState() {
   ];
   wfPromoGenerating = false;
   wfPromoGenerated = false;
+  wfWireframeData = null;
   wfStep3Skipped = false;
   // Step 4 — Audit
   wfAuditData = null;
@@ -1683,6 +1694,7 @@ function collectSettings() {
     tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled)),
     pageType: wfPageType,
     promoGenerated: wfPromoGenerated,
+    wireframeData: wfWireframeData ? JSON.parse(JSON.stringify(wfWireframeData)) : null,
     step3Skipped: wfStep3Skipped,
     promoSections: JSON.parse(JSON.stringify(wfPromoSections)),
     promoPopupIncludeForm: wfPromoPopupIncludeForm,
@@ -1697,7 +1709,11 @@ function collectSettings() {
     auditIssues: wfAuditIssues,
     auditData: wfAuditData,
     lastAuditTs: wfLastAuditTs,
-    lastDocChangeTs: wfLastDocChangeTs
+    lastDocChangeTs: wfLastDocChangeTs,
+    importMode: wfImportMode,
+    importStep: wfImportStep,
+    importAnalysis: wfImportAnalysis ? JSON.parse(JSON.stringify(wfImportAnalysis)) : null,
+    importBindStats: wfImportBindStats ? JSON.parse(JSON.stringify(wfImportBindStats)) : null
   };
 }
 
@@ -1727,6 +1743,11 @@ function applyLoadedSettings(s) {
   if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
   if (s.pageType) wfPageType = s.pageType;
   if (s.promoGenerated !== undefined) wfPromoGenerated = s.promoGenerated;
+  if (s.wireframeData !== undefined) wfWireframeData = s.wireframeData;
+  // Backward compat: if old promoGenerated is true but no wireframeData, treat as all generated
+  if (wfPromoGenerated && !wfWireframeData) {
+    wfWireframeData = { desktop: { hero: true, popup: true, banner: true }, mobile: { hero: true, popup: true, banner: true } };
+  }
   if (s.step3Skipped !== undefined) wfStep3Skipped = s.step3Skipped;
   if (s.promoSections) { for (var pk in s.promoSections) { wfPromoSections[pk] = s.promoSections[pk]; } }
   if (s.promoPopupIncludeForm !== undefined) wfPromoPopupIncludeForm = s.promoPopupIncludeForm;
@@ -1788,6 +1809,11 @@ function applyLoadedSettings(s) {
     var _rr = document.getElementById("results"); if (_rr) { _rr.innerHTML = ""; _rr.style.display = "none"; }
     var _sb = document.getElementById("score-bar"); if (_sb) _sb.style.display = "none";
   }
+  // Restore import state
+  if (s.importMode !== undefined) wfImportMode = s.importMode;
+  if (s.importStep !== undefined) wfImportStep = s.importStep;
+  if (s.importAnalysis) wfImportAnalysis = s.importAnalysis;
+  if (s.importBindStats) wfImportBindStats = s.importBindStats;
 }
 
 function getWfColors() {
@@ -2677,6 +2703,29 @@ function renderStep2(container) {
   var body = document.createElement("div");
   body.className = "wf-step-body";
 
+  // Import mode completed: show read-only summary instead of edit form
+  if (wfImportMode && wfImportStep >= 4 && wfImportBindStats) {
+    var ibs = wfImportBindStats.bindStats || {};
+    var summaryHtml = "<div class='wf-token-list' style='padding:10px;'>" +
+      "<div style='font-size:11px;color:#a6adc8;line-height:1.8;'>" +
+        "<div style='margin-bottom:6px;font-weight:600;color:#cdd6f4;'>📥 Tokens created via design import</div>" +
+        "<div>🎨 <b>" + (ibs.colors || 0) + "</b> colors bound to variables</div>" +
+        "<div>📏 <b>" + (ibs.spacing || 0) + "</b> spacing values bound</div>" +
+        "<div>🔘 <b>" + (ibs.radius || 0) + "</b> radius values bound</div>" +
+        "<div>📝 <b>" + (ibs.textStyles || 0) + "</b> text styles applied</div>" +
+        (ibs.borders ? "<div>🔲 <b>" + ibs.borders + "</b> border widths bound</div>" : "") +
+        (ibs.effects ? "<div>💫 <b>" + ibs.effects + "</b> effect styles applied</div>" : "") +
+      "</div>" +
+      "<div style='margin-top:8px;font-size:10px;color:#6c7086;'>Tokens are now variables on the 🎨 Foundations page. You can edit them in Step 2 or in Figma&rsquo;s Variables panel.</div>" +
+    "</div>";
+    body.innerHTML = summaryHtml;
+    step.appendChild(body);
+    container.appendChild(step);
+    wfStep2Color = indicatorColor;
+    renderStep3(container);
+    return;
+  }
+
   if (!tokens) {
     body.innerHTML = "<div class='wf-token-list'><div style='padding:8px;font-size:11px;color:#585b70;text-align:center'>Loading…</div></div>";
   } else {
@@ -3042,35 +3091,52 @@ function renderStep3(container) {
   var prev = document.getElementById("wf-step-3");
   if (prev) prev.remove();
 
-  // Step 3 done = pages actually have content OR user explicitly skipped
-  var step3Done = wfPagesHaveContent || wfStep3Skipped;
+  // Compute wireframe existence from wfWireframeData
+  var wfSectionKeys = ["hero", "popup", "banner"];
+  var wfAllExist = false, wfNoneExist = true, wfSomeExist = false;
+  if (wfWireframeData) {
+    wfAllExist = wfSectionKeys.every(function(s) { return wfWireframeData.desktop[s] && wfWireframeData.mobile[s]; });
+    var anyExist = wfSectionKeys.some(function(s) { return wfWireframeData.desktop[s] || wfWireframeData.mobile[s]; });
+    wfNoneExist = !anyExist;
+    wfSomeExist = anyExist && !wfAllExist;
+  }
+
+  // Step 3 done = all wireframes exist on both pages OR user skipped OR pages have custom content
+  var step3Done = wfAllExist || wfStep3Skipped || (wfPagesHaveContent && wfNoneExist);
   var locked = wfStep2Color === "red" && !step3Done;
-  var indicatorColor = step3Done ? "green" : (locked ? "red" : "yellow");
+  var indicatorColor;
+  if (wfStep3Skipped) indicatorColor = "green";
+  else if (locked) indicatorColor = "red";
+  else if (wfAllExist) indicatorColor = "green";
+  else if (wfSomeExist) indicatorColor = "yellow";
+  else if (wfPagesHaveContent) indicatorColor = "green";
+  else indicatorColor = "red";
   var stepOpen = locked ? false : wfFormState.step3Open;
 
   var step = document.createElement("div");
   step.id = "wf-step-3";
-  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (step3Done ? " complete" : "");
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (indicatorColor === "green" ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
-  var step3Status = wfPagesHaveContent ? " — All set" : (wfStep3Skipped ? " — Skipped" : "");
+  var step3Status = (wfImportMode && wfStep3Skipped) ? " — Using imported designs" : (wfStep3Skipped ? " — Skipped" : (wfAllExist ? " — All set" : (wfSomeExist ? " — Partial" : (wfPagesHaveContent ? " — Custom content" : ""))));
+  var step3Desc = (wfImportMode && wfStep3Skipped) ? "Your existing designs are organized on Desktop and Mobile pages. The wireframe generator is available if you want to add more sections." : "Choose a page type, configure sections, then generate desktop & mobile wireframes.";
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
       "<div class='wf-step-num'>Step 3</div>" +
       "<div class='wf-step-title'>Page Structures" + (locked ? "" : step3Status) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Choose a page type, configure sections, then generate desktop & mobile wireframes.</div>" : "")) +
+       (stepOpen ? "<div class='wf-step-desc'>" + step3Desc + "</div>" : "")) +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step3Open = !wfFormState.step3Open;
-      // Refresh page content detection when expanding
       if (wfFormState.step3Open) {
         parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+        parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
       } else {
         var prev3 = document.getElementById("wf-step-3");
         if (prev3) prev3.remove();
@@ -3085,7 +3151,7 @@ function renderStep3(container) {
 
   // Helper: append skip/unskip button to a container
   function appendSkipBtn(container) {
-    if (!wfPromoGenerated && !wfStep3Skipped) {
+    if (!wfAllExist && !wfStep3Skipped) {
       var skipBtn = document.createElement("button");
       skipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#6c7086;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
       skipBtn.textContent = "Skip — I'll design my own pages";
@@ -3101,7 +3167,7 @@ function renderStep3(container) {
       });
       container.appendChild(skipBtn);
     }
-    if (wfStep3Skipped && !wfPromoGenerated) {
+    if (wfStep3Skipped && !wfAllExist) {
       var unskipBtn = document.createElement("button");
       unskipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
       unskipBtn.textContent = "Undo skip";
@@ -3117,6 +3183,17 @@ function renderStep3(container) {
   }
 
   if (!locked) {
+    // Import mode note when step was auto-skipped
+    if (wfImportMode && wfStep3Skipped) {
+      var importNote = document.createElement("div");
+      importNote.style.cssText = "padding:10px;margin-bottom:4px;";
+      importNote.innerHTML = "<div style='padding:8px 10px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;color:#a6adc8;line-height:1.5;'>" +
+        "📥 <b>Skipped — using imported designs.</b> Your existing frames were organized onto Desktop and Mobile pages during import. " +
+        "You can still use the wireframe generator below to add additional sections." +
+      "</div>";
+      body.appendChild(importNote);
+    }
+
     var list = document.createElement("div");
     list.className = "wf-token-list";
 
@@ -3143,10 +3220,17 @@ function renderStep3(container) {
     list.appendChild(typeBar);
 
     if (wfPageType === "promo") {
-    // Section checkboxes
+    // Section checkboxes — reflect existence from wfWireframeData
     PROMO_SECTIONS.forEach(function(sec) {
+      var secExistsDesktop = wfWireframeData && wfWireframeData.desktop[sec.key];
+      var secExistsMobile = wfWireframeData && wfWireframeData.mobile[sec.key];
+      var secExists = secExistsDesktop && secExistsMobile;
+      var secPartial = (secExistsDesktop || secExistsMobile) && !secExists;
+      var secMissing = !secExistsDesktop && !secExistsMobile;
+      // Checkbox reflects user pref (wfPromoSections is the source of truth)
+      var isChecked = wfPromoSections[sec.key];
       var row = document.createElement("div");
-      row.className = "wf-token-acc" + (wfPromoSections[sec.key] ? " enabled" : " disabled");
+      row.className = "wf-token-acc" + (isChecked ? " enabled" : " disabled");
 
       var hdr = document.createElement("div");
       hdr.className = "wf-token-header";
@@ -3155,13 +3239,17 @@ function renderStep3(container) {
       var chk = document.createElement("input");
       chk.type = "checkbox";
       chk.className = "wf-token-chk";
-      chk.checked = wfPromoSections[sec.key];
+      chk.checked = isChecked;
       chk.addEventListener("click", function(e) { e.stopPropagation(); });
       chk.addEventListener("change", function() {
         wfPromoSections[sec.key] = chk.checked;
         row.classList.toggle("enabled", chk.checked);
         row.classList.toggle("disabled", !chk.checked);
         saveSettings();
+        // Re-render to update context-sensitive buttons
+        var prev3 = document.getElementById("wf-step-3");
+        if (prev3) prev3.remove();
+        renderStep3(container);
       });
       hdr.appendChild(chk);
 
@@ -3172,7 +3260,13 @@ function renderStep3(container) {
 
       var infoDiv = document.createElement("div");
       infoDiv.className = "wf-token-info";
-      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(sec.name) + "</div><div class='wf-token-desc'>" + esc(sec.desc) + "</div>";
+      var existBadge = "";
+      if (wfWireframeData) {
+        if (secExists) existBadge = " <span style='font-size:9px;color:#a6e3a1;'>✓ on both pages</span>";
+        else if (secPartial) existBadge = " <span style='font-size:9px;color:#f9e2af;'>partial</span>";
+        else existBadge = " <span style='font-size:9px;color:#6c7086;'>not generated</span>";
+      }
+      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(sec.name) + existBadge + "</div><div class='wf-token-desc'>" + esc(sec.desc) + "</div>";
       hdr.appendChild(infoDiv);
 
       row.appendChild(hdr);
@@ -3635,48 +3729,108 @@ function renderStep3(container) {
       list.appendChild(row);
     });
 
-    // Generate / Reset buttons
+    // ── Context-sensitive buttons ──
+    // Determine which checked sections exist vs are missing
     var btnWrap = document.createElement("div");
     btnWrap.style.cssText = "padding: 8px 10px;";
 
-    if (wfPromoGenerated) {
-      var resetBtn = document.createElement("button");
-      resetBtn.className = "wf-reset-btn";
-      resetBtn.textContent = "Rebuild Wireframes";
-      resetBtn.addEventListener("click", function() {
-        if (!confirm("This will rebuild the Desktop and Mobile pages, replacing all existing wireframe content. Continue?")) return;
-        resetBtn.disabled = true; resetBtn.textContent = "Rebuilding…";
-        wfPromoGenerating = true;
-        sendPromoGenerate();
-      });
-      btnWrap.appendChild(resetBtn);
-    } else {
-      var genBtn = document.createElement("button");
-      genBtn.className = "wf-gen-btn";
-      genBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
-      genBtn.textContent = "Generate Wireframes";
-      genBtn.addEventListener("click", function() {
-        if (wfPromoGenerating) return;
-        wfPromoGenerating = true;
-        genBtn.disabled = true; genBtn.textContent = "Generating…";
-        sendPromoGenerate();
-      });
-      btnWrap.appendChild(genBtn);
-    }
-    // Delete wireframes button
-    var delBtn = document.createElement("button");
-    delBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
-    delBtn.textContent = "Delete Wireframes";
-    delBtn.addEventListener("mouseenter", function() { delBtn.style.borderColor = "#f38ba8"; delBtn.style.color = "#f38ba8"; });
-    delBtn.addEventListener("mouseleave", function() { delBtn.style.borderColor = "#45475a"; delBtn.style.color = "#a6adc8"; });
-    delBtn.addEventListener("click", function() {
-      if (!confirm("Delete all wireframes from Desktop and Mobile pages?")) return;
-      delBtn.disabled = true; delBtn.textContent = "Deleting…";
-      parent.postMessage({ pluginMessage: { type: "delete-wireframes" } }, "*");
+    var checkedSections = {};
+    var checkedExisting = 0;  // checked sections that already exist on both pages
+    var checkedMissing = 0;   // checked sections that are missing (need generation)
+    var checkedCount = 0;
+    wfSectionKeys.forEach(function(sk) {
+      if (wfPromoSections[sk]) {
+        checkedCount++;
+        checkedSections[sk] = true;
+        var exists = wfWireframeData && wfWireframeData.desktop[sk] && wfWireframeData.mobile[sk];
+        if (exists) checkedExisting++;
+        else checkedMissing++;
+      }
     });
-    btnWrap.appendChild(delBtn);
 
-    // Skip / Unskip button — right below delete
+    // State A: Nothing generated at all → Generate + Skip
+    // State B: Everything generated → Regenerate + Delete
+    // State C: Partial, only missing checked → Generate + Skip
+    // State D: Partial, mixed (existing + missing checked) → Regenerate + Delete + Skip
+    var hasAnyOnPages = wfSectionKeys.some(function(s) { return wfWireframeData && (wfWireframeData.desktop[s] || wfWireframeData.mobile[s]); });
+
+    if (checkedCount > 0) {
+      if (wfNoneExist || (checkedMissing > 0 && checkedExisting === 0)) {
+        // State A or C: Generate (creates only checked, preserving existing)
+        var genBtn = document.createElement("button");
+        genBtn.className = "wf-gen-btn";
+        genBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+        genBtn.textContent = checkedMissing === checkedCount ? "Generate Wireframes" : "Generate Missing Sections";
+        genBtn.addEventListener("click", function() {
+          if (wfPromoGenerating) return;
+          wfPromoGenerating = true;
+          genBtn.disabled = true; genBtn.textContent = "Generating…";
+          // Delete only the sections we're regenerating, then generate
+          if (hasAnyOnPages) {
+            parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+          }
+          sendPromoGenerate();
+        });
+        btnWrap.appendChild(genBtn);
+      } else if (checkedExisting > 0 && checkedMissing === 0) {
+        // State B: All checked already exist → Regenerate + Delete
+        var regenBtn = document.createElement("button");
+        regenBtn.className = "wf-reset-btn";
+        regenBtn.textContent = "Regenerate Wireframes";
+        regenBtn.addEventListener("click", function() {
+          if (!confirm("This will recreate the selected sections on Desktop and Mobile pages. Continue?")) return;
+          regenBtn.disabled = true; regenBtn.textContent = "Regenerating…";
+          wfPromoGenerating = true;
+          // Delete selected sections first, then regenerate
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+          sendPromoGenerate();
+        });
+        btnWrap.appendChild(regenBtn);
+
+        var delBtn = document.createElement("button");
+        delBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+        delBtn.textContent = "Delete Wireframes";
+        delBtn.addEventListener("mouseenter", function() { delBtn.style.borderColor = "#f38ba8"; delBtn.style.color = "#f38ba8"; });
+        delBtn.addEventListener("mouseleave", function() { delBtn.style.borderColor = "#45475a"; delBtn.style.color = "#a6adc8"; });
+        delBtn.addEventListener("click", function() {
+          if (!confirm("Delete selected wireframes from Desktop and Mobile pages?")) return;
+          delBtn.disabled = true; delBtn.textContent = "Deleting…";
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+        });
+        btnWrap.appendChild(delBtn);
+      } else {
+        // State D: Mixed — some existing + some missing checked → Regenerate + Delete + Skip
+        var regenBtn2 = document.createElement("button");
+        regenBtn2.className = "wf-reset-btn";
+        regenBtn2.textContent = "Regenerate Selected";
+        regenBtn2.addEventListener("click", function() {
+          if (!confirm("This will recreate all selected sections (existing ones will be replaced). Continue?")) return;
+          regenBtn2.disabled = true; regenBtn2.textContent = "Regenerating…";
+          wfPromoGenerating = true;
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+          sendPromoGenerate();
+        });
+        btnWrap.appendChild(regenBtn2);
+
+        var delBtn2 = document.createElement("button");
+        delBtn2.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+        delBtn2.textContent = "Delete Selected";
+        delBtn2.addEventListener("mouseenter", function() { delBtn2.style.borderColor = "#f38ba8"; delBtn2.style.color = "#f38ba8"; });
+        delBtn2.addEventListener("mouseleave", function() { delBtn2.style.borderColor = "#45475a"; delBtn2.style.color = "#a6adc8"; });
+        delBtn2.addEventListener("click", function() {
+          var existingChecked = {};
+          wfSectionKeys.forEach(function(sk) {
+            if (wfPromoSections[sk] && wfWireframeData && wfWireframeData.desktop[sk] && wfWireframeData.mobile[sk]) existingChecked[sk] = true;
+          });
+          if (!confirm("Delete selected existing wireframes?")) return;
+          delBtn2.disabled = true; delBtn2.textContent = "Deleting…";
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: existingChecked } }, "*");
+        });
+        btnWrap.appendChild(delBtn2);
+      }
+    }
+
+    // Skip / Unskip button
     appendSkipBtn(btnWrap);
 
     list.appendChild(btnWrap);
@@ -4373,6 +4527,8 @@ window.onmessage=function(event){
       var sc3 = document.getElementById("wf-container");
       if (sc3) { renderStep3(sc3); renderStep5(sc3); }
     }
+    // Refresh wireframe data too
+    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
   }
   if(msg.type==="document-changed"){
     // Record document change timestamp
@@ -4424,7 +4580,7 @@ window.onmessage=function(event){
     renderImportReview();
   }
   if(msg.type==="import-apply-done"){
-    wfImportBindStats = msg.bindStats;
+    wfImportBindStats = { moved: msg.moved || 0, skipped: msg.skipped || 0, bindStats: msg.bindStats || {} };
     wfImportStep = 4;
     renderImportDone(msg);
   }
@@ -4459,7 +4615,6 @@ window.onmessage=function(event){
   if(msg.type==="promo-generated"){
     wfPromoGenerating = false;
     wfPromoGenerated = true;
-    wfFormState.step3Open = false;
     wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfFormState.step4Open = true;
     wfDevReady = false;
@@ -4469,9 +4624,11 @@ window.onmessage=function(event){
     updateBuildHtmlTab();
     saveSettings();
     parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
   }
   if(msg.type==="wireframes-deleted"){
     wfPromoGenerated = false;
+    wfWireframeData = null;
     wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfDevReady = false;
     wfDevReadyDate = null;
@@ -4479,6 +4636,27 @@ window.onmessage=function(event){
     updateBuildHtmlTab();
     saveSettings();
     parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
+  }
+  if(msg.type==="wireframes-data"){
+    var _prevWfData = wfWireframeData;
+    wfWireframeData = msg.wireframes || null;
+    // Sync wfPromoGenerated for backward compat
+    if (wfWireframeData) {
+      var _allSections = ["hero", "popup", "banner"];
+      var _allExist = _allSections.every(function(s) { return wfWireframeData.desktop[s] && wfWireframeData.mobile[s]; });
+      var _anyExist = _allSections.some(function(s) { return wfWireframeData.desktop[s] || wfWireframeData.mobile[s]; });
+      wfPromoGenerated = _anyExist;
+      // Sync checkboxes to match actual page state
+      _allSections.forEach(function(s) {
+        wfPromoSections[s] = wfWireframeData.desktop[s] || wfWireframeData.mobile[s];
+      });
+    } else {
+      wfPromoGenerated = false;
+    }
+    saveSettings();
+    var _sc3 = document.getElementById("wf-container");
+    if (_sc3) renderStep3(_sc3);
   }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
@@ -4733,14 +4911,17 @@ function renderImportReview() {
     html += "</div></div>";
   }
 
-  // Spacing
+  // Spacing (editable names)
   if (a.spacing.length > 0) {
     html += "<div style='margin-bottom:12px;'>" +
       "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Spacing (" + a.spacing.length + ")</div>" +
       "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
     for (var si = 0; si < a.spacing.length; si++) {
       var sp = a.spacing[si];
-      html += "<span style='padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" + esc(sp.name) + ": " + sp.value + "px</span>";
+      html += "<div style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
+        "<input class='import-spacing-name' data-idx='" + si + "' value='" + esc(sp.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:50px;padding:0;font-family:inherit;' />" +
+        "<span style='color:#585b70;'>" + sp.value + "px</span>" +
+      "</div>";
     }
     html += "</div></div>";
   }
@@ -4762,16 +4943,42 @@ function renderImportReview() {
     html += "</div></div>";
   }
 
-  // Radius / Borders / Shadows (compact)
-  var compactTokens = [];
-  if (a.radius.length > 0) compactTokens.push("Radius: " + a.radius.map(function(r) { return r.name + "(" + r.value + "px)"; }).join(", "));
-  if (a.borders.length > 0) compactTokens.push("Borders: " + a.borders.map(function(b) { return b.name + "(" + b.value + "px)"; }).join(", "));
-  if (a.shadows.length > 0) compactTokens.push("Shadows: " + a.shadows.map(function(s) { return s.name; }).join(", "));
-  if (compactTokens.length > 0) {
-    html += "<div style='margin-bottom:12px;font-size:10px;color:#6c7086;line-height:1.6;'>" + compactTokens.join("<br>") + "</div>";
+  // Radius (editable names)
+  if (a.radius.length > 0) {
+    html += "<div style='margin-bottom:8px;'>" +
+      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:4px;'>Radius (" + a.radius.length + ")</div>" +
+      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
+    for (var ri = 0; ri < a.radius.length; ri++) {
+      var rv = a.radius[ri];
+      html += "<div style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
+        "<input class='import-radius-name' data-idx='" + ri + "' value='" + esc(rv.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:50px;padding:0;font-family:inherit;' />" +
+        "<span style='color:#585b70;'>" + rv.value + "px</span>" +
+      "</div>";
+    }
+    html += "</div></div>";
   }
 
-  // Frames classification
+  // Borders (editable names)
+  if (a.borders.length > 0) {
+    html += "<div style='margin-bottom:8px;'>" +
+      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:4px;'>Borders (" + a.borders.length + ")</div>" +
+      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
+    for (var bi = 0; bi < a.borders.length; bi++) {
+      var bv = a.borders[bi];
+      html += "<div style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
+        "<input class='import-border-name' data-idx='" + bi + "' value='" + esc(bv.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:50px;padding:0;font-family:inherit;' />" +
+        "<span style='color:#585b70;'>" + bv.value + "px</span>" +
+      "</div>";
+    }
+    html += "</div></div>";
+  }
+
+  // Shadows (compact — names not typically editable)
+  if (a.shadows.length > 0) {
+    html += "<div style='margin-bottom:8px;font-size:10px;color:#6c7086;line-height:1.6;'>Shadows: " + a.shadows.map(function(s) { return s.name; }).join(", ") + "</div>";
+  }
+
+  // Frames classification with reclassification dropdowns
   var dFrames = a.frames.filter(function(f) { return f.classification === "desktop"; });
   var mFrames = a.frames.filter(function(f) { return f.classification === "mobile"; });
   var cFrames = a.frames.filter(function(f) { return f.classification === "component"; });
@@ -4779,11 +4986,28 @@ function renderImportReview() {
 
   html += "<div style='margin-bottom:12px;'>" +
     "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Frames (" + a.frames.length + ")</div>" +
-    "<div style='font-size:10px;color:#a6adc8;line-height:1.6;'>" +
+    "<div style='font-size:10px;color:#a6adc8;margin-bottom:6px;line-height:1.6;'>" +
       "🖥️ Desktop: <b>" + dFrames.length + "</b> &nbsp; 📱 Mobile: <b>" + mFrames.length + "</b> &nbsp; 🧩 Components: <b>" + cFrames.length + "</b>" +
       (oFrames.length > 0 ? " &nbsp; ❓ Other: <b>" + oFrames.length + "</b>" : "") +
     "</div>" +
-  "</div>";
+    "<div style='max-height:160px;overflow-y:auto;border:1px solid #313244;border-radius:6px;'>";
+  var classIcons = { desktop: "🖥️", mobile: "📱", component: "🧩", other: "❓", skip: "⏭️" };
+  for (var fi = 0; fi < a.frames.length; fi++) {
+    var fr = a.frames[fi];
+    html += "<div style='display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:10px;" + (fi % 2 === 0 ? "background:#1e1e2e;" : "background:#181825;") + "'>" +
+      "<span style='color:#585b70;min-width:14px;'>" + (classIcons[fr.classification] || "❓") + "</span>" +
+      "<span style='flex:1;color:#cdd6f4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + esc(fr.name) + "'>" + esc(fr.name) + "</span>" +
+      "<span style='color:#585b70;min-width:60px;text-align:right;'>" + fr.width + "×" + fr.height + "</span>" +
+      "<select class='import-frame-class' data-idx='" + fi + "' style='background:#313244;color:#a6adc8;border:1px solid #45475a;border-radius:3px;font-size:9px;padding:1px 4px;cursor:pointer;'>" +
+        "<option value='desktop'" + (fr.classification === "desktop" ? " selected" : "") + ">Desktop</option>" +
+        "<option value='mobile'" + (fr.classification === "mobile" ? " selected" : "") + ">Mobile</option>" +
+        "<option value='component'" + (fr.classification === "component" ? " selected" : "") + ">Component</option>" +
+        "<option value='other'" + (fr.classification === "other" ? " selected" : "") + ">Other</option>" +
+        "<option value='skip'" + (fr.classification === "skip" ? " selected" : "") + ">Skip</option>" +
+      "</select>" +
+    "</div>";
+  }
+  html += "</div></div>";
 
   // AI refine + Apply buttons
   var hasAI = !!(_bhApiKey || (bhHasProxy() && _bhProxyHealthy));
@@ -4805,6 +5029,54 @@ function renderImportReview() {
       var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
       if (wfImportAnalysis && wfImportAnalysis.colors[idx]) {
         wfImportAnalysis.colors[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
+      }
+    });
+  }
+
+  // Bind spacing name edits
+  var spacingInputs = wrap.querySelectorAll(".import-spacing-name");
+  for (var sii = 0; sii < spacingInputs.length; sii++) {
+    spacingInputs[sii].addEventListener("input", function(ev) {
+      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
+      if (wfImportAnalysis && wfImportAnalysis.spacing[idx]) {
+        wfImportAnalysis.spacing[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
+      }
+    });
+  }
+
+  // Bind radius name edits
+  var radiusInputs = wrap.querySelectorAll(".import-radius-name");
+  for (var rii = 0; rii < radiusInputs.length; rii++) {
+    radiusInputs[rii].addEventListener("input", function(ev) {
+      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
+      if (wfImportAnalysis && wfImportAnalysis.radius[idx]) {
+        wfImportAnalysis.radius[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
+      }
+    });
+  }
+
+  // Bind border name edits
+  var borderInputs = wrap.querySelectorAll(".import-border-name");
+  for (var bii = 0; bii < borderInputs.length; bii++) {
+    borderInputs[bii].addEventListener("input", function(ev) {
+      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
+      if (wfImportAnalysis && wfImportAnalysis.borders[idx]) {
+        wfImportAnalysis.borders[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
+      }
+    });
+  }
+
+  // Bind frame reclassification dropdowns
+  var frameSelects = wrap.querySelectorAll(".import-frame-class");
+  for (var fsi = 0; fsi < frameSelects.length; fsi++) {
+    frameSelects[fsi].addEventListener("change", function(ev) {
+      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
+      if (wfImportAnalysis && wfImportAnalysis.frames[idx]) {
+        wfImportAnalysis.frames[idx].classification = ev.target.value;
+        // Update the icon next to this row
+        var icon = ev.target.parentNode.querySelector("span");
+        var icons = { desktop: "\uD83D\uDDA5\uFE0F", mobile: "\uD83D\uDCF1", component: "\uD83E\uDDE9", other: "\u2753", skip: "\u23ED\uFE0F" };
+        if (icon) icon.textContent = icons[ev.target.value] || "\u2753";
       }
     });
   }
@@ -4974,19 +5246,24 @@ function renderImportDone(msg) {
         "<div>📝 Applied <b>" + (bs.textStyles || 0) + "</b> text styles</div>" +
         (bs.borders ? "<div>🔲 Bound <b>" + bs.borders + "</b> border widths</div>" : "") +
         (bs.effects ? "<div>💫 Applied <b>" + bs.effects + "</b> effect styles</div>" : "") +
+        (msg.skipped ? "<div>⏭️ Skipped <b>" + msg.skipped + "</b> frames (too small or unclassified)</div>" : "") +
       "</div>" +
       "<div style='font-size:11px;color:#6c7086;margin-bottom:12px;'>Your original content is safely archived. Run the audit to see remaining issues.</div>" +
       "<button id='import-done-btn' style='width:100%;padding:8px 14px;background:#cba6f7;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;'>Continue to Workflow →</button>" +
     "</div>";
 
   document.getElementById("import-done-btn").addEventListener("click", function() {
-    wfImportMode = false;
-    wfImportStep = 0;
+    // Keep wfImportMode = true so steps render import-specific completed content
+    wfImportStep = 4; // All import steps done
+    wfStep3Skipped = true;
+    wfFormState.step3Open = false;
+    wfFormState.step4Open = true;
     var w = document.getElementById("import-wrap");
     if (w) w.remove();
+    saveSettings();
     // Refresh workflow — pages now exist, tokens created, should land at Step 4
     parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
-    parent.postMessage({ pluginMessage: { type: "get-tokens" } }, "*");
+    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
   });
 }
 

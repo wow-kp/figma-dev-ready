@@ -9,7 +9,7 @@ import { generateFoundationsPageComplex } from './foundations-complex';
 import { generateComponentsPageComplex } from './components-complex';
 import { importTokens } from './tokens-import';
 import { generateTokenData } from './tokens-generate';
-import { detectFileType, analyzeDesign, archiveExistingContent, createTokensFromAnalysis, reorganizeFrames, bindTokensToDesign } from './design-import';
+import { detectFileType, analyzeDesign, archiveExistingContent, createTokensFromAnalysis, reorganizeFrames, bindTokensToDesign, cleanupOriginalPages, scanExistingVariables, matchTokensWithExisting } from './design-import';
 import {
   _htmlImageNameCount, htmlWalkNode, htmlCountImages, htmlCollectImages,
   htmlRenderCSS, htmlSanitizeName, htmlRenderNodeClean,
@@ -243,11 +243,11 @@ figma.ui.onmessage = async function(msg) {
           if (cols[ci].name.toLowerCase() === colName.toLowerCase()) { targetCol = cols[ci]; break; }
         }
         if (!targetCol) {
-          targetCol = await figma.variables.createVariableCollectionAsync(colName || "Variables");
+          targetCol = figma.variables.createVariableCollection(colName || "Variables");
         }
         var modeId = targetCol.modes[0].modeId;
         if (msg.varType === "COLOR") {
-          var newVar = await figma.variables.createVariableAsync(msg.varName, targetCol, "COLOR");
+          var newVar = figma.variables.createVariable(msg.varName, targetCol, "COLOR");
           var rgb = hexToFigma(msg.rawValue || "#000000");
           newVar.setValueForMode(modeId, { r: rgb.r, g: rgb.g, b: rgb.b, a: 1 });
           // Bind to the appropriate paint
@@ -266,7 +266,7 @@ figma.ui.onmessage = async function(msg) {
           }
         } else {
           // FLOAT variable
-          var newVar = await figma.variables.createVariableAsync(msg.varName, targetCol, "FLOAT");
+          var newVar = figma.variables.createVariable(msg.varName, targetCol, "FLOAT");
           newVar.setValueForMode(modeId, parseFloat(msg.rawValue) || 0);
           // Bind based on type
           if (msg.bindType === "spacing") {
@@ -488,60 +488,99 @@ figma.ui.onmessage = async function(msg) {
       figma.ui.postMessage({ type: "file-type-detected", fileType: "fresh", error: String(e) });
     }
   }
-  if (msg.type === "import-archive") {
+  // ── Route B Step 1: Full pipeline ─────────────────────────────────────────
+  if (msg.type === "routeb-step1") {
     await figma.loadAllPagesAsync();
     try {
-      figma.ui.postMessage({ type: "import-progress", phase: "Archiving existing content…", percent: 10 });
+      // 1. Create standard pages
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Creating standard pages…", percent: 5 });
+      var PAGE_DEFS: Record<string, string> = {
+        cover: "_Cover", foundations: "🎨 Foundations", components: "🧩 Components",
+        mobile: "📱 Mobile", desktop: "🖥️ Desktop", archive: "🗄️ Archive"
+      };
+      var ORDER = ["cover","foundations","components","mobile","desktop","archive"];
+      ORDER.forEach(function(key) {
+        var hint = key === "cover" ? "cover" : PAGE_DEFS[key].toLowerCase().replace(/[^a-z]/g,"");
+        var exists = figma.root.children.some(function(p: PageNode) {
+          return p.name.toLowerCase().replace(/[^a-z]/g,"").indexOf(hint) !== -1;
+        });
+        if (!exists) figma.createPage().name = PAGE_DEFS[key];
+      });
+
+      // 2. Archive existing content
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Archiving existing content…", percent: 15 });
       var archiveResult = await archiveExistingContent();
-      figma.ui.postMessage({ type: "import-archive-done", count: archiveResult.count, pageCount: archiveResult.pageCount });
+
+      // 3. Analyze design
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Analyzing design…", percent: 35 });
+      var analysis = await analyzeDesign();
+
+      // 4. Reorganize frames
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Organizing frames…", percent: 55 });
+      var reorgResult = await reorganizeFrames(analysis.frames);
+
+      // 5. Cleanup original pages
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Cleaning up empty pages…", percent: 70 });
+      var cleanupResult = await cleanupOriginalPages();
+
+      // 6. Scan existing variables
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Scanning existing variables…", percent: 80 });
+      var existingVars = await scanExistingVariables();
+
+      // 7. Match tokens with existing
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Matching tokens…", percent: 90 });
+      var matchedAnalysis = matchTokensWithExisting(analysis, existingVars);
+
+      // 8. Sort pages
+      var allPages = figma.root.children.slice();
+      var sorted: PageNode[] = [];
+      ORDER.forEach(function(key) {
+        var hint = key === "cover" ? "cover" : PAGE_DEFS[key].toLowerCase().replace(/[^a-z]/g,"");
+        for (var i = 0; i < allPages.length; i++) {
+          if (allPages[i].name.toLowerCase().replace(/[^a-z]/g,"").indexOf(hint) !== -1) {
+            sorted.push(allPages.splice(i,1)[0] as PageNode); break;
+          }
+        }
+      });
+      allPages.forEach(function(p) { sorted.push(p as PageNode); });
+      sorted.forEach(function(p, i) { figma.root.insertChild(i, p); });
+
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Done!", percent: 100 });
+      figma.ui.postMessage({
+        type: "routeb-step1-done",
+        analysis: matchedAnalysis,
+        existingVars: existingVars,
+        reorgResult: reorgResult,
+        archiveResult: archiveResult,
+        cleanupResult: cleanupResult
+      });
     } catch (e) {
-      figma.ui.postMessage({ type: "import-error", error: "Archive failed: " + String(e) });
+      console.error("routeb-step1 error:", e);
+      figma.ui.postMessage({ type: "routeb-step1-error", error: String(e) });
     }
   }
-  if (msg.type === "import-analyze") {
+  // ── Route B Apply Tokens ────────────────────────────────────────────────
+  if (msg.type === "routeb-apply-tokens") {
     await figma.loadAllPagesAsync();
     try {
-      figma.ui.postMessage({ type: "import-progress", phase: "Analyzing design…", percent: 30 });
-      var analysis = await analyzeDesign();
-      figma.ui.postMessage({ type: "import-analysis", analysis: analysis });
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Creating tokens…", percent: 20 });
+      var tokenResults = await createTokensFromAnalysis(msg.analysis);
+
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Binding variables…", percent: 50 });
+      var bindStats = await bindTokensToDesign(function(phase: string, count: number, total: number) {
+        var pct = 50 + Math.round((count / Math.max(total, 1)) * 45);
+        figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Binding… (" + count + "/" + total + ")", percent: pct });
+      });
+
+      figma.ui.postMessage({
+        type: "routeb-tokens-applied",
+        tokenResults: tokenResults,
+        bindStats: bindStats
+      });
     } catch (e) {
-      figma.ui.postMessage({ type: "import-error", error: "Analysis failed: " + String(e) });
+      console.error("routeb-apply-tokens error:", e);
+      figma.ui.postMessage({ type: "routeb-tokens-error", error: String(e) });
     }
-  }
-  if (msg.type === "import-apply") {
-    await figma.loadAllPagesAsync();
-    (async function() {
-      try {
-        // Create tokens
-        figma.ui.postMessage({ type: "import-progress", phase: "Creating design tokens…", percent: 50 });
-        var tokenResults = await createTokensFromAnalysis(msg.analysis);
-
-        // Create pages and reorganize frames
-        figma.ui.postMessage({ type: "import-progress", phase: "Organizing pages…", percent: 70 });
-        var reorgResult = await reorganizeFrames(msg.analysis.frames);
-
-        // Bind variables to design
-        figma.ui.postMessage({ type: "import-progress", phase: "Binding variables…", percent: 80 });
-        var bindStats = await bindTokensToDesign(function(phase, count, total) {
-          var pct = 80 + Math.round((count / Math.max(total, 1)) * 15);
-          figma.ui.postMessage({ type: "import-progress", phase: "Binding variables… (" + count + "/" + total + ")", percent: pct });
-        });
-
-        // Generate cover
-        figma.ui.postMessage({ type: "import-progress", phase: "Creating cover page…", percent: 96 });
-        try { generateCover(msg.coverData || {}); } catch(e) {}
-
-        figma.ui.postMessage({
-          type: "import-apply-done",
-          tokenResults: tokenResults,
-          moved: reorgResult.moved,
-          skipped: reorgResult.skipped,
-          bindStats: bindStats
-        });
-      } catch (e) {
-        figma.ui.postMessage({ type: "import-error", error: "Import failed: " + String(e) });
-      }
-    })();
   }
   // ── Workflow: page structure ──────────────────────────────────────────────
   if (msg.type === "check-pages") {

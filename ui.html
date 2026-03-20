@@ -176,6 +176,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-step.collapsed .wf-step-chevron { transform: rotate(-90deg); }
 .wf-step-body { display: block; }
 .wf-step.collapsed .wf-step-body { display: none; }
+.wf-step.collapsed .wf-step-desc { display: none; }
 .wf-step.locked { opacity: 0.4; pointer-events: none; }
 .wf-step.locked .wf-step-header { cursor: default; }
 .wf-step-lock-msg { font-size: 10px; color: #585b70; font-style: italic; margin-left: 2px; }
@@ -1177,9 +1178,10 @@ var wfStep1Color = "red"; // track step 1 status for step 2 gating
 // ── Import Mode (Route B) state ──
 var wfCurrentFileId = null; // tracks which Figma file we're looking at
 var wfImportMode = false;
-var wfImportStep = 0; // 0=not started, 1=archive+analyze, 2=review tokens, 3=organize+bind, 4=done(audit)
-var wfImportAnalysis = null; // AnalysisResult from backend
-var wfImportBindStats = null;
+var wfRouteBStep = 0; // 0=not started, 1=step1 done, 2=tokens applied
+var wfRouteBAnalysis = null; // AnalysisResult from backend (with matched names)
+var wfRouteBExistingVars = null; // scanned existing variables
+var wfRouteBBindStats = null; // token binding stats
 var wfFileType = null; // "existing" | "fresh" | "managed"
 var wfPagesHaveContent = false; // true if Desktop/Mobile pages have children
 
@@ -1192,14 +1194,70 @@ var REQUIRED_PAGES = [
   { key:"archive",     icon:"🗄️", name:"🗄️ Archive",      desc:"Deprecated screens, never delete old work",            hint:"archive",     critical:false },
 ];
 
+// Insert a step element into the container at the correct position.
+// Uses a known ordering of step IDs so steps never end up at the wrong place.
+var STEP_ORDER = ["wf-step-1", "wf-step-2", "wf-step-routeb2", "wf-step-3", "wf-step-audit", "wf-step-handoff"];
+function insertStepInOrder(container, step) {
+  var myIdx = STEP_ORDER.indexOf(step.id);
+  // Find the first existing sibling that should come after this step
+  for (var i = myIdx + 1; i < STEP_ORDER.length; i++) {
+    var ref = document.getElementById(STEP_ORDER[i]);
+    if (ref && ref.parentNode === container) {
+      container.insertBefore(step, ref);
+      return;
+    }
+  }
+  container.appendChild(step);
+}
+
 function renderWorkflow(data) {
   var pages    = data.pages ? Array.prototype.slice.call(data.pages) : [];
   var fileInfo = data.fileInfo || {};
   var container = document.getElementById("wf-container");
+
   container.innerHTML = "";
+
   // Show error if code.js reported one
   if (data.error) {
     container.innerHTML = "<div style='padding:20px;font-size:11px;color:#f38ba8;margin:12px;border:1px solid #f38ba830;border-radius:8px;background:#f38ba810'>Plugin error: "+esc(data.error)+"</div>";
+    return;
+  }
+
+  // ── Banner-only detection screen ──
+  // When an existing design is detected but user hasn't chosen a route yet,
+  // show ONLY the banner — no steps at all
+  if (wfFileType === "existing" && !wfImportMode) {
+    var banner = document.createElement("div");
+    banner.style.cssText = "margin:16px 12px;padding:20px;background:linear-gradient(135deg,#1e1e2e 0%,#181825 100%);border:1px solid #45475a;border-radius:12px;text-align:center;";
+    banner.innerHTML =
+      "<div style='font-size:28px;margin-bottom:8px;'>📐</div>" +
+      "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:6px;'>Existing Design Detected</div>" +
+      "<div style='font-size:11px;color:#a6adc8;line-height:1.5;margin-bottom:16px;'>This file contains an existing design. You can import it into the dev-ready workflow or start fresh with a new file structure.</div>";
+    var btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;gap:10px;justify-content:center;";
+    var importBtn = document.createElement("button");
+    importBtn.className = "wf-gen-btn";
+    importBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:700;flex:1;max-width:200px;";
+    importBtn.textContent = "Import Existing Design";
+    importBtn.addEventListener("click", function() {
+      wfImportMode = true;
+      saveSettings();
+      renderWorkflow(data);
+    });
+    var freshBtn = document.createElement("button");
+    freshBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:600;flex:1;max-width:200px;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:8px;cursor:pointer;transition:all .15s;";
+    freshBtn.textContent = "Start Fresh";
+    freshBtn.addEventListener("mouseenter", function() { freshBtn.style.borderColor = "#89b4fa"; freshBtn.style.color = "#89b4fa"; });
+    freshBtn.addEventListener("mouseleave", function() { freshBtn.style.borderColor = "#45475a"; freshBtn.style.color = "#cdd6f4"; });
+    freshBtn.addEventListener("click", function() {
+      wfFileType = "fresh";
+      saveSettings();
+      renderWorkflow(data);
+    });
+    btnRow.appendChild(importBtn);
+    btnRow.appendChild(freshBtn);
+    banner.appendChild(btnRow);
+    container.appendChild(banner);
     return;
   }
 
@@ -1234,14 +1292,12 @@ function renderWorkflow(data) {
     "<div class='wf-step-info'>" +
       "<div class='wf-step-num'>Step 1</div>" +
       "<div class='wf-step-title'>File Structure" + (allGood ? " — All set" : "") + "</div>" +
-      (stepOpen ? "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>" : "") +
+      "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>" +
     "</div>" +
     "<span class='wf-step-chevron'>▼</span>";
   header.addEventListener("click", function() {
     wfFormState.stepOpen = !wfFormState.stepOpen;
     step.classList.toggle("collapsed", !wfFormState.stepOpen);
-    // Re-render to update description visibility
-    renderWorkflow({ pages: pages, fileInfo: data.fileInfo || {} });
   });
   step.appendChild(header);
 
@@ -1341,8 +1397,39 @@ function renderWorkflow(data) {
 
   body.appendChild(list);
 
-  // Footer — only show when there are missing pages
-  if (!allGood) {
+  // Footer
+  if (wfImportMode) {
+    // Route B footer
+    if (wfRouteBStep >= 1) {
+      // Step 1 completed — show archive note
+      var archNote = document.createElement("div");
+      archNote.style.cssText = "margin-top:8px;padding:8px 10px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;color:#a6adc8;line-height:1.5;";
+      archNote.innerHTML = "📥 <b>Imported via design import.</b> Original content is safely archived in the 🗄️ Archive page.";
+      body.appendChild(archNote);
+    } else {
+      // Step 1 not done — show "Set Up File Structure" button
+      var footer = document.createElement("div");
+      footer.className = "wf-footer";
+      var setupBtn = document.createElement("button");
+      setupBtn.className = "wf-gen-btn";
+      setupBtn.style.cssText = "width:100%;padding:10px;font-size:12px;font-weight:700;";
+      setupBtn.textContent = "✦ Set Up File Structure";
+      setupBtn.addEventListener("click", function() {
+        setupBtn.disabled = true;
+        setupBtn.textContent = "Setting up…";
+        // Show progress area
+        var progressArea = document.createElement("div");
+        progressArea.id = "routeb-step1-progress";
+        progressArea.style.cssText = "padding:8px 12px;font-size:10px;color:#a6adc8;";
+        progressArea.innerHTML = "<div style='margin-bottom:4px;'>Starting…</div><div style='height:4px;background:#313244;border-radius:2px;overflow:hidden;'><div id='routeb-step1-bar' style='height:100%;width:0%;background:#89b4fa;transition:width .3s;'></div></div>";
+        footer.appendChild(progressArea);
+        parent.postMessage({ pluginMessage: { type: "routeb-step1" } }, "*");
+      });
+      footer.appendChild(setupBtn);
+      body.appendChild(footer);
+    }
+  } else if (!allGood) {
+    // Route A footer — only show when there are missing pages
     var footer = document.createElement("div");
     footer.className = "wf-footer";
     var summary = document.createElement("span");
@@ -1360,23 +1447,23 @@ function renderWorkflow(data) {
     footer.appendChild(createAll);
     body.appendChild(footer);
   }
-  // Import mode: show archive note when import completed this step
-  if (wfImportMode && wfImportStep >= 2) {
-    var archNote = document.createElement("div");
-    archNote.style.cssText = "margin-top:8px;padding:8px 10px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;color:#a6adc8;line-height:1.5;";
-    archNote.innerHTML = "📥 <b>Imported via design import.</b> Original content is safely archived in the 🗄️ Archive page.";
-    body.appendChild(archNote);
-  }
 
   step.appendChild(body);
-  container.appendChild(step);
+  insertStepInOrder(container, step);
 
   // Track step 1 status for gating step 2
   wfStep1Color = indicatorColor;
 
-  // Request token data and render step 2
-  parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
-  renderStep2(container);
+  if (wfImportMode) {
+    // Route B: 4 steps — Step 1 (file structure), Step 2 (tokens), Step 3 (audit), Step 4 (handoff)
+    renderRouteBStep2(container);
+    renderAuditStep(container, 3);
+    renderHandoffStep(container, 4);
+  } else {
+    // Route A: 5 steps — Step 1 (file structure), Step 2 (tokens), Step 3 (wireframes), Step 4 (audit), Step 5 (handoff)
+    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+    renderStep2(container);
+  }
 }
 
 // Accordion token definitions: key matches generator category, countKey maps to tokens-data counts
@@ -1535,9 +1622,10 @@ var wfZiNextId = 8;
 function resetWorkflowState() {
   // Import state
   wfImportMode = false;
-  wfImportStep = 0;
-  wfImportAnalysis = null;
-  wfImportBindStats = null;
+  wfRouteBStep = 0;
+  wfRouteBAnalysis = null;
+  wfRouteBExistingVars = null;
+  wfRouteBBindStats = null;
   wfFileType = null;
   wfPagesHaveContent = false;
   // Token config
@@ -1711,9 +1799,10 @@ function collectSettings() {
     lastAuditTs: wfLastAuditTs,
     lastDocChangeTs: wfLastDocChangeTs,
     importMode: wfImportMode,
-    importStep: wfImportStep,
-    importAnalysis: wfImportAnalysis ? JSON.parse(JSON.stringify(wfImportAnalysis)) : null,
-    importBindStats: wfImportBindStats ? JSON.parse(JSON.stringify(wfImportBindStats)) : null
+    routeBStep: wfRouteBStep,
+    routeBAnalysis: wfRouteBAnalysis ? JSON.parse(JSON.stringify(wfRouteBAnalysis)) : null,
+    routeBExistingVars: wfRouteBExistingVars ? JSON.parse(JSON.stringify(wfRouteBExistingVars)) : null,
+    routeBBindStats: wfRouteBBindStats ? JSON.parse(JSON.stringify(wfRouteBBindStats)) : null
   };
 }
 
@@ -1811,9 +1900,10 @@ function applyLoadedSettings(s) {
   }
   // Restore import state
   if (s.importMode !== undefined) wfImportMode = s.importMode;
-  if (s.importStep !== undefined) wfImportStep = s.importStep;
-  if (s.importAnalysis) wfImportAnalysis = s.importAnalysis;
-  if (s.importBindStats) wfImportBindStats = s.importBindStats;
+  if (s.routeBStep !== undefined) wfRouteBStep = s.routeBStep;
+  if (s.routeBAnalysis) wfRouteBAnalysis = s.routeBAnalysis;
+  if (s.routeBExistingVars) wfRouteBExistingVars = s.routeBExistingVars;
+  if (s.routeBBindStats) wfRouteBBindStats = s.routeBBindStats;
 }
 
 function getWfColors() {
@@ -2685,7 +2775,7 @@ function renderStep2(container) {
       "<div class='wf-step-num'>Step 2</div>" +
       "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allHaveTokens ? " — All set" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete file structure first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Pick your brand colors, then generate or import tokens.</div>" : "")) +
+       "<div class='wf-step-desc'>Pick your brand colors, then generate or import tokens.</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
@@ -2693,9 +2783,7 @@ function renderStep2(container) {
     header.addEventListener("click", function() {
       wfFormState.step2Toggled = true;
       wfFormState.step2Open = !wfFormState.step2Open;
-      var prev2 = document.getElementById("wf-step-2");
-      if (prev2) prev2.remove();
-      renderStep2(container);
+      step.classList.toggle("collapsed", !wfFormState.step2Open);
     });
   }
   step.appendChild(header);
@@ -2704,8 +2792,8 @@ function renderStep2(container) {
   body.className = "wf-step-body";
 
   // Import mode completed: show read-only summary instead of edit form
-  if (wfImportMode && wfImportStep >= 4 && wfImportBindStats) {
-    var ibs = wfImportBindStats.bindStats || {};
+  if (wfImportMode && wfRouteBStep >= 2 && wfRouteBBindStats) {
+    var ibs = wfRouteBBindStats || {};
     var summaryHtml = "<div class='wf-token-list' style='padding:10px;'>" +
       "<div style='font-size:11px;color:#a6adc8;line-height:1.8;'>" +
         "<div style='margin-bottom:6px;font-weight:600;color:#cdd6f4;'>📥 Tokens created via design import</div>" +
@@ -2720,7 +2808,7 @@ function renderStep2(container) {
     "</div>";
     body.innerHTML = summaryHtml;
     step.appendChild(body);
-    container.appendChild(step);
+    insertStepInOrder(container, step);
     wfStep2Color = indicatorColor;
     renderStep3(container);
     return;
@@ -3077,11 +3165,301 @@ function renderStep2(container) {
   body.addEventListener("change", function() { saveSettings(); });
 
   step.appendChild(body);
-  container.appendChild(step);
+  insertStepInOrder(container, step);
 
   // Track step 2 status for gating step 3
   wfStep2Color = indicatorColor;
   renderStep3(container);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUTE B STEP 2 — Design Tokens (Import)
+// ══════════════════════════════════════════════════════════════════════════════
+function renderRouteBStep2(container) {
+  var prev = document.getElementById("wf-step-routeb2");
+  if (prev) prev.remove();
+
+  var locked = wfStep1Color === "red";
+  var tokensApplied = wfRouteBStep >= 2;
+  var hasAnalysis = !!wfRouteBAnalysis;
+  var indicatorColor = locked ? "red" : (tokensApplied ? "green" : (hasAnalysis ? "yellow" : "red"));
+  var stepOpen = locked ? false : wfFormState.step2Open;
+
+  var step = document.createElement("div");
+  step.id = "wf-step-routeb2";
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (tokensApplied ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step 2</div>" +
+      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (tokensApplied ? " — Applied" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Set up file structure first</div>" :
+       "<div class='wf-step-desc'>Review extracted design tokens, refine names, and apply variables to your design.</div>") +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step2Open = !wfFormState.step2Open;
+      step.classList.toggle("collapsed", !wfFormState.step2Open);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!locked) {
+    if (tokensApplied) {
+      // ── Completed state: read-only summary ──
+      var summaryDiv = document.createElement("div");
+      summaryDiv.style.cssText = "padding:10px 12px;font-size:11px;color:#a6adc8;line-height:1.6;";
+      var stats = wfRouteBBindStats || {};
+      summaryDiv.innerHTML =
+        "<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>" +
+          "<span style='font-size:16px;'>✅</span>" +
+          "<span style='font-weight:600;color:#a6e3a1;'>Tokens applied and bound</span>" +
+        "</div>" +
+        "<div style='padding-left:24px;'>" +
+          (stats.colorsBound !== undefined ? "<div>🎨 " + stats.colorsBound + " color bindings</div>" : "") +
+          (stats.spacingBound !== undefined ? "<div>📐 " + stats.spacingBound + " spacing bindings</div>" : "") +
+          (stats.radiusBound !== undefined ? "<div>◻️ " + stats.radiusBound + " radius bindings</div>" : "") +
+          (stats.typographyBound !== undefined ? "<div>✏️ " + stats.typographyBound + " typography bindings</div>" : "") +
+        "</div>";
+      body.appendChild(summaryDiv);
+
+      // ── Components placeholder (PR 2) ──
+      var compPlaceholder = document.createElement("div");
+      compPlaceholder.style.cssText = "margin:8px 12px 10px;padding:12px;background:#1e1e2e;border:1px solid #313244;border-radius:8px;";
+      compPlaceholder.innerHTML =
+        "<div style='font-size:11px;font-weight:600;color:#6c7086;margin-bottom:4px;'>🧩 Components</div>" +
+        "<div style='font-size:10px;color:#585b70;'>AI-powered component detection — coming soon</div>";
+      body.appendChild(compPlaceholder);
+    } else if (hasAnalysis) {
+      // ── Active state: token review UI ──
+      renderRouteBTokenReview(body, wfRouteBAnalysis, container);
+    } else {
+      // ── Waiting state: Step 1 not completed yet ──
+      var waitMsg = document.createElement("div");
+      waitMsg.style.cssText = "padding:16px;text-align:center;font-size:11px;color:#6c7086;";
+      waitMsg.textContent = "Complete Step 1 to extract design tokens.";
+      body.appendChild(waitMsg);
+    }
+  }
+
+  step.appendChild(body);
+  insertStepInOrder(container, step);
+
+  // Track Route B Step 2 status for gating audit
+  wfStep2Color = indicatorColor;
+}
+
+// Renders token review UI inside Route B Step 2 body
+function renderRouteBTokenReview(body, analysis, wfContainer) {
+  var wrap = document.createElement("div");
+  wrap.className = "wf-token-list";
+  wrap.style.cssText = "max-height:400px;overflow-y:auto;";
+
+  // ── Color swatches ──
+  if (analysis.colors && analysis.colors.length > 0) {
+    var colorSec = document.createElement("div");
+    colorSec.style.cssText = "padding:8px 12px;";
+    colorSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>🎨 Colors (" + analysis.colors.length + ")</div>";
+    var colorGrid = document.createElement("div");
+    colorGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
+    analysis.colors.forEach(function(c, i) {
+      var swatch = document.createElement("div");
+      swatch.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;";
+      var dot = document.createElement("span");
+      dot.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:" + (c.hex || c.value || "#888") + ";border:1px solid #45475a;";
+      swatch.appendChild(dot);
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = c.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:#cdd6f4;font-size:10px;width:100px;outline:none;";
+      nameInput.setAttribute("data-color-idx", i);
+      if (c.matched) {
+        nameInput.style.color = "#a6e3a1";
+        nameInput.title = "Matched with existing variable";
+      }
+      nameInput.addEventListener("change", function() {
+        analysis.colors[i].name = this.value;
+      });
+      swatch.appendChild(nameInput);
+      colorGrid.appendChild(swatch);
+    });
+    colorSec.appendChild(colorGrid);
+    wrap.appendChild(colorSec);
+  }
+
+  // ── Spacing values ──
+  if (analysis.spacing && analysis.spacing.length > 0) {
+    var spaceSec = document.createElement("div");
+    spaceSec.style.cssText = "padding:8px 12px;";
+    spaceSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>📐 Spacing (" + analysis.spacing.length + ")</div>";
+    var spaceList = document.createElement("div");
+    spaceList.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;";
+    analysis.spacing.forEach(function(s, i) {
+      var chip = document.createElement("div");
+      chip.style.cssText = "display:flex;align-items:center;gap:4px;padding:3px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;color:#cdd6f4;";
+      chip.innerHTML = "<span style='color:#6c7086;'>" + s.value + "px</span>";
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = s.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:" + (s.matched ? "#a6e3a1" : "#cdd6f4") + ";font-size:10px;width:80px;outline:none;";
+      nameInput.addEventListener("change", function() { analysis.spacing[i].name = this.value; });
+      chip.appendChild(nameInput);
+      spaceList.appendChild(chip);
+    });
+    spaceSec.appendChild(spaceList);
+    wrap.appendChild(spaceSec);
+  }
+
+  // ── Radius values ──
+  if (analysis.radius && analysis.radius.length > 0) {
+    var radSec = document.createElement("div");
+    radSec.style.cssText = "padding:8px 12px;";
+    radSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>◻️ Radius (" + analysis.radius.length + ")</div>";
+    var radList = document.createElement("div");
+    radList.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;";
+    analysis.radius.forEach(function(r, i) {
+      var chip = document.createElement("div");
+      chip.style.cssText = "display:flex;align-items:center;gap:4px;padding:3px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;color:#cdd6f4;";
+      chip.innerHTML = "<span style='color:#6c7086;'>" + r.value + "px</span>";
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = r.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:" + (r.matched ? "#a6e3a1" : "#cdd6f4") + ";font-size:10px;width:80px;outline:none;";
+      nameInput.addEventListener("change", function() { analysis.radius[i].name = this.value; });
+      chip.appendChild(nameInput);
+      radList.appendChild(chip);
+    });
+    radSec.appendChild(radList);
+    wrap.appendChild(radSec);
+  }
+
+  // ── Typography ──
+  if (analysis.typography && analysis.typography.length > 0) {
+    var typoSec = document.createElement("div");
+    typoSec.style.cssText = "padding:8px 12px;";
+    typoSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>✏️ Typography (" + analysis.typography.length + ")</div>";
+    var typoList = document.createElement("div");
+    typoList.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    analysis.typography.forEach(function(t, i) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;padding:3px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;color:#cdd6f4;";
+      row.innerHTML = "<span style='color:#6c7086;white-space:nowrap;'>" + esc(t.fontFamily || "") + " " + (t.fontSize || "") + "/" + (t.fontWeight || "") + "</span>";
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = t.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:" + (t.matched ? "#a6e3a1" : "#cdd6f4") + ";font-size:10px;flex:1;outline:none;";
+      nameInput.addEventListener("change", function() { analysis.typography[i].name = this.value; });
+      row.appendChild(nameInput);
+      typoList.appendChild(row);
+    });
+    typoSec.appendChild(typoList);
+    wrap.appendChild(typoSec);
+  }
+
+  // ── Frame reclassification ──
+  if (analysis.frames && analysis.frames.length > 0) {
+    var frameSec = document.createElement("div");
+    frameSec.style.cssText = "padding:8px 12px;";
+    frameSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>🖼 Frame Classification (" + analysis.frames.length + ")</div>";
+    var frameList = document.createElement("div");
+    frameList.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    analysis.frames.forEach(function(f, i) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;";
+      row.innerHTML = "<span style='color:#cdd6f4;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + esc(f.name) + "'>" + esc(f.name) + "</span>" +
+        "<span style='color:#6c7086;'>" + (f.width || "?") + "x" + (f.height || "?") + "</span>";
+      var sel = document.createElement("select");
+      sel.style.cssText = "background:#313244;border:1px solid #45475a;color:#cdd6f4;font-size:10px;padding:2px 4px;border-radius:4px;";
+      ["Desktop", "Mobile", "Component", "Skip"].forEach(function(opt) {
+        var o = document.createElement("option");
+        o.value = opt.toLowerCase();
+        o.textContent = opt;
+        if ((f.classification || "").toLowerCase() === opt.toLowerCase()) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", function() { analysis.frames[i].classification = this.value; });
+      row.appendChild(sel);
+      frameList.appendChild(row);
+    });
+    frameSec.appendChild(frameList);
+    wrap.appendChild(frameSec);
+  }
+
+  body.appendChild(wrap);
+
+  // ── Action buttons ──
+  var btnWrap = document.createElement("div");
+  btnWrap.style.cssText = "padding:10px 12px;display:flex;gap:8px;";
+
+  var aiBtn = document.createElement("button");
+  aiBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;transition:all .15s;";
+  aiBtn.textContent = "✦ Refine Names with AI";
+  aiBtn.addEventListener("mouseenter", function() { aiBtn.style.borderColor = "#cba6f7"; aiBtn.style.color = "#cba6f7"; });
+  aiBtn.addEventListener("mouseleave", function() { aiBtn.style.borderColor = "#45475a"; aiBtn.style.color = "#cdd6f4"; });
+  aiBtn.addEventListener("click", function() {
+    aiBtn.disabled = true;
+    aiBtn.textContent = "Refining…";
+    bhCallTokenNamingAI(analysis, function(err, result) {
+      if (err) {
+        aiBtn.textContent = "✦ Failed — " + err;
+        setTimeout(function() { aiBtn.textContent = "✦ Refine Names with AI"; }, 3000);
+        aiBtn.disabled = false;
+        return;
+      }
+      // Apply AI suggestions to the analysis
+      if (result && result.colors && Array.isArray(result.colors)) {
+        for (var aci = 0; aci < result.colors.length; aci++) {
+          var sc = result.colors[aci];
+          if (analysis.colors[sc.index]) {
+            analysis.colors[sc.index].name = sc.name;
+          }
+        }
+      }
+      if (result && result.typography && Array.isArray(result.typography)) {
+        for (var ati = 0; ati < result.typography.length; ati++) {
+          var st = result.typography[ati];
+          if (analysis.typography[st.index]) {
+            analysis.typography[st.index].group = st.group;
+            analysis.typography[st.index].name = st.name;
+          }
+        }
+      }
+      wfRouteBAnalysis = analysis;
+      wfFormState.step2Open = true;
+      // Re-render just the body content, not the whole step
+      var stepEl = document.getElementById("wf-step-routeb2");
+      if (stepEl) {
+        stepEl.classList.remove("collapsed");
+        var bodyEl = stepEl.querySelector(".wf-step-body");
+        if (bodyEl) {
+          bodyEl.innerHTML = "";
+          renderRouteBTokenReview(bodyEl, wfRouteBAnalysis, wfContainer);
+        }
+      }
+    });
+  });
+  btnWrap.appendChild(aiBtn);
+
+  var applyBtn = document.createElement("button");
+  applyBtn.className = "wf-gen-btn";
+  applyBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:700;";
+  applyBtn.textContent = "Apply and Bind Tokens";
+  applyBtn.addEventListener("click", function() {
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Applying…";
+    parent.postMessage({ pluginMessage: { type: "routeb-apply-tokens", analysis: JSON.parse(JSON.stringify(analysis)) } }, "*");
+  });
+  btnWrap.appendChild(applyBtn);
+
+  body.appendChild(btnWrap);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3127,20 +3505,17 @@ function renderStep3(container) {
       "<div class='wf-step-num'>Step 3</div>" +
       "<div class='wf-step-title'>Page Structures" + (locked ? "" : step3Status) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>" + step3Desc + "</div>" : "")) +
+       "<div class='wf-step-desc'>" + step3Desc + "</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step3Open = !wfFormState.step3Open;
+      step.classList.toggle("collapsed", !wfFormState.step3Open);
       if (wfFormState.step3Open) {
         parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
         parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
-      } else {
-        var prev3 = document.getElementById("wf-step-3");
-        if (prev3) prev3.remove();
-        renderStep3(container);
       }
     });
   }
@@ -3865,21 +4240,22 @@ function renderStep3(container) {
   body.addEventListener("change", function() { saveSettings(); });
 
   step.appendChild(body);
-  container.appendChild(step);
+  insertStepInOrder(container, step);
 
   // Track step 3 status for gating step 4
   wfStep3Color = indicatorColor;
-  renderStep4(container);
+  renderAuditStep(container, 4);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 4 — Audit & Validation
 // ══════════════════════════════════════════════════════════════════════════════
-function renderStep4(container) {
-  var prev = document.getElementById("wf-step-4");
+function renderAuditStep(container, stepNum) {
+  var prev = document.getElementById("wf-step-audit");
   if (prev) prev.remove();
 
-  var locked = wfStep3Color === "red";
+  var lockMsg = wfImportMode ? "Complete design tokens first" : "Generate wireframes first";
+  var locked = wfImportMode ? (wfStep2Color === "red") : (wfStep3Color === "red");
   var hasResults = wfAuditData && !wfAuditData.noPages;
   var hasPersistedResults = !hasResults && wfAuditScore >= 0;
   var score = hasResults ? wfAuditData.score : wfAuditScore;
@@ -3889,7 +4265,7 @@ function renderStep4(container) {
   var stepOpen = locked ? false : wfFormState.step4Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-4";
+  step.id = "wf-step-audit";
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (critHighOk ? " complete" : "");
 
   var header = document.createElement("div");
@@ -3897,23 +4273,21 @@ function renderStep4(container) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 4</div>" +
+      "<div class='wf-step-num'>Step " + stepNum + "</div>" +
       "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : ((hasResults || hasPersistedResults) ? " — " + score + "/100" : "")) + "</div>" +
-      (locked ? "<div class='wf-step-lock-msg'>Generate wireframes first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>" : "")) +
+      (locked ? "<div class='wf-step-lock-msg'>" + lockMsg + "</div>" :
+       "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step4Open = !wfFormState.step4Open;
+      step.classList.toggle("collapsed", !wfFormState.step4Open);
       // If opening and we have persisted results but no full data, auto re-run audit
       if (wfFormState.step4Open && !wfAuditData && wfAuditScore >= 0) {
         parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
       }
-      var prev4 = document.getElementById("wf-step-4");
-      if (prev4) prev4.remove();
-      renderStep4(container);
     });
   }
   step.appendChild(header);
@@ -4086,20 +4460,20 @@ function renderStep4(container) {
   }
 
   step.appendChild(body);
-  container.appendChild(step);
+  insertStepInOrder(container, step);
 
   // No auto-run — user must click "Run Audit" or re-run manually
 
-  // Track step 4 status for gating step 5
+  // Track audit status for gating handoff step
   wfStep4Color = indicatorColor;
-  renderStep5(container);
+  renderHandoffStep(container, stepNum + 1);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 5 — Ready for Dev
 // ══════════════════════════════════════════════════════════════════════════════
-function renderStep5(container) {
-  var prev = document.getElementById("wf-step-5");
+function renderHandoffStep(container, stepNum) {
+  var prev = document.getElementById("wf-step-handoff");
   if (prev) prev.remove();
 
   var locked = wfStep4Color === "red";
@@ -4107,7 +4481,7 @@ function renderStep5(container) {
   var stepOpen = locked ? false : wfFormState.step5Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-5";
+  step.id = "wf-step-handoff";
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (wfDevReady ? " complete" : "");
 
   var header = document.createElement("div");
@@ -4115,19 +4489,17 @@ function renderStep5(container) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 5</div>" +
+      "<div class='wf-step-num'>Step " + stepNum + "</div>" +
       "<div class='wf-step-title'>Ready for Dev" + (locked ? "" : (wfDevReady ? " — Handed Off" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Run the audit first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Review the summary and mark this file as ready for development handoff.</div>" : "")) +
+       "<div class='wf-step-desc'>Review the summary and mark this file as ready for development handoff.</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step5Open = !wfFormState.step5Open;
-      var prev5 = document.getElementById("wf-step-5");
-      if (prev5) prev5.remove();
-      renderStep5(container);
+      step.classList.toggle("collapsed", !wfFormState.step5Open);
     });
   }
   step.appendChild(header);
@@ -4143,7 +4515,12 @@ function renderStep5(container) {
     var summary = document.createElement("div");
     summary.style.cssText = "padding:10px 12px 6px;";
 
-    var checks = [
+    var checks = wfImportMode ? [
+      { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile, Archive" },
+      { label: "Design tokens applied", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
+      { label: "Design organized", done: wfPagesHaveContent, detail: "Frames classified into Desktop & Mobile pages" },
+      { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
+    ] : [
       { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
       { label: "Design tokens generated", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
       { label: "Wireframes built", done: wfPagesHaveContent || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
@@ -4230,7 +4607,7 @@ function renderStep5(container) {
   }
 
   step.appendChild(body);
-  container.appendChild(step);
+  insertStepInOrder(container, step);
 }
 
 function sendPromoGenerate() {
@@ -4495,7 +4872,7 @@ window.onmessage=function(event){
     }
     saveSettings();
     var sc = document.getElementById("wf-container");
-    if (sc) { renderStep4(sc); renderStep5(sc); }
+    if (sc) { var _auditNum = wfImportMode ? 3 : 4; renderAuditStep(sc, _auditNum); renderHandoffStep(sc, _auditNum + 1); }
   }
   if(msg.type==="pages-data"){
     // Reset all state when file changes
@@ -4525,7 +4902,10 @@ window.onmessage=function(event){
       // Only auto-collapse on first detection of content (transition from no content to content)
       if (wfPagesHaveContent && !hadContent) wfFormState.step3Open = false;
       var sc3 = document.getElementById("wf-container");
-      if (sc3) { renderStep3(sc3); renderStep5(sc3); }
+      if (sc3) {
+        if (!wfImportMode) renderStep3(sc3);
+        renderHandoffStep(sc3, wfImportMode ? 4 : 5);
+      }
     }
     // Refresh wireframe data too
     parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
@@ -4540,7 +4920,7 @@ window.onmessage=function(event){
         wfDevReady = false;
         wfDevReadyDate = null;
         var sc5 = document.getElementById("wf-container");
-        if (sc5) renderStep5(sc5);
+        if (sc5) renderHandoffStep(sc5, wfImportMode ? 4 : 5);
       }
       saveSettings();
     }
@@ -4554,40 +4934,62 @@ window.onmessage=function(event){
   }
   if(msg.type==="file-type-detected"){
     wfFileType = msg.fileType || "fresh";
+    // Banner is rendered by renderWorkflow's early return — just trigger re-render
     if (wfFileType === "existing" && !wfImportMode) {
-      renderImportBanner();
+      parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
     }
   }
-  if(msg.type==="import-progress"){
-    var impProg = document.getElementById("import-progress-text");
-    if (impProg) impProg.textContent = msg.phase || "";
-    var impBar = document.getElementById("import-progress-bar");
-    if (impBar) impBar.style.width = (msg.percent || 0) + "%";
+  // ── Route B message handlers ──
+  if(msg.type==="routeb-step1-progress"){
+    var rb1Text = document.getElementById("routeb-step1-progress");
+    if (rb1Text) rb1Text.firstChild.textContent = msg.phase || "";
+    var rb1Bar = document.getElementById("routeb-step1-bar");
+    if (rb1Bar) rb1Bar.style.width = (msg.percent || 0) + "%";
   }
-  if(msg.type==="import-error"){
-    var impErr = document.getElementById("import-status");
-    if (impErr) impErr.innerHTML = "<div style='color:#f38ba8;font-size:11px;padding:8px;'>Error: " + esc(msg.error) + "</div>";
+  if(msg.type==="routeb-step1-done"){
+    wfRouteBStep = 1;
+    wfRouteBAnalysis = msg.analysis || null;
+    wfRouteBExistingVars = msg.existingVars || null;
+    saveSettings();
+    // Trigger page re-check which will re-render workflow with Step 1 green
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
   }
-  if(msg.type==="import-archive-done"){
-    // Archive done — auto-start analysis
-    var impS = document.getElementById("import-status");
-    if (impS) impS.innerHTML = "<div style='color:#a6e3a1;font-size:11px;padding:4px 0;'>Archived " + msg.count + " items from " + msg.pageCount + " pages</div>";
-    parent.postMessage({ pluginMessage: { type: "import-analyze" } }, "*");
+  if(msg.type==="routeb-tokens-error"){
+    // Show error and re-enable the apply button
+    var applyBtn2 = document.querySelector("#wf-step-routeb2 .wf-gen-btn");
+    if (applyBtn2) { applyBtn2.disabled = false; applyBtn2.textContent = "Apply and Bind Tokens"; }
+    var errDiv = document.createElement("div");
+    errDiv.style.cssText = "padding:8px 12px;font-size:11px;color:#f38ba8;";
+    errDiv.textContent = "Error: " + (msg.error || "Unknown error");
+    var rb2Body = document.querySelector("#wf-step-routeb2 .wf-step-body");
+    if (rb2Body) rb2Body.appendChild(errDiv);
   }
-  if(msg.type==="import-analysis"){
-    wfImportAnalysis = msg.analysis;
-    wfImportStep = 2;
-    renderImportReview();
+  if(msg.type==="routeb-step1-error"){
+    var setupBtn2 = document.querySelector(".wf-gen-btn");
+    if (setupBtn2) { setupBtn2.disabled = false; setupBtn2.textContent = "✦ Set Up File Structure"; }
+    var errDiv2 = document.createElement("div");
+    errDiv2.style.cssText = "padding:8px 12px;font-size:11px;color:#f38ba8;";
+    errDiv2.textContent = "Error: " + (msg.error || "Unknown error");
+    var progArea = document.getElementById("routeb-step1-progress");
+    if (progArea) progArea.parentNode.appendChild(errDiv2);
   }
-  if(msg.type==="import-apply-done"){
-    wfImportBindStats = { moved: msg.moved || 0, skipped: msg.skipped || 0, bindStats: msg.bindStats || {} };
-    wfImportStep = 4;
-    renderImportDone(msg);
+  if(msg.type==="routeb-tokens-applied"){
+    wfRouteBStep = 2;
+    wfRouteBBindStats = msg.bindStats || {};
+    saveSettings();
+    var rbC = document.getElementById("wf-container");
+    if (rbC) {
+      renderRouteBStep2(rbC);
+      renderAuditStep(rbC, 3);
+      renderHandoffStep(rbC, 4);
+    }
   }
   if(msg.type==="tokens-data"){
     wfTokensData = msg.tokens || null;
-    var c = document.getElementById("wf-container");
-    if (c) renderStep2(c);
+    if (!wfImportMode) {
+      var c = document.getElementById("wf-container");
+      if (c) renderStep2(c);
+    }
   }
   if(msg.type==="generate-result"){
     // Individual category done — nothing to do here, wait for generate-complete
@@ -4664,7 +5066,7 @@ window.onmessage=function(event){
     if (wfDevReady) wfFormState.step5Open = false;
     updateBuildHtmlTab();
     var sc5 = document.getElementById("wf-container");
-    if (sc5) renderStep5(sc5);
+    if (sc5) renderHandoffStep(sc5, wfImportMode ? 4 : 5);
   }
   // ── Image export pre-check ──
   if (msg.type === "check-images-export-result") {
@@ -4815,351 +5217,7 @@ function bhTermLog(text, type) {
   log.scrollTop = log.scrollHeight;
 }
 
-// ── Import Design (Route B) UI ──────────────────────────────────────────────
-
-function renderImportBanner() {
-  var container = document.getElementById("wf-container");
-  if (!container) return;
-  // Don't show if already in import mode or if banner already exists
-  if (wfImportMode || document.getElementById("import-banner")) return;
-
-  var banner = document.createElement("div");
-  banner.id = "import-banner";
-  banner.style.cssText = "margin:12px 0;padding:16px;background:linear-gradient(135deg,#1e1e2e,#181825);border:1px solid #45475a;border-radius:10px;";
-  banner.innerHTML =
-    "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;'>" +
-      "<span style='font-size:24px;'>📥</span>" +
-      "<div>" +
-        "<div style='font-size:13px;font-weight:700;color:#cdd6f4;'>Existing design detected</div>" +
-        "<div style='font-size:11px;color:#6c7086;margin-top:2px;'>This file has content but isn't set up for the dev-ready workflow.</div>" +
-      "</div>" +
-    "</div>" +
-    "<div style='font-size:11px;color:#a6adc8;margin-bottom:12px;line-height:1.5;'>" +
-      "Import will: archive all content for safety, extract colors/spacing/typography as tokens, " +
-      "organize frames into Desktop/Mobile pages, and bind variables. <b>No visual changes</b> to your design." +
-    "</div>" +
-    "<div style='display:flex;gap:8px;'>" +
-      "<button id='import-start-btn' style='flex:1;padding:8px 14px;background:#cba6f7;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;'>Import Existing Design</button>" +
-      "<button id='import-skip-btn' style='padding:8px 14px;background:#313244;color:#a6adc8;font-size:12px;font-weight:500;border:1px solid #45475a;border-radius:6px;cursor:pointer;'>Start Fresh</button>" +
-    "</div>";
-
-  container.insertBefore(banner, container.firstChild);
-
-  document.getElementById("import-start-btn").addEventListener("click", function() {
-    wfImportMode = true;
-    wfImportStep = 1;
-    banner.remove();
-    renderImportStep1();
-  });
-  document.getElementById("import-skip-btn").addEventListener("click", function() {
-    wfFileType = "fresh";
-    banner.remove();
-  });
-}
-
-function renderImportStep1() {
-  var container = document.getElementById("wf-container");
-  if (!container) return;
-
-  // Replace workflow content with import step 1
-  var wrap = document.createElement("div");
-  wrap.id = "import-wrap";
-  wrap.innerHTML =
-    "<div style='padding:16px;'>" +
-      "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;'>Step 1 — Archive & Analyze</div>" +
-      "<div style='font-size:11px;color:#6c7086;margin-bottom:12px;'>Copying all existing content to the Archive page for safety, then analyzing your design.</div>" +
-      "<div style='background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;'>" +
-        "<div id='import-progress-text' style='font-size:11px;color:#a6adc8;margin-bottom:6px;'>Starting…</div>" +
-        "<div style='background:#313244;border-radius:3px;overflow:hidden;height:3px;'>" +
-          "<div id='import-progress-bar' style='height:100%;background:#cba6f7;width:0%;transition:width 0.3s;'></div>" +
-        "</div>" +
-      "</div>" +
-      "<div id='import-status'></div>" +
-    "</div>";
-
-  container.insertBefore(wrap, container.firstChild);
-
-  // Start archive
-  parent.postMessage({ pluginMessage: { type: "import-archive" } }, "*");
-}
-
-function renderImportReview() {
-  var wrap = document.getElementById("import-wrap");
-  if (!wrap || !wfImportAnalysis) return;
-  var a = wfImportAnalysis;
-
-  var html =
-    "<div style='padding:16px;'>" +
-      "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;'>Step 2 — Review Extracted Tokens</div>" +
-      "<div style='font-size:11px;color:#6c7086;margin-bottom:12px;'>" +
-        "Found <b>" + a.colors.length + "</b> colors, <b>" + a.spacing.length + "</b> spacing values, <b>" + a.typography.length + "</b> text styles, " +
-        "<b>" + a.radius.length + "</b> radius, <b>" + a.borders.length + "</b> borders, <b>" + a.shadows.length + "</b> shadows across <b>" + a.totalNodes + "</b> nodes." +
-      "</div>";
-
-  // Colors
-  if (a.colors.length > 0) {
-    html += "<div style='margin-bottom:12px;'>" +
-      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Colors (" + a.colors.length + ")</div>" +
-      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
-    for (var ci = 0; ci < a.colors.length; ci++) {
-      var c = a.colors[ci];
-      html += "<div title='" + esc(c.name) + " — " + c.hex + " (" + c.count + " uses)' style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
-        "<span style='width:12px;height:12px;border-radius:2px;background:" + c.hex + ";border:1px solid #45475a;display:inline-block;'></span>" +
-        "<input class='import-color-name' data-idx='" + ci + "' value='" + esc(c.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:60px;padding:0;font-family:inherit;' />" +
-      "</div>";
-    }
-    html += "</div></div>";
-  }
-
-  // Spacing (editable names)
-  if (a.spacing.length > 0) {
-    html += "<div style='margin-bottom:12px;'>" +
-      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Spacing (" + a.spacing.length + ")</div>" +
-      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
-    for (var si = 0; si < a.spacing.length; si++) {
-      var sp = a.spacing[si];
-      html += "<div style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
-        "<input class='import-spacing-name' data-idx='" + si + "' value='" + esc(sp.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:50px;padding:0;font-family:inherit;' />" +
-        "<span style='color:#585b70;'>" + sp.value + "px</span>" +
-      "</div>";
-    }
-    html += "</div></div>";
-  }
-
-  // Typography
-  if (a.typography.length > 0) {
-    html += "<div style='margin-bottom:12px;'>" +
-      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Text Styles (" + a.typography.length + ")</div>" +
-      "<div style='display:flex;flex-direction:column;gap:3px;'>";
-    for (var ti = 0; ti < Math.min(a.typography.length, 15); ti++) {
-      var t = a.typography[ti];
-      html += "<div style='display:flex;align-items:center;gap:8px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
-        "<span style='color:#cba6f7;min-width:90px;'>" + esc(t.group + "/" + t.name) + "</span>" +
-        "<span>" + esc(t.fontFamily) + " " + t.fontWeight + " / " + t.fontSize + "px</span>" +
-        "<span style='color:#585858;'>(" + t.count + "x)</span>" +
-      "</div>";
-    }
-    if (a.typography.length > 15) html += "<div style='font-size:10px;color:#585858;padding:2px 8px;'>+" + (a.typography.length - 15) + " more</div>";
-    html += "</div></div>";
-  }
-
-  // Radius (editable names)
-  if (a.radius.length > 0) {
-    html += "<div style='margin-bottom:8px;'>" +
-      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:4px;'>Radius (" + a.radius.length + ")</div>" +
-      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
-    for (var ri = 0; ri < a.radius.length; ri++) {
-      var rv = a.radius[ri];
-      html += "<div style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
-        "<input class='import-radius-name' data-idx='" + ri + "' value='" + esc(rv.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:50px;padding:0;font-family:inherit;' />" +
-        "<span style='color:#585b70;'>" + rv.value + "px</span>" +
-      "</div>";
-    }
-    html += "</div></div>";
-  }
-
-  // Borders (editable names)
-  if (a.borders.length > 0) {
-    html += "<div style='margin-bottom:8px;'>" +
-      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:4px;'>Borders (" + a.borders.length + ")</div>" +
-      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
-    for (var bi = 0; bi < a.borders.length; bi++) {
-      var bv = a.borders[bi];
-      html += "<div style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
-        "<input class='import-border-name' data-idx='" + bi + "' value='" + esc(bv.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:50px;padding:0;font-family:inherit;' />" +
-        "<span style='color:#585b70;'>" + bv.value + "px</span>" +
-      "</div>";
-    }
-    html += "</div></div>";
-  }
-
-  // Shadows (compact — names not typically editable)
-  if (a.shadows.length > 0) {
-    html += "<div style='margin-bottom:8px;font-size:10px;color:#6c7086;line-height:1.6;'>Shadows: " + a.shadows.map(function(s) { return s.name; }).join(", ") + "</div>";
-  }
-
-  // Frames classification with reclassification dropdowns
-  var dFrames = a.frames.filter(function(f) { return f.classification === "desktop"; });
-  var mFrames = a.frames.filter(function(f) { return f.classification === "mobile"; });
-  var cFrames = a.frames.filter(function(f) { return f.classification === "component"; });
-  var oFrames = a.frames.filter(function(f) { return f.classification === "other"; });
-
-  html += "<div style='margin-bottom:12px;'>" +
-    "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Frames (" + a.frames.length + ")</div>" +
-    "<div style='font-size:10px;color:#a6adc8;margin-bottom:6px;line-height:1.6;'>" +
-      "🖥️ Desktop: <b>" + dFrames.length + "</b> &nbsp; 📱 Mobile: <b>" + mFrames.length + "</b> &nbsp; 🧩 Components: <b>" + cFrames.length + "</b>" +
-      (oFrames.length > 0 ? " &nbsp; ❓ Other: <b>" + oFrames.length + "</b>" : "") +
-    "</div>" +
-    "<div style='max-height:160px;overflow-y:auto;border:1px solid #313244;border-radius:6px;'>";
-  var classIcons = { desktop: "🖥️", mobile: "📱", component: "🧩", other: "❓", skip: "⏭️" };
-  for (var fi = 0; fi < a.frames.length; fi++) {
-    var fr = a.frames[fi];
-    html += "<div style='display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:10px;" + (fi % 2 === 0 ? "background:#1e1e2e;" : "background:#181825;") + "'>" +
-      "<span style='color:#585b70;min-width:14px;'>" + (classIcons[fr.classification] || "❓") + "</span>" +
-      "<span style='flex:1;color:#cdd6f4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + esc(fr.name) + "'>" + esc(fr.name) + "</span>" +
-      "<span style='color:#585b70;min-width:60px;text-align:right;'>" + fr.width + "×" + fr.height + "</span>" +
-      "<select class='import-frame-class' data-idx='" + fi + "' style='background:#313244;color:#a6adc8;border:1px solid #45475a;border-radius:3px;font-size:9px;padding:1px 4px;cursor:pointer;'>" +
-        "<option value='desktop'" + (fr.classification === "desktop" ? " selected" : "") + ">Desktop</option>" +
-        "<option value='mobile'" + (fr.classification === "mobile" ? " selected" : "") + ">Mobile</option>" +
-        "<option value='component'" + (fr.classification === "component" ? " selected" : "") + ">Component</option>" +
-        "<option value='other'" + (fr.classification === "other" ? " selected" : "") + ">Other</option>" +
-        "<option value='skip'" + (fr.classification === "skip" ? " selected" : "") + ">Skip</option>" +
-      "</select>" +
-    "</div>";
-  }
-  html += "</div></div>";
-
-  // AI refine + Apply buttons
-  var hasAI = !!(_bhApiKey || (bhHasProxy() && _bhProxyHealthy));
-  html += "<div style='display:flex;gap:8px;'>" +
-    (hasAI ? "<button id='import-ai-btn' style='padding:8px 14px;background:#313244;color:#cba6f7;font-size:12px;font-weight:500;border:1px solid #cba6f740;border-radius:6px;cursor:pointer;'>✨ Refine Names with AI</button>" : "") +
-    "<button id='import-apply-btn' style='flex:1;padding:8px 14px;background:#a6e3a1;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;'>Apply Tokens & Organize</button>" +
-    "<button id='import-cancel-btn' style='padding:8px 14px;background:#313244;color:#a6adc8;font-size:12px;font-weight:500;border:1px solid #45475a;border-radius:6px;cursor:pointer;'>Cancel</button>" +
-  "</div>";
-
-  html += "<div id='import-status' style='margin-top:8px;'></div>";
-  html += "</div>";
-
-  wrap.innerHTML = html;
-
-  // Bind color name edits back to analysis
-  var colorInputs = wrap.querySelectorAll(".import-color-name");
-  for (var ii = 0; ii < colorInputs.length; ii++) {
-    colorInputs[ii].addEventListener("input", function(ev) {
-      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
-      if (wfImportAnalysis && wfImportAnalysis.colors[idx]) {
-        wfImportAnalysis.colors[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
-      }
-    });
-  }
-
-  // Bind spacing name edits
-  var spacingInputs = wrap.querySelectorAll(".import-spacing-name");
-  for (var sii = 0; sii < spacingInputs.length; sii++) {
-    spacingInputs[sii].addEventListener("input", function(ev) {
-      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
-      if (wfImportAnalysis && wfImportAnalysis.spacing[idx]) {
-        wfImportAnalysis.spacing[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
-      }
-    });
-  }
-
-  // Bind radius name edits
-  var radiusInputs = wrap.querySelectorAll(".import-radius-name");
-  for (var rii = 0; rii < radiusInputs.length; rii++) {
-    radiusInputs[rii].addEventListener("input", function(ev) {
-      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
-      if (wfImportAnalysis && wfImportAnalysis.radius[idx]) {
-        wfImportAnalysis.radius[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
-      }
-    });
-  }
-
-  // Bind border name edits
-  var borderInputs = wrap.querySelectorAll(".import-border-name");
-  for (var bii = 0; bii < borderInputs.length; bii++) {
-    borderInputs[bii].addEventListener("input", function(ev) {
-      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
-      if (wfImportAnalysis && wfImportAnalysis.borders[idx]) {
-        wfImportAnalysis.borders[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
-      }
-    });
-  }
-
-  // Bind frame reclassification dropdowns
-  var frameSelects = wrap.querySelectorAll(".import-frame-class");
-  for (var fsi = 0; fsi < frameSelects.length; fsi++) {
-    frameSelects[fsi].addEventListener("change", function(ev) {
-      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
-      if (wfImportAnalysis && wfImportAnalysis.frames[idx]) {
-        wfImportAnalysis.frames[idx].classification = ev.target.value;
-        // Update the icon next to this row
-        var icon = ev.target.parentNode.querySelector("span");
-        var icons = { desktop: "\uD83D\uDDA5\uFE0F", mobile: "\uD83D\uDCF1", component: "\uD83E\uDDE9", other: "\u2753", skip: "\u23ED\uFE0F" };
-        if (icon) icon.textContent = icons[ev.target.value] || "\u2753";
-      }
-    });
-  }
-
-  // AI refine button
-  var aiBtn = document.getElementById("import-ai-btn");
-  if (aiBtn) {
-    aiBtn.addEventListener("click", function() {
-      aiBtn.disabled = true; aiBtn.textContent = "✨ Refining…";
-      bhCallWithRetry(function(retryCb) {
-        bhCallTokenNamingAI(wfImportAnalysis, retryCb);
-      }, 1, function(err, result) {
-        if (err) {
-          aiBtn.textContent = "✨ Failed — " + err;
-          aiBtn.disabled = false;
-          return;
-        }
-        // Apply AI suggestions to analysis
-        if (result.colors && Array.isArray(result.colors)) {
-          for (var aci = 0; aci < result.colors.length; aci++) {
-            var sc = result.colors[aci];
-            if (wfImportAnalysis.colors[sc.index]) {
-              wfImportAnalysis.colors[sc.index].name = sc.name;
-            }
-          }
-        }
-        if (result.typography && Array.isArray(result.typography)) {
-          for (var ati = 0; ati < result.typography.length; ati++) {
-            var st = result.typography[ati];
-            if (wfImportAnalysis.typography[st.index]) {
-              wfImportAnalysis.typography[st.index].group = st.group;
-              wfImportAnalysis.typography[st.index].name = st.name;
-            }
-          }
-        }
-        // Re-render the review step with updated names
-        renderImportReview();
-      });
-    });
-  }
-
-  document.getElementById("import-apply-btn").addEventListener("click", function() {
-    var btn = document.getElementById("import-apply-btn");
-    btn.disabled = true; btn.textContent = "Applying…";
-    wfImportStep = 3;
-
-    // Send analysis back for application
-    parent.postMessage({ pluginMessage: {
-      type: "import-apply",
-      analysis: wfImportAnalysis,
-      coverData: {
-        project: wfFormState.project || "Imported Design",
-        version: wfFormState.version || "v1.0.0",
-        date: wfFormState.date || new Date().toISOString().slice(0, 10),
-        designers: wfFormState.designers || "",
-        status: "In Progress"
-      }
-    } }, "*");
-
-    // Show progress
-    wrap.innerHTML =
-      "<div style='padding:16px;'>" +
-        "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;'>Step 3 — Applying Tokens & Organizing</div>" +
-        "<div style='background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;'>" +
-          "<div id='import-progress-text' style='font-size:11px;color:#a6adc8;margin-bottom:6px;'>Creating tokens…</div>" +
-          "<div style='background:#313244;border-radius:3px;overflow:hidden;height:3px;'>" +
-            "<div id='import-progress-bar' style='height:100%;background:#a6e3a1;width:50%;transition:width 0.3s;'></div>" +
-          "</div>" +
-        "</div>" +
-        "<div id='import-status'></div>" +
-      "</div>";
-  });
-
-  document.getElementById("import-cancel-btn").addEventListener("click", function() {
-    wfImportMode = false;
-    wfImportStep = 0;
-    wfImportAnalysis = null;
-    var w = document.getElementById("import-wrap");
-    if (w) w.remove();
-    // Re-request pages to re-render normal workflow
-    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
-  });
-}
+// ── AI Token Naming ─────────────────────────────────────────────────────────
 
 function bhCallTokenNamingAI(analysis, callback) {
   var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
@@ -5225,46 +5283,6 @@ function bhCallTokenNamingAI(analysis, callback) {
   xhr.timeout = 30000;
   xhr.ontimeout = function() { callback("AI request timed out.", null); };
   xhr.send(body);
-}
-
-function renderImportDone(msg) {
-  var wrap = document.getElementById("import-wrap");
-  if (!wrap) return;
-  var bs = msg.bindStats || {};
-
-  wrap.innerHTML =
-    "<div style='padding:16px;'>" +
-      "<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;'>" +
-        "<span style='font-size:24px;'>✅</span>" +
-        "<div style='font-size:14px;font-weight:700;color:#a6e3a1;'>Import Complete</div>" +
-      "</div>" +
-      "<div style='background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;font-size:11px;color:#a6adc8;line-height:1.8;'>" +
-        "<div>📦 Moved <b>" + (msg.moved || 0) + "</b> frames to organized pages</div>" +
-        "<div>🎨 Bound <b>" + (bs.colors || 0) + "</b> colors to variables</div>" +
-        "<div>📏 Bound <b>" + (bs.spacing || 0) + "</b> spacing values</div>" +
-        "<div>🔘 Bound <b>" + (bs.radius || 0) + "</b> radius values</div>" +
-        "<div>📝 Applied <b>" + (bs.textStyles || 0) + "</b> text styles</div>" +
-        (bs.borders ? "<div>🔲 Bound <b>" + bs.borders + "</b> border widths</div>" : "") +
-        (bs.effects ? "<div>💫 Applied <b>" + bs.effects + "</b> effect styles</div>" : "") +
-        (msg.skipped ? "<div>⏭️ Skipped <b>" + msg.skipped + "</b> frames (too small or unclassified)</div>" : "") +
-      "</div>" +
-      "<div style='font-size:11px;color:#6c7086;margin-bottom:12px;'>Your original content is safely archived. Run the audit to see remaining issues.</div>" +
-      "<button id='import-done-btn' style='width:100%;padding:8px 14px;background:#cba6f7;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;'>Continue to Workflow →</button>" +
-    "</div>";
-
-  document.getElementById("import-done-btn").addEventListener("click", function() {
-    // Keep wfImportMode = true so steps render import-specific completed content
-    wfImportStep = 4; // All import steps done
-    wfStep3Skipped = true;
-    wfFormState.step3Open = false;
-    wfFormState.step4Open = true;
-    var w = document.getElementById("import-wrap");
-    if (w) w.remove();
-    saveSettings();
-    // Refresh workflow — pages now exist, tokens created, should land at Step 4
-    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
-    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
-  });
 }
 
 // ── Build HTML button handlers ──

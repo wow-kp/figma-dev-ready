@@ -223,7 +223,7 @@ export async function ensureBackgroundImageVar() {
   var cols = await figma.variables.getLocalVariableCollectionsAsync();
   var flagsCol = null;
   for (var i = 0; i < cols.length; i++) { if (cols[i].name === "Flags") { flagsCol = cols[i]; break; } }
-  if (!flagsCol) flagsCol = await figma.variables.createVariableCollectionAsync("Flags");
+  if (!flagsCol) flagsCol = figma.variables.createVariableCollection("Flags");
   var allVars = await figma.variables.getLocalVariablesAsync();
   var existing = [];
   for (var ei = 0; ei < allVars.length; ei++) {
@@ -234,7 +234,7 @@ export async function ensureBackgroundImageVar() {
   for (var j = 0; j < existing.length; j++) {
     if (existing[j].name === "background-image") return existing[j];
   }
-  var v = await figma.variables.createVariableAsync("background-image", flagsCol, "BOOLEAN");
+  var v = figma.variables.createVariable("background-image", flagsCol, "BOOLEAN");
   v.setValueForMode(flagsCol.modes[0].modeId, true);
   return v;
 }
@@ -243,7 +243,7 @@ export async function ensureEssentialColors() {
   var cols = await figma.variables.getLocalVariableCollectionsAsync();
   var colorCol = null;
   for (var i = 0; i < cols.length; i++) { if (cols[i].name === "Colors") { colorCol = cols[i]; break; } }
-  if (!colorCol) colorCol = await figma.variables.createVariableCollectionAsync("Colors");
+  if (!colorCol) colorCol = figma.variables.createVariableCollection("Colors");
   var allVars = await figma.variables.getLocalVariablesAsync();
   var existing = [];
   for (var ei = 0; ei < allVars.length; ei++) {
@@ -266,7 +266,7 @@ export async function ensureEssentialColors() {
   for (var j = 0; j < essential.length; j++) {
     if (!nameMap[essential[j].name]) {
       try {
-        var v = await figma.variables.createVariableAsync(essential[j].name, colorCol, "COLOR");
+        var v = figma.variables.createVariable(essential[j].name, colorCol, "COLOR");
         v.setValueForMode(modeId, essential[j].color);
       } catch(e) {}
     }

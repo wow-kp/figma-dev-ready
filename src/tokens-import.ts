@@ -1,11 +1,11 @@
 // Token import system
 import { weightToStyleCandidates, weightToStyle, loadFontWithFallback, setFontName, parseCssShadow } from './utils';
 
-export async function findOrCreateCollection(name){var cols=await figma.variables.getLocalVariableCollectionsAsync();for(var i=0;i<cols.length;i++){if(cols[i].name===name)return cols[i];}return await figma.variables.createVariableCollectionAsync(name);}
+export async function findOrCreateCollection(name){var cols=await figma.variables.getLocalVariableCollectionsAsync();for(var i=0;i<cols.length;i++){if(cols[i].name===name)return cols[i];}return figma.variables.createVariableCollection(name);}
 
 export async function buildVarMap(col){var map={},all=await figma.variables.getLocalVariablesAsync();for(var i=0;i<all.length;i++){if(all[i].variableCollectionId===col.id)map[all[i].name]=all[i];}return map;}
 
-export async function getOrCreateVar(name,col,type,map){if(map[name]&&map[name].resolvedType===type)return map[name];var v=await figma.variables.createVariableAsync(name,col,type);map[name]=v;return v;}
+export async function getOrCreateVar(name,col,type,map){if(map[name]&&map[name].resolvedType===type)return map[name];var v=figma.variables.createVariable(name,col,type);map[name]=v;return v;}
 
 export function dtcgToFigmaColor(val){return{r:val.components[0],g:val.components[1],b:val.components[2],a:val.alpha!==undefined?val.alpha:1};}
 
@@ -47,19 +47,25 @@ export async function importTokens(filename,data){
 }
 
 export async function importTextStyles(data){
-  // Pre-load all needed fonts with fallback
+  // Pre-load all needed fonts — try exact fontStyle first, fall back to weight-based
   var fontsToLoad=[],seen={};
-  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var weight=val.fontWeight||400;var k=family+":"+weight;if(!seen[k]){seen[k]=true;fontsToLoad.push({family:family,weight:weight});}});});
-  // Resolve actual style names per family+weight
+  Object.keys(data).forEach(function(groupKey){var group=data[groupKey];if(!group||typeof group!=="object")return;Object.keys(group).forEach(function(key){var token=group[key];if(!token||!token["$value"])return;var val=token["$value"];var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var weight=val.fontWeight||400;var exactStyle=val.fontStyle||"";var k=family+":"+weight+":"+exactStyle;if(!seen[k]){seen[k]=true;fontsToLoad.push({family:family,weight:weight,exactStyle:exactStyle});}});});
+  // Resolve actual style names — prefer exact style from source
   var resolvedStyles={};
   for(var fi=0;fi<fontsToLoad.length;fi++){
     var f=fontsToLoad[fi];
-    var actualStyle=await loadFontWithFallback(f.family,f.weight);
-    resolvedStyles[f.family+":"+f.weight]=actualStyle;
+    var resolved=null;
+    // Try loading the exact style name from the source design first
+    if(f.exactStyle){
+      try{await figma.loadFontAsync({family:f.family,style:f.exactStyle});resolved=f.exactStyle;}catch(e){}
+    }
+    // Fall back to weight-based resolution
+    if(!resolved){resolved=await loadFontWithFallback(f.family,f.weight);}
+    resolvedStyles[f.family+":"+f.weight+":"+f.exactStyle]=resolved;
   }
   var existingStyles=await figma.getLocalTextStylesAsync(),styleMap={};existingStyles.forEach(function(s){styleMap[s.name]=s;});
   var count=0,skipped=0;
-  var groupKeys=Object.keys(data);for(var gi=0;gi<groupKeys.length;gi++){var groupKey=groupKeys[gi];var group=data[groupKey];if(!group||typeof group!=="object")continue;var keys=Object.keys(group);for(var ki=0;ki<keys.length;ki++){var key=keys[ki];var token=group[key];if(!token||!token["$value"])continue;var val=token["$value"];var styleName=groupKey+"/"+key;try{var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var weight=val.fontWeight||400;var fontStyle=resolvedStyles[family+":"+weight]||"Regular";var style=styleMap[styleName]||figma.createTextStyle();style.name=styleName;style.fontName={family:family,style:fontStyle};var fs=val.fontSize;style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);var lh=val.lineHeight;if(lh){if(typeof lh==="object"){if(lh.unit==="PIXELS")style.lineHeight={unit:"PIXELS",value:lh.value||24};else if(lh.unit==="MULTIPLIER"){var lhPx=(lh.value||1.5)*style.fontSize;style.lineHeight={unit:"PIXELS",value:lhPx};}else style.lineHeight={unit:"PERCENT",value:(lh.value||1.5)*100};}else style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};}var ls=val.letterSpacing;if(ls!==undefined){var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);style.letterSpacing={unit:"PIXELS",value:lsVal};}var ps=val.paragraphSpacing;if(ps!==undefined)style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);var td=val.textDecoration;style.textDecoration=(td&&td!=="NONE")?td:"NONE";if(token["$description"])style.description=token["$description"];styleMap[styleName]=style;count++;}catch(e){skipped++;}}}
+  var groupKeys=Object.keys(data);for(var gi=0;gi<groupKeys.length;gi++){var groupKey=groupKeys[gi];var group=data[groupKey];if(!group||typeof group!=="object")continue;var keys=Object.keys(group);for(var ki=0;ki<keys.length;ki++){var key=keys[ki];var token=group[key];if(!token||!token["$value"])continue;var val=token["$value"];var styleName=groupKey+"/"+key;try{var family=String(val.fontFamily||"Inter").split(",")[0].trim().replace(/['"]/g,"");var weight=val.fontWeight||400;var exactStyle=val.fontStyle||"";var fontStyle=resolvedStyles[family+":"+weight+":"+exactStyle]||"Regular";var style=styleMap[styleName]||figma.createTextStyle();style.name=styleName;style.fontName={family:family,style:fontStyle};var fs=val.fontSize;style.fontSize=typeof fs==="object"?(fs.value||16):(parseFloat(fs)||16);var lh=val.lineHeight;if(lh){if(typeof lh==="object"){if(lh.unit==="PIXELS")style.lineHeight={unit:"PIXELS",value:lh.value||24};else if(lh.unit==="MULTIPLIER"){var lhPx=(lh.value||1.5)*style.fontSize;style.lineHeight={unit:"PIXELS",value:lhPx};}else style.lineHeight={unit:"PERCENT",value:(lh.value||1.5)*100};}else style.lineHeight={unit:"PERCENT",value:(parseFloat(lh)||1.5)*100};}var ls=val.letterSpacing;if(ls!==undefined){var lsVal=typeof ls==="object"?ls.value:(parseFloat(ls)||0);var lsU=(typeof ls==="object"&&ls.unit==="PERCENT")?"PERCENT":"PIXELS";style.letterSpacing={unit:lsU,value:lsVal};}var ps=val.paragraphSpacing;if(ps!==undefined)style.paragraphSpacing=typeof ps==="object"?(ps.value||0):(parseFloat(ps)||0);var td=val.textDecoration;style.textDecoration=(td&&td!=="NONE")?td:"NONE";var txc=val.textCase;if(txc&&txc!=="ORIGINAL")style.textCase=txc;if(token["$description"])style.description=token["$description"];styleMap[styleName]=style;count++;}catch(e){skipped++;}}}
   var msg="Created/updated "+count+" text style"+(count!==1?"s":"");if(skipped>0)msg+=" ("+skipped+" skipped — font not installed)";return msg;
 }
 
@@ -71,24 +77,21 @@ export async function importFlat(data,colName,prefix,isDim){var col=await findOr
 
 export async function importOpacity(data){
   var col=await findOrCreateCollection("Opacity");
-  var valueModeId=col.modes[0].modeId;
-  col.renameMode(valueModeId,"Value");
-  // Find or create a second mode for percentage values
-  var pctModeId=null;
-  for(var mi=0;mi<col.modes.length;mi++){if(col.modes[mi].name==="Percentage"){pctModeId=col.modes[mi].modeId;break;}}
-  if(!pctModeId) pctModeId=col.addMode("Percentage");
+  var modeId=col.modes[0].modeId;
+  col.renameMode(modeId,"Value");
   var map=await buildVarMap(col),count=0;
   var keys=Object.keys(data);for(var ki=0;ki<keys.length;ki++){
     var key=keys[ki];var t=data[key];if(!t||t["$value"]===undefined)continue;
     try{
-      var num=parseFloat(t["$value"])||0;
+      var decimal=parseFloat(t["$value"])||0;
+      var pct=Math.round(decimal*100);
       var v=await getOrCreateVar("opacity/"+key,col,"FLOAT",map);
-      v.setValueForMode(valueModeId,num);
-      v.setValueForMode(pctModeId,Math.round(num*100));
+      v.setValueForMode(modeId,pct);
+      v.scopes=["OPACITY"];
       count++;
     }catch(e){}
   }
-  return"Imported "+count+" opacity variables (Value + Percentage)";
+  return"Imported "+count+" opacity variables";
 }
 
 export async function importShadows(data){

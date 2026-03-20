@@ -20,8 +20,9 @@ interface BorderEntry  { name: string; value: number; count: number; }
 interface ShadowEntry  { name: string; value: string; count: number; }
 
 interface TypoCombo {
-  fontFamily: string; fontSize: number; fontWeight: number;
-  lineHeight: number; letterSpacing: number;
+  fontFamily: string; fontStyle: string; fontSize: number; fontWeight: number;
+  lineHeight: number; letterSpacing: number; letterSpacingUnit: string;
+  textDecoration: string; textCase: string; paragraphSpacing: number;
   count: number; sampleText: string;
   group: string; name: string;
 }
@@ -55,6 +56,28 @@ var SPACING_NAMES = ["4xs", "3xs", "2xs", "xs", "sm", "md", "lg", "xl", "2xl", "
 var RADIUS_NAMES = ["xs", "sm", "md", "lg", "xl", "2xl", "full"];
 var BORDER_NAMES = ["thin", "default", "medium", "thick"];
 var SHADOW_NAMES = ["xs", "sm", "md", "lg", "xl", "2xl"];
+
+// Map font style name to numeric weight
+// Map font style name to approximate numeric weight (used for heuristic grouping only).
+// The exact style name (fontStyle) is preserved separately for accurate font loading.
+function styleToWeight(style: string): number {
+  // Strip width prefixes (SemiExpanded, Expanded, Condensed, etc.) to isolate weight name
+  var s = (style || "Regular").toLowerCase()
+    .replace(/\b(semi\s*expanded|expanded|semi\s*condensed|condensed|compressed|narrow|wide)\b/g, "")
+    .replace(/\bitalic\b/g, "")
+    .replace(/\boblique\b/g, "")
+    .trim();
+  if (s.indexOf("thin") !== -1 || s.indexOf("hairline") !== -1) return 100;
+  if (s.indexOf("extralight") !== -1 || s.indexOf("extra light") !== -1 || s.indexOf("ultralight") !== -1 || s.indexOf("ultra light") !== -1) return 200;
+  if (s.indexOf("light") !== -1) return 300;
+  if (s.indexOf("book") !== -1) return 350;
+  if (s.indexOf("semibold") !== -1 || s.indexOf("semi bold") !== -1 || s.indexOf("demibold") !== -1 || s.indexOf("demi bold") !== -1 || s.indexOf("demi") !== -1) return 600;
+  if (s.indexOf("extrabold") !== -1 || s.indexOf("extra bold") !== -1 || s.indexOf("ultrabold") !== -1 || s.indexOf("ultra bold") !== -1) return 800;
+  if (s.indexOf("black") !== -1 || s.indexOf("heavy") !== -1) return 900;
+  if (s.indexOf("bold") !== -1) return 700;
+  if (s.indexOf("medium") !== -1 || s.indexOf("middle") !== -1) return 500;
+  return 400;
+}
 
 // Named hue ranges for auto-naming colors
 var HUE_NAMES: [number, number, string][] = [
@@ -168,11 +191,73 @@ export async function analyzeDesign(): Promise<AnalysisResult> {
     if ("layoutMode" in node && (node as FrameNode).layoutMode !== "NONE") {
       var f = node as FrameNode;
       var spacingProps = [f.paddingLeft, f.paddingRight, f.paddingTop, f.paddingBottom, f.itemSpacing];
+      if (typeof (f as any).counterAxisSpacing === "number" && (f as any).counterAxisSpacing > 0) {
+        spacingProps.push((f as any).counterAxisSpacing);
+      }
       for (var spi = 0; spi < spacingProps.length; spi++) {
         var sv = spacingProps[spi];
         if (typeof sv === "number" && sv > 0) {
           var svk = String(Math.round(sv));
           spacingMap[svk] = (spacingMap[svk] || 0) + 1;
+        }
+      }
+    }
+
+    // Spacing from non-auto-layout frames: gaps between children and padding from edges
+    if ("children" in node && (node as any).children && (node as any).children.length > 1) {
+      var isAutoLayout = "layoutMode" in node && (node as FrameNode).layoutMode !== "NONE";
+      if (!isAutoLayout && ("width" in node) && ("height" in node)) {
+        var children = (node as any).children as SceneNode[];
+        var visibleChildren: SceneNode[] = [];
+        for (var vci = 0; vci < children.length; vci++) {
+          if (children[vci].visible !== false && "x" in children[vci] && "y" in children[vci]) {
+            visibleChildren.push(children[vci]);
+          }
+        }
+        if (visibleChildren.length >= 2) {
+          // Sort by Y then X to find vertical and horizontal gaps
+          var sortedY = visibleChildren.slice().sort(function(a, b) { return (a as any).y - (b as any).y; });
+          var sortedX = visibleChildren.slice().sort(function(a, b) { return (a as any).x - (b as any).x; });
+
+          // Vertical gaps between consecutive children
+          for (var gi = 1; gi < sortedY.length; gi++) {
+            var prevBottom = (sortedY[gi - 1] as any).y + (sortedY[gi - 1] as any).height;
+            var curTop = (sortedY[gi] as any).y;
+            var gap = Math.round(curTop - prevBottom);
+            if (gap > 0 && gap <= 200) {
+              spacingMap[String(gap)] = (spacingMap[String(gap)] || 0) + 1;
+            }
+          }
+
+          // Horizontal gaps between consecutive children
+          for (var gj = 1; gj < sortedX.length; gj++) {
+            var prevRight = (sortedX[gj - 1] as any).x + (sortedX[gj - 1] as any).width;
+            var curLeft = (sortedX[gj] as any).x;
+            var hgap = Math.round(curLeft - prevRight);
+            if (hgap > 0 && hgap <= 200) {
+              spacingMap[String(hgap)] = (spacingMap[String(hgap)] || 0) + 1;
+            }
+          }
+
+          // Padding from frame edges to first/last child
+          if ("width" in node && "height" in node) {
+            var fw = (node as any).width, fh = (node as any).height;
+            var minX = Infinity, minY = Infinity, maxR = 0, maxB = 0;
+            for (var pi = 0; pi < visibleChildren.length; pi++) {
+              var vc = visibleChildren[pi] as any;
+              if (vc.x < minX) minX = vc.x;
+              if (vc.y < minY) minY = vc.y;
+              if (vc.x + vc.width > maxR) maxR = vc.x + vc.width;
+              if (vc.y + vc.height > maxB) maxB = vc.y + vc.height;
+            }
+            var paddings = [Math.round(minX), Math.round(minY), Math.round(fw - maxR), Math.round(fh - maxB)];
+            for (var pdi = 0; pdi < paddings.length; pdi++) {
+              var pd = paddings[pdi];
+              if (pd > 0 && pd <= 200) {
+                spacingMap[String(pd)] = (spacingMap[String(pd)] || 0) + 1;
+              }
+            }
+          }
         }
       }
     }
@@ -207,17 +292,9 @@ export async function analyzeDesign(): Promise<AnalysisResult> {
       var fs = tn.fontSize;
       var fn = tn.fontName;
       if (typeof fs === "number" && fn && typeof fn === "object" && "family" in fn) {
-        var fw = 400;
-        // Map style name to weight
-        var style = (fn.style || "Regular").toLowerCase();
-        if (style.indexOf("thin") !== -1) fw = 100;
-        else if (style.indexOf("extralight") !== -1 || style.indexOf("ultra light") !== -1) fw = 200;
-        else if (style.indexOf("light") !== -1) fw = 300;
-        else if (style.indexOf("medium") !== -1) fw = 500;
-        else if (style.indexOf("semibold") !== -1 || style.indexOf("semi bold") !== -1 || style.indexOf("demi") !== -1) fw = 600;
-        else if (style.indexOf("extrabold") !== -1 || style.indexOf("ultra bold") !== -1) fw = 800;
-        else if (style.indexOf("black") !== -1 || style.indexOf("heavy") !== -1) fw = 900;
-        else if (style.indexOf("bold") !== -1) fw = 700;
+        var fontStyleName = (fn.style || "Regular");
+        // Use actual numeric fontWeight from Figma when available, fall back to name parsing
+        var fw = (typeof (tn as any).fontWeight === "number") ? (tn as any).fontWeight : styleToWeight(fontStyleName);
 
         var lh = 0;
         if (tn.lineHeight && typeof tn.lineHeight === "object" && "value" in tn.lineHeight) {
@@ -230,11 +307,26 @@ export async function analyzeDesign(): Promise<AnalysisResult> {
         }
 
         var ls = 0;
+        var lsUnit = "px";
         if (tn.letterSpacing && typeof tn.letterSpacing === "object" && "value" in tn.letterSpacing) {
-          ls = (tn.letterSpacing as {value:number}).value || 0;
+          var lsObj = tn.letterSpacing as { value: number; unit: string };
+          ls = lsObj.value || 0;
+          if (lsObj.unit === "PERCENT") lsUnit = "percent";
         }
 
-        var comboKey = fn.family + "/" + fs + "/" + fw;
+        // Text decoration
+        var td = "NONE";
+        if (typeof tn.textDecoration === "string") td = tn.textDecoration;
+
+        // Text case
+        var tc = "ORIGINAL";
+        if (typeof tn.textCase === "string") tc = tn.textCase;
+
+        // Paragraph spacing
+        var ps = 0;
+        if (typeof tn.paragraphSpacing === "number") ps = tn.paragraphSpacing;
+
+        var comboKey = fn.family + "/" + fontStyleName + "/" + fs + "/" + td + "/" + tc;
         fontFamilyCount[fn.family] = (fontFamilyCount[fn.family] || 0) + 1;
 
         if (typoMap[comboKey]) {
@@ -242,9 +334,10 @@ export async function analyzeDesign(): Promise<AnalysisResult> {
         } else {
           var sample = (tn.characters || "").substring(0, 40);
           typoMap[comboKey] = {
-            fontFamily: fn.family, fontSize: fs, fontWeight: fw,
+            fontFamily: fn.family, fontStyle: fontStyleName, fontSize: fs, fontWeight: fw,
             lineHeight: Math.round(lh * 10) / 10,
-            letterSpacing: Math.round(ls * 100) / 100,
+            letterSpacing: Math.round(ls * 100) / 100, letterSpacingUnit: lsUnit,
+            textDecoration: td, textCase: tc, paragraphSpacing: ps,
             count: 1, sampleText: sample,
             group: "", name: ""
           };
@@ -607,11 +700,14 @@ export async function createTokensFromAnalysis(analysis: AnalysisResult): Promis
         "$type": "textStyle",
         "$value": {
           fontFamily: t.fontFamily + ", sans-serif",
+          fontStyle: t.fontStyle,
           fontSize: { value: t.fontSize, unit: "px" },
           fontWeight: t.fontWeight,
           lineHeight: { value: t.lineHeight / t.fontSize, unit: "MULTIPLIER" },
-          letterSpacing: { value: t.letterSpacing, unit: "px" },
-          paragraphSpacing: { value: 0, unit: "px" }
+          letterSpacing: { value: t.letterSpacing, unit: (t.letterSpacingUnit === "percent" ? "PERCENT" : "PIXELS") },
+          paragraphSpacing: { value: t.paragraphSpacing || 0, unit: "px" },
+          textDecoration: t.textDecoration || "NONE",
+          textCase: t.textCase || "ORIGINAL"
         }
       };
     }
@@ -864,11 +960,11 @@ export async function bindTokensToDesign(
       }
     }
 
-    // Opacity
+    // Opacity — variables store percentage (70), node.opacity is 0–1 (0.7)
     if ("opacity" in node && typeof node.opacity === "number" && node.opacity < 1 && node.opacity > 0) {
       var bvO = node.boundVariables && node.boundVariables.opacity;
       if (!bvO) {
-        var nearO = await findNearestFloatVar(node.opacity, opacityVars);
+        var nearO = await findNearestFloatVar(Math.round(node.opacity * 100), opacityVars);
         if (nearO) {
           try { (node as any).setBoundVariable("opacity", nearO); stats.opacity++; } catch (e) {}
         }
@@ -970,4 +1066,175 @@ export async function detectFileType(): Promise<"existing" | "fresh" | "managed"
 
   // Existing design: has content but not plugin-managed
   return "existing";
+}
+
+// ── Cleanup Original Pages ──────────────────────────────────────────────────
+
+export async function cleanupOriginalPages(): Promise<{ removedPages: string[] }> {
+  await figma.loadAllPagesAsync();
+  var standardHints = ["cover", "foundations", "components", "desktop", "mobile", "archive"];
+  var removedPages: string[] = [];
+
+  var pages = figma.root.children.slice();
+  for (var i = 0; i < pages.length; i++) {
+    var pg = pages[i];
+    var norm = pg.name.toLowerCase().replace(/[^a-z]/g, "");
+    var isStandard = standardHints.some(function(h) { return norm.indexOf(h) !== -1; });
+    if (!isStandard && pg.children.length === 0) {
+      removedPages.push(pg.name);
+      pg.remove();
+    }
+  }
+
+  return { removedPages: removedPages };
+}
+
+// ── Scan Existing Variables ─────────────────────────────────────────────────
+
+interface ExistingColorVar { name: string; hex: string; id: string; }
+interface ExistingFloatVar { name: string; value: number; collection: string; id: string; }
+interface ExistingTextStyle { name: string; fontSize: number; fontFamily: string; fontStyle: string; fontWeight: number; id: string; }
+
+export interface ExistingVarsResult {
+  colors: ExistingColorVar[];
+  floats: ExistingFloatVar[];
+  textStyles: ExistingTextStyle[];
+}
+
+export async function scanExistingVariables(): Promise<ExistingVarsResult> {
+  var colors: ExistingColorVar[] = [];
+  var floats: ExistingFloatVar[] = [];
+  var textStyles: ExistingTextStyle[] = [];
+
+  // Scan local variables
+  var localVars = await figma.variables.getLocalVariablesAsync();
+  var collections = await figma.variables.getLocalVariableCollectionsAsync();
+  var collectionMap: Record<string, string> = {};
+  for (var ci = 0; ci < collections.length; ci++) {
+    collectionMap[collections[ci].id] = collections[ci].name;
+  }
+
+  for (var vi = 0; vi < localVars.length; vi++) {
+    var v = localVars[vi];
+    var modeId = Object.keys(v.valuesByMode)[0];
+    if (!modeId) continue;
+    var val = v.valuesByMode[modeId];
+
+    if (v.resolvedType === "COLOR" && typeof val === "object" && "r" in val) {
+      var rgba = val as RGBA;
+      var hex = rgb01ToHex(rgba.r, rgba.g, rgba.b);
+      colors.push({ name: v.name, hex: hex, id: v.id });
+    } else if (v.resolvedType === "FLOAT" && typeof val === "number") {
+      floats.push({
+        name: v.name,
+        value: val as number,
+        collection: collectionMap[v.variableCollectionId] || "",
+        id: v.id
+      });
+    }
+  }
+
+  // Scan local text styles
+  var localTextStyles = await figma.getLocalTextStylesAsync();
+  for (var ti = 0; ti < localTextStyles.length; ti++) {
+    var ts = localTextStyles[ti];
+    textStyles.push({
+      name: ts.name,
+      fontSize: ts.fontSize as number,
+      fontFamily: (ts.fontName as FontName).family,
+      fontStyle: (ts.fontName as FontName).style,
+      fontWeight: styleToWeight((ts.fontName as FontName).style),
+      id: ts.id
+    });
+  }
+
+  return { colors: colors, floats: floats, textStyles: textStyles };
+}
+
+// ── Match Tokens With Existing ──────────────────────────────────────────────
+
+export function matchTokensWithExisting(analysis: AnalysisResult, existingVars: ExistingVarsResult): AnalysisResult {
+  // Deep copy so we don't mutate the original
+  var result: AnalysisResult = JSON.parse(JSON.stringify(analysis));
+
+  // Match colors by distance
+  for (var ci = 0; ci < result.colors.length; ci++) {
+    var ac = result.colors[ci];
+    var bestDist = 0.02;
+    var bestName = "";
+    for (var ei = 0; ei < existingVars.colors.length; ei++) {
+      var ec = existingVars.colors[ei];
+      // Parse hex to RGB for comparison
+      var ar = ac.r, ag = ac.g, ab = ac.b;
+      var er = parseInt(ec.hex.slice(1, 3), 16) / 255;
+      var eg = parseInt(ec.hex.slice(3, 5), 16) / 255;
+      var eb = parseInt(ec.hex.slice(5, 7), 16) / 255;
+      var dist = Math.sqrt((ar - er) * (ar - er) + (ag - eg) * (ag - eg) + (ab - eb) * (ab - eb));
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestName = ec.name;
+      }
+    }
+    if (bestName) {
+      (result.colors[ci] as any).name = bestName;
+      (result.colors[ci] as any).matched = true;
+    }
+  }
+
+  // Match spacing by value (±1px tolerance)
+  for (var si = 0; si < result.spacing.length; si++) {
+    var sv = result.spacing[si].value;
+    for (var sj = 0; sj < existingVars.floats.length; sj++) {
+      var ef = existingVars.floats[sj];
+      if (ef.collection.toLowerCase().indexOf("spacing") !== -1 && Math.abs(sv - ef.value) <= 1) {
+        (result.spacing[si] as any).name = ef.name;
+        (result.spacing[si] as any).matched = true;
+        break;
+      }
+    }
+  }
+
+  // Match radius by value (±1px tolerance)
+  for (var ri = 0; ri < result.radius.length; ri++) {
+    var rv = result.radius[ri].value;
+    for (var rj = 0; rj < existingVars.floats.length; rj++) {
+      var rf = existingVars.floats[rj];
+      if (rf.collection.toLowerCase().indexOf("radius") !== -1 && Math.abs(rv - rf.value) <= 1) {
+        (result.radius[ri] as any).name = rf.name;
+        (result.radius[ri] as any).matched = true;
+        break;
+      }
+    }
+  }
+
+  // Match borders by value (±1px tolerance)
+  for (var bi = 0; bi < result.borders.length; bi++) {
+    var bv = result.borders[bi].value;
+    for (var bj = 0; bj < existingVars.floats.length; bj++) {
+      var bf = existingVars.floats[bj];
+      if (bf.collection.toLowerCase().indexOf("border") !== -1 && Math.abs(bv - bf.value) <= 1) {
+        (result.borders[bi] as any).name = bf.name;
+        (result.borders[bi] as any).matched = true;
+        break;
+      }
+    }
+  }
+
+  // Match typography by fontSize + fontStyle (exact) or fontSize + fontWeight (approximate)
+  for (var ti = 0; ti < result.typography.length; ti++) {
+    var tc = result.typography[ti];
+    for (var tj = 0; tj < existingVars.textStyles.length; tj++) {
+      var et = existingVars.textStyles[tj];
+      var sizeMatch = Math.abs(tc.fontSize - et.fontSize) < 0.5;
+      var styleMatch = tc.fontStyle === et.fontStyle;
+      var weightMatch = tc.fontWeight === et.fontWeight;
+      if (sizeMatch && (styleMatch || weightMatch)) {
+        (result.typography[ti] as any).name = et.name;
+        (result.typography[ti] as any).matched = true;
+        break;
+      }
+    }
+  }
+
+  return result;
 }

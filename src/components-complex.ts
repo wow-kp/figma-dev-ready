@@ -60,7 +60,7 @@ export async function generateComponentsPageComplex() {
 
   // Color variable binding helpers
   if (!colorCol) {
-    colorCol = await figma.variables.createVariableCollectionAsync("Colors");
+    colorCol = figma.variables.createVariableCollection("Colors");
   }
   var colorVarMap = {};
   // Re-read vars to pick up essential colors created by ensureEssentialColors()

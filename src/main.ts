@@ -1,3 +1,6 @@
+// Build-time constant injected by esbuild --define (from proxy-config.json)
+declare const BUILTIN_PROXY_URL: string;
+
 // Main entry point — plugin init, selection listener, and message router
 import { countTokensByCategory, ensureEssentialColors, ensureComponentTextStyles, getAuditPages, hexToFigma } from './utils';
 import { pushDebugData, runAudit, runFixes, findNearestColorVar, findNearestFloatVar, serializeNodeForNaming } from './audit';
@@ -42,10 +45,10 @@ async function sendPageContentUpdate() {
     }
   } catch(e) {}
   try {
-    var aiConfig = await figma.clientStorage.getAsync("ai-config");
-    if (aiConfig) {
-      figma.ui.postMessage({ type: "ai-config-loaded", config: aiConfig });
-    }
+    var aiConfig = await figma.clientStorage.getAsync("ai-config") || {};
+    // Inject build-time proxy URL so UI doesn't need build-time modification
+    aiConfig.builtinProxyUrl = BUILTIN_PROXY_URL || "";
+    figma.ui.postMessage({ type: "ai-config-loaded", config: aiConfig });
   } catch(e) {}
   if (figma.currentUser) {
     figma.ui.postMessage({

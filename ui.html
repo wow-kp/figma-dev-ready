@@ -5170,6 +5170,11 @@ window.onmessage=function(event){
   }
   if(msg.type==="ai-config-loaded"){
     var cfg = msg.config || {};
+    // Set built-in proxy URL from backend (injected at build time from proxy-config.json)
+    if (cfg.builtinProxyUrl) {
+      _bhBuiltinProxyUrl = cfg.builtinProxyUrl;
+      if (!_bhProxyUrl) _bhProxyUrl = cfg.builtinProxyUrl;
+    }
     if (cfg.apiKey) {
       _bhApiKey = cfg.apiKey;
       var settingsInp = document.getElementById("settings-api-key");
@@ -5186,6 +5191,8 @@ window.onmessage=function(event){
     if (!cfg.welcomeDone) {
       document.getElementById("welcome-overlay").style.display = "";
     }
+    // Now that proxy URL is known, check health and update UI
+    bhCheckProxyHealth();
     bhUpdateAiModeUI();
   }
 };
@@ -5296,9 +5303,9 @@ var _figmaUserId = "";
 var _figmaUserName = "";
 var _bhApiKey = "";
 
-// Proxy URL — set via build (proxy-config.json), Settings tab, or clientStorage
+// Proxy URL — set via backend message (from proxy-config.json), Settings tab, or clientStorage
 var _bhProxyUrl = "";
-var _bhBuiltinProxyUrl = _bhProxyUrl; // Remember the build-time value
+var _bhBuiltinProxyUrl = ""; // Set when ai-config-loaded arrives with builtinProxyUrl
 
 var _bhProxyHealthy = false;
 var _bhProxyChecked = false;
@@ -5439,9 +5446,7 @@ document.getElementById("bh-ai-enhance").addEventListener("change", function() {
 });
 
 // Old bh-key-toggle and bh-api-key handlers removed — AI config now in Settings tab
-
-// Initialize AI mode — check proxy health, then update UI
-setTimeout(function() { bhCheckProxyHealth(); }, 100);
+// Proxy health check is triggered by ai-config-loaded message (no need for setTimeout)
 
 // Show welcome overlay if no ai-config was loaded after a brief delay
 var _aiConfigReceived = false;

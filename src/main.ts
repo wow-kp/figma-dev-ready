@@ -504,7 +504,11 @@ figma.ui.onmessage = async function(msg) {
         var exists = figma.root.children.some(function(p: PageNode) {
           return p.name.toLowerCase().replace(/[^a-z]/g,"").indexOf(hint) !== -1;
         });
-        if (!exists) figma.createPage().name = PAGE_DEFS[key];
+        if (!exists) {
+          var newPage = figma.createPage();
+          newPage.name = PAGE_DEFS[key];
+          try { (newPage as any).devStatus = null; } catch(e) {}
+        }
       });
 
       // 2. Archive existing content
@@ -624,7 +628,11 @@ figma.ui.onmessage = async function(msg) {
       var exists = figma.root.children.some(function(p) {
         return p.name.toLowerCase().replace(/[^a-z]/g,"").indexOf(hint) !== -1;
       });
-      if (!exists) figma.createPage().name = PAGE_DEFS[key];
+      if (!exists) {
+        var newPage = figma.createPage();
+        newPage.name = PAGE_DEFS[key];
+        try { (newPage as any).devStatus = null; } catch(e) {}
+      }
     });
     var allPages = figma.root.children.slice();
     var sorted = [];

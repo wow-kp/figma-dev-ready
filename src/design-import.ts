@@ -809,6 +809,19 @@ export async function reorganizeFrames(frames: FrameInfo[]): Promise<{ moved: nu
     }
   }
 
+  // Clear "Ready for dev" status on all top-level frames — designers set this at the end
+  var clearPages = [desktopPage, mobilePage, componentsPage];
+  for (var cpi = 0; cpi < clearPages.length; cpi++) {
+    var cp = clearPages[cpi];
+    if (!cp) continue;
+    for (var cci = 0; cci < cp.children.length; cci++) {
+      var child = cp.children[cci];
+      if ("devStatus" in child) {
+        try { (child as any).devStatus = null; } catch (e) {}
+      }
+    }
+  }
+
   return { moved: moved, skipped: skipped, pages: pagesCreated };
 }
 

@@ -116,6 +116,7 @@ export function findPageByHint(hint) {
   var pageName = hint.charAt(0).toUpperCase() + hint.slice(1);
   var newPage = figma.createPage();
   newPage.name = pageName;
+  try { (newPage as any).devStatus = null; } catch(e) {}
   return newPage;
 }
 

@@ -12,6 +12,7 @@ export async function generateCover(info) {
   if (!coverPage) {
     coverPage = figma.createPage();
     coverPage.name = "_Cover";
+    try { (coverPage as any).devStatus = null; } catch(e) {}
     figma.root.insertChild(0, coverPage);
   }
 

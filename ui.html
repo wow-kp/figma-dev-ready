@@ -1802,7 +1802,8 @@ function collectSettings() {
     routeBStep: wfRouteBStep,
     routeBAnalysis: wfRouteBAnalysis ? JSON.parse(JSON.stringify(wfRouteBAnalysis)) : null,
     routeBExistingVars: wfRouteBExistingVars ? JSON.parse(JSON.stringify(wfRouteBExistingVars)) : null,
-    routeBBindStats: wfRouteBBindStats ? JSON.parse(JSON.stringify(wfRouteBBindStats)) : null
+    routeBBindStats: wfRouteBBindStats ? JSON.parse(JSON.stringify(wfRouteBBindStats)) : null,
+    currentFileId: wfCurrentFileId
   };
 }
 
@@ -1904,6 +1905,7 @@ function applyLoadedSettings(s) {
   if (s.routeBAnalysis) wfRouteBAnalysis = s.routeBAnalysis;
   if (s.routeBExistingVars) wfRouteBExistingVars = s.routeBExistingVars;
   if (s.routeBBindStats) wfRouteBBindStats = s.routeBBindStats;
+  if (s.currentFileId) wfCurrentFileId = s.currentFileId;
 }
 
 function getWfColors() {

@@ -35,7 +35,7 @@ export async function generatePromoStructure(msg) {
 
   // Look up overlay variable for popup-overlay background
   var overlayVar = null;
-  var allColorVars = figma.variables.getLocalVariables().filter(function(v) { return v.resolvedType === "COLOR"; });
+  var allColorVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.resolvedType === "COLOR"; });
   for (var ovi = 0; ovi < allColorVars.length; ovi++) {
     var ovName = allColorVars[ovi].name.toLowerCase();
     if (ovName.indexOf("overlay") !== -1 || ovName.indexOf("scrim") !== -1) {
@@ -44,7 +44,7 @@ export async function generatePromoStructure(msg) {
   }
 
   // Look up shadow effect styles for binding
-  var promoEffectStyles = figma.getLocalEffectStyles();
+  var promoEffectStyles = await figma.getLocalEffectStylesAsync();
   var promoShadowStyle = null;
   for (var esi = 0; esi < promoEffectStyles.length; esi++) {
     var esName = promoEffectStyles[esi].name.toLowerCase();
@@ -60,9 +60,9 @@ export async function generatePromoStructure(msg) {
       }
     }
   }
-  function applyPromoShadow(node) {
+  async function applyPromoShadow(node) {
     if (!promoShadowStyle) return;
-    try { node.effectStyleId = promoShadowStyle.id; } catch(e) {}
+    try { await node.setEffectStyleIdAsync(promoShadowStyle.id); } catch(e) {}
   }
 
   // Look up spacing, radius & opacity variables for binding
@@ -73,8 +73,8 @@ export async function generatePromoStructure(msg) {
   var opacityColId = null;
   var opacityValueModeId = null;   // decimal 0-1 (for resolving / CSS)
   var opacityPctModeId = null;     // percentage 0-100 (for Figma "Opacity" binding)
-  var allFloatVars = figma.variables.getLocalVariables().filter(function(v) { return v.resolvedType === "FLOAT"; });
-  var allColls = figma.variables.getLocalVariableCollections();
+  var allFloatVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.resolvedType === "FLOAT"; });
+  var allColls = await figma.variables.getLocalVariableCollectionsAsync();
   for (var fvi = 0; fvi < allFloatVars.length; fvi++) {
     var fv = allFloatVars[fvi];
     var collName = "";
@@ -101,19 +101,19 @@ export async function generatePromoStructure(msg) {
       }
       var opModeId2 = null;
       for (var oci = 0; oci < allColls.length; oci++) { if (allColls[oci].id === fv.variableCollectionId) { if (allColls[oci].modes && allColls[oci].modes.length) { opModeId2 = allColls[oci].modes[0].modeId; } break; } }
-      if (opModeId2) { try { var opVal2 = cxResolveVar(fv, opModeId2, allColls); if (typeof opVal2 === "number") opacityVarMap[Math.round(opVal2 * 100)] = fv; } catch(e) {} }
+      if (opModeId2) { try { var opVal2 = await cxResolveVar(fv, opModeId2, allColls); if (typeof opVal2 === "number") opacityVarMap[Math.round(opVal2 * 100)] = fv; } catch(e) {} }
     } else if (collName.indexOf("radius") !== -1 || collName.indexOf("corner") !== -1) {
       radiusVarMap[shortName] = fv;
     } else if (collName.indexOf("border") !== -1 && collName.indexOf("width") !== -1) {
       // Build border width variable map by resolved value
       var bwModeIdW = null;
       for (var bwci = 0; bwci < allColls.length; bwci++) { if (allColls[bwci].id === fv.variableCollectionId && allColls[bwci].modes && allColls[bwci].modes.length) { bwModeIdW = allColls[bwci].modes[0].modeId; break; } }
-      if (bwModeIdW) { try { var bwv = cxResolveVar(fv, bwModeIdW, allColls); if (typeof bwv === "number") borderWidthVarMap[bwv] = fv; } catch(e) {} }
+      if (bwModeIdW) { try { var bwv = await cxResolveVar(fv, bwModeIdW, allColls); if (typeof bwv === "number") borderWidthVarMap[bwv] = fv; } catch(e) {} }
     }
   }
 
   // Helper: find best spacing variable for a target px value
-  function findSpacingVar(targetPx) {
+  async function findSpacingVar(targetPx) {
     var best = null, bestDiff = Infinity;
     var spCol = null;
     for (var sci = 0; sci < allColls.length; sci++) { if (allColls[sci].name.toLowerCase().indexOf("spacing") !== -1) { spCol = allColls[sci]; break; } }
@@ -123,7 +123,7 @@ export async function generatePromoStructure(msg) {
       if (!spacingVarMap.hasOwnProperty(sk)) continue;
       var val = 0;
       try {
-        val = cxResolveVar(spacingVarMap[sk], spModeId, allColls);
+        val = await cxResolveVar(spacingVarMap[sk], spModeId, allColls);
         if (typeof val !== "number") val = parseFloat(val) || 0;
       } catch(e) {}
       var diff = Math.abs(val - targetPx);
@@ -171,11 +171,11 @@ export async function generatePromoStructure(msg) {
   }
 
   // Helper: bind separate horizontal/vertical padding to spacing variables
-  function bindPaddingXY(frame, padXPx, padYPx) {
+  async function bindPaddingXY(frame, padXPx, padYPx) {
     frame.paddingLeft = padXPx; frame.paddingRight = padXPx;
     frame.paddingTop = padYPx; frame.paddingBottom = padYPx;
-    var xVar = findSpacingVar(padXPx);
-    var yVar = findSpacingVar(padYPx);
+    var xVar = await findSpacingVar(padXPx);
+    var yVar = await findSpacingVar(padYPx);
     if (xVar) {
       try {
         frame.setBoundVariable("paddingLeft", xVar);
@@ -191,9 +191,9 @@ export async function generatePromoStructure(msg) {
   }
 
   // Helper: bind padding and gap to spacing variables on an auto-layout frame
-  function bindSpacing(frame, padPx, gapPx) {
-    var padVar = findSpacingVar(padPx);
-    var gapVar = findSpacingVar(gapPx);
+  async function bindSpacing(frame, padPx, gapPx) {
+    var padVar = await findSpacingVar(padPx);
+    var gapVar = await findSpacingVar(gapPx);
     if (padVar) {
       try {
         frame.setBoundVariable("paddingLeft", padVar);
@@ -231,7 +231,7 @@ export async function generatePromoStructure(msg) {
   }
 
   // ── Look up text styles for wireframe text nodes ──
-  var promoTextStyles = figma.getLocalTextStyles();
+  var promoTextStyles = await figma.getLocalTextStylesAsync();
   function findPromoTextStyle(group, name) {
     var styleName = group + "/" + name;
     for (var i = 0; i < promoTextStyles.length; i++) {
@@ -258,7 +258,7 @@ export async function generatePromoStructure(msg) {
   }
 
   // ── Color variable binding helpers for wireframe ──
-  var colorCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name === "Colors"; });
+  var colorCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name === "Colors"; });
   var promoColorVarMap = {};
   if (colorCols.length > 0) {
     for (var pcvi = 0; pcvi < allColorVars.length; pcvi++) {
@@ -343,7 +343,7 @@ export async function generatePromoStructure(msg) {
     var bp = BREAKPOINTS[bi];
     var page = findPageByHint(bp.hint);
     if (!page) continue;
-    figma.currentPage = page;
+    await figma.setCurrentPageAsync(page);
 
     // Remove existing promo frames and any orphaned wireframe elements
     var toRemove = page.children.filter(function(n) {
@@ -414,18 +414,18 @@ export async function generatePromoStructure(msg) {
       var btnPadV = isMobile ? 10 : 14;
       btn.paddingLeft = btnPadH; btn.paddingRight = btnPadH;
       btn.paddingTop = btnPadV; btn.paddingBottom = btnPadV;
-      var btnPadHVar = findSpacingVar(btnPadH);
+      var btnPadHVar = await findSpacingVar(btnPadH);
       if (btnPadHVar) {
         try { btn.setBoundVariable("paddingLeft", btnPadHVar); btn.setBoundVariable("paddingRight", btnPadHVar); } catch(e) {}
       }
-      var btnPadVVar = findSpacingVar(btnPadV);
+      var btnPadVVar = await findSpacingVar(btnPadV);
       if (btnPadVVar) {
         try { btn.setBoundVariable("paddingTop", btnPadVVar); btn.setBoundVariable("paddingBottom", btnPadVVar); } catch(e) {}
       }
       var txt = figma.createText();
       var btnTxtStyle = findPromoTextStyle("buttons", isMobile ? "sm" : "default");
       if (btnTxtStyle) {
-        txt.textStyleId = btnTxtStyle.id;
+        await txt.setTextStyleIdAsync(btnTxtStyle.id);
       } else {
         txt.fontName = { family: "Inter", style: "Semi Bold" };
         txt.fontSize = isMobile ? 14 : 16;
@@ -465,13 +465,13 @@ export async function generatePromoStructure(msg) {
       wrapper.primaryAxisSizingMode = "AUTO";
       wrapper.counterAxisSizingMode = "FILL_PARENT";
       wrapper.itemSpacing = 6;
-      var wrapGapVar = findSpacingVar(6);
+      var wrapGapVar = await findSpacingVar(6);
       if (wrapGapVar) { try { wrapper.setBoundVariable("itemSpacing", wrapGapVar); } catch(e) {} }
       wrapper.fills = [];
       var lbl = figma.createText();
       var lblFbStyle = findPromoTextStyle("label", "default");
       if (lblFbStyle) {
-        lbl.textStyleId = lblFbStyle.id;
+        await lbl.setTextStyleIdAsync(lblFbStyle.id);
       } else {
         lbl.fontName = { family: "Inter", style: "Medium" };
         lbl.fontSize = 12;
@@ -550,7 +550,7 @@ export async function generatePromoStructure(msg) {
       hero.primaryAxisSizingMode = "AUTO";
       hero.counterAxisSizingMode = "FIXED";
       hero.minHeight = heroMinH;
-      bindPaddingXY(hero, 0, 128);
+      await bindPaddingXY(hero, 0, 128);
 
       // Background placeholder image (absolute, fills parent)
       var heroBg;
@@ -594,14 +594,14 @@ export async function generatePromoStructure(msg) {
       var h1 = figma.createText();
       var h1Style = isMobile ? tsH1Mobile : tsH1;
       if (h1Style) {
-        h1.textStyleId = h1Style.id;
+        await h1.setTextStyleIdAsync(h1Style.id);
       } else {
         h1.fontName = { family: "Inter", style: "Bold" };
         h1.fontSize = isMobile ? 28 : 48;
       }
       h1.characters = "Headline goes here";
       var h1Fill = { type: "SOLID", color: { r: 1, g: 1, b: 1 } };
-      var h1ColorVar = findNearestColorVar(h1Fill.color, allColorVars);
+      var h1ColorVar = await findNearestColorVar(h1Fill.color, allColorVars);
       h1.fills = h1ColorVar ? [figma.variables.setBoundVariableForPaint(h1Fill, "color", h1ColorVar)] : [h1Fill];
       h1.textAlignHorizontal = "CENTER";
       content.appendChild(h1);
@@ -622,14 +622,14 @@ export async function generatePromoStructure(msg) {
       var sub = figma.createText();
       var subStyle = isMobile ? tsBodyMobile : tsBody;
       if (subStyle) {
-        sub.textStyleId = subStyle.id;
+        await sub.setTextStyleIdAsync(subStyle.id);
       } else {
         sub.fontName = { family: "Inter", style: "Regular" };
         sub.fontSize = isMobile ? 14 : 18;
       }
       sub.characters = "Supporting text that describes the promo offer or key message.";
       var subFill = { type: "SOLID", color: { r: 0.9, g: 0.9, b: 0.9 } };
-      var subColorVar = findNearestColorVar(subFill.color, allColorVars);
+      var subColorVar = await findNearestColorVar(subFill.color, allColorVars);
       sub.fills = subColorVar ? [figma.variables.setBoundVariableForPaint(subFill, "color", subColorVar)] : [subFill];
       sub.textAlignHorizontal = "CENTER";
       sub.textAutoResize = "HEIGHT";
@@ -661,7 +661,7 @@ export async function generatePromoStructure(msg) {
       popup.primaryAxisSizingMode = "AUTO";
       popup.counterAxisSizingMode = "FIXED";
       popup.minHeight = popMinH;
-      bindPaddingXY(popup, 0, 128);
+      await bindPaddingXY(popup, 0, 128);
 
       // popup-overlay (absolute, fills parent, uses overlay variable)
       var overlay = figma.createRectangle();
@@ -675,7 +675,7 @@ export async function generatePromoStructure(msg) {
 
       // popup-content (fills parent, uses native maxWidth)
       popup.paddingLeft = 16; popup.paddingRight = 16;
-      var popPadVar = findSpacingVar(16);
+      var popPadVar = await findSpacingVar(16);
       if (popPadVar) {
         try {
           popup.setBoundVariable("paddingLeft", popPadVar);
@@ -691,7 +691,7 @@ export async function generatePromoStructure(msg) {
       bindRadius(pc, "lg");
       pc.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
       promoBindFill(pc, "white");
-      applyPromoShadow(pc);
+      await applyPromoShadow(pc);
       pc.clipsContent = true;
       // Auto-layout: content-driven height with minHeight
       pc.layoutMode = "VERTICAL";
@@ -755,7 +755,7 @@ export async function generatePromoStructure(msg) {
         var pText = figma.createText();
         var pStyle = isMobile ? tsSmall : tsBody;
         if (pStyle) {
-          pText.textStyleId = pStyle.id;
+          await pText.setTextStyleIdAsync(pStyle.id);
         } else {
           pText.fontName = { family: "Inter", style: "Regular" };
           pText.fontSize = isMobile ? 13 : 15;
@@ -817,7 +817,7 @@ export async function generatePromoStructure(msg) {
             rowFrame.counterAxisSpacing = colGap;
           }
           // Bind gaps to grid gutter variable, fall back to spacing variable
-          var rowGapVar = gridGutterVar || findSpacingVar(colGap);
+          var rowGapVar = gridGutterVar || await findSpacingVar(colGap);
           if (rowGapVar) {
             try { rowFrame.setBoundVariable("itemSpacing", rowGapVar); } catch(e) {}
             if (!isMobile) {
@@ -915,7 +915,7 @@ export async function generatePromoStructure(msg) {
         var popTxt = figma.createText();
         var popTxtStyle = isMobile ? tsBodyMobile : tsBody;
         if (popTxtStyle) {
-          popTxt.textStyleId = popTxtStyle.id;
+          await popTxt.setTextStyleIdAsync(popTxtStyle.id);
         } else {
           popTxt.fontName = { family: "Inter", style: "Regular" };
           popTxt.fontSize = isMobile ? 14 : 16;
@@ -943,7 +943,7 @@ export async function generatePromoStructure(msg) {
       closeBtn.counterAxisSizingMode = "AUTO";
       closeBtn.primaryAxisAlignItems = "CENTER";
       closeBtn.counterAxisAlignItems = "CENTER";
-      bindPaddingXY(closeBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
+      await bindPaddingXY(closeBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
       var closeIcon = figma.createRectangle();
       closeIcon.name = "close-icon";
       closeIcon.resize(closeSize, closeSize);
@@ -975,7 +975,7 @@ export async function generatePromoStructure(msg) {
         tyPopup.primaryAxisSizingMode = "AUTO";
         tyPopup.counterAxisSizingMode = "FIXED";
         tyPopup.minHeight = tyPopMinH;
-        bindPaddingXY(tyPopup, 0, 128);
+        await bindPaddingXY(tyPopup, 0, 128);
         if (isMobile) {
           tyPopup.maxWidth = MOBILE_BREAKPOINT;
         }
@@ -992,7 +992,7 @@ export async function generatePromoStructure(msg) {
 
         // popup-content (fills parent, uses native maxWidth)
         tyPopup.paddingLeft = 16; tyPopup.paddingRight = 16;
-        var tyPopPadVar = findSpacingVar(16);
+        var tyPopPadVar = await findSpacingVar(16);
         if (tyPopPadVar) {
           try {
             tyPopup.setBoundVariable("paddingLeft", tyPopPadVar);
@@ -1008,7 +1008,7 @@ export async function generatePromoStructure(msg) {
         bindRadius(tyPc, "lg");
         tyPc.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
         promoBindFill(tyPc, "white");
-        applyPromoShadow(tyPc);
+        await applyPromoShadow(tyPc);
         tyPc.clipsContent = true;
         // Auto-layout: content-driven height with minHeight
         tyPc.layoutMode = "VERTICAL";
@@ -1069,7 +1069,7 @@ export async function generatePromoStructure(msg) {
         var tyTxt = figma.createText();
         var tyTxtStyle = isMobile ? tsBodyMobile : tsBody;
         if (tyTxtStyle) {
-          tyTxt.textStyleId = tyTxtStyle.id;
+          await tyTxt.setTextStyleIdAsync(tyTxtStyle.id);
         } else {
           tyTxt.fontName = { family: "Inter", style: "Regular" };
           tyTxt.fontSize = isMobile ? 14 : 16;
@@ -1105,7 +1105,7 @@ export async function generatePromoStructure(msg) {
         tyCloseBtn.counterAxisSizingMode = "AUTO";
         tyCloseBtn.primaryAxisAlignItems = "CENTER";
         tyCloseBtn.counterAxisAlignItems = "CENTER";
-        bindPaddingXY(tyCloseBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
+        await bindPaddingXY(tyCloseBtn, isMobile ? 16 : 28, isMobile ? 20 : 32);
         var tyCloseIcon = figma.createRectangle();
         tyCloseIcon.name = "close-icon";
         tyCloseIcon.resize(tyCloseSize, tyCloseSize);
@@ -1140,7 +1140,7 @@ export async function generatePromoStructure(msg) {
       banner.counterAxisAlignItems = "CENTER";
       banner.primaryAxisSizingMode = "AUTO";
       banner.counterAxisSizingMode = "FIXED";
-      bindPaddingXY(banner, 0, 24);
+      await bindPaddingXY(banner, 0, 24);
 
       // inner-banner with background image, horizontal layout: image + CTA
       var innerBanner = figma.createFrame();
@@ -1172,15 +1172,15 @@ export async function generatePromoStructure(msg) {
       innerBanner.paddingRight = bannerPadPx;
       innerBanner.paddingTop = 24; innerBanner.paddingBottom = 24;
       innerBanner.itemSpacing = bannerGapPx;
-      var innerBannerTBVar = findSpacingVar(24);
+      var innerBannerTBVar = await findSpacingVar(24);
       if (innerBannerTBVar) {
         try {
           innerBanner.setBoundVariable("paddingTop", innerBannerTBVar);
           innerBanner.setBoundVariable("paddingBottom", innerBannerTBVar);
         } catch(e) {}
       }
-      var bannerPadVar = findSpacingVar(bannerPadPx);
-      var bannerGapVar = findSpacingVar(bannerGapPx);
+      var bannerPadVar = await findSpacingVar(bannerPadPx);
+      var bannerGapVar = await findSpacingVar(bannerGapPx);
       if (bannerPadVar) {
         try {
           innerBanner.setBoundVariable("paddingLeft", bannerPadVar);

@@ -3,13 +3,13 @@ import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, creat
 import { DESKTOP_WIDTH, PAGE_PADDING, STANDARD_EXPORT_SETTINGS } from './constants';
 
 export async function generateComponentsPageComplex() {
-  var allVars = figma.variables.getLocalVariables();
-  var allCols = figma.variables.getLocalVariableCollections();
-  var localTextStyles = figma.getLocalTextStyles();
+  var allVars = await figma.variables.getLocalVariablesAsync();
+  var allCols = await figma.variables.getLocalVariableCollectionsAsync();
+  var localTextStyles = await figma.getLocalTextStylesAsync();
 
   var page = findPageByHint("components");
   if (!page) return;
-  figma.currentPage = page;
+  await figma.setCurrentPageAsync(page);
 
   // Load Inter
   var compW = [400, 500, 600, 700];
@@ -51,7 +51,7 @@ export async function generateComponentsPageComplex() {
     var cMid = colorCol.modes[0].modeId;
     for (var bvi = 0; bvi < allVars.length; bvi++) {
       if (allVars[bvi].variableCollectionId === colorCol.id && allVars[bvi].name === "brand/primary") {
-        var bVal = cxResolveVar(allVars[bvi], cMid, allCols);
+        var bVal = await cxResolveVar(allVars[bvi], cMid, allCols);
         var bh = cxColorToHex(bVal); if (bh) brandHex = bh; break;
       }
     }
@@ -60,11 +60,12 @@ export async function generateComponentsPageComplex() {
 
   // Color variable binding helpers
   if (!colorCol) {
-    colorCol = figma.variables.createVariableCollection("Colors");
+    colorCol = await figma.variables.createVariableCollectionAsync("Colors");
   }
   var colorVarMap = {};
   // Re-read vars to pick up essential colors created by ensureEssentialColors()
-  var cvars = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === colorCol.id && v.resolvedType === "COLOR"; });
+  var cvarsAll = await figma.variables.getLocalVariablesAsync();
+  var cvars = cvarsAll.filter(function(v) { return v.variableCollectionId === colorCol.id && v.resolvedType === "COLOR"; });
   for (var cvi = 0; cvi < cvars.length; cvi++) colorVarMap[cvars[cvi].name] = cvars[cvi];
 
   function bindFill(node, varName) {
@@ -96,7 +97,7 @@ export async function generateComponentsPageComplex() {
   var defaultRadiusVar = null;
   var radiusCol = cxFindCol(allCols, "radius");
   if (radiusCol) {
-    var rVars = cxGetFloats(radiusCol, allVars, allCols);
+    var rVars = await cxGetFloats(radiusCol, allVars, allCols);
     for (var rvi = 0; rvi < rVars.length; rvi++) {
       if (rVars[rvi].name === "md" || rVars[rvi].name === "default") {
         defaultRadius = rVars[rvi].value; defaultRadiusVar = rVars[rvi].variable; break;
@@ -116,7 +117,7 @@ export async function generateComponentsPageComplex() {
     var spMid = spacingCol.modes[0].modeId;
     for (var svi = 0; svi < spVars.length; svi++) {
       try {
-        var spv = cxResolveVar(spVars[svi], spMid, allCols);
+        var spv = await cxResolveVar(spVars[svi], spMid, allCols);
         if (typeof spv === "number") spacingVarMap[spv] = spVars[svi];
       } catch(e) {}
     }
@@ -140,7 +141,7 @@ export async function generateComponentsPageComplex() {
     var bwModeId = borderCol.modes[0].modeId;
     for (var bwi = 0; bwi < bwVars.length; bwi++) {
       try {
-        var bwVal = cxResolveVar(bwVars[bwi], bwModeId, allCols);
+        var bwVal = await cxResolveVar(bwVars[bwi], bwModeId, allCols);
         if (typeof bwVal === "number") borderVarMap[bwVal] = bwVars[bwi];
       } catch(e) {}
     }
@@ -160,7 +161,7 @@ export async function generateComponentsPageComplex() {
     var rvModeId = radiusCol.modes[0].modeId;
     for (var rvi3 = 0; rvi3 < rvars2.length; rvi3++) {
       try {
-        var rvv = cxResolveVar(rvars2[rvi3], rvModeId, allCols);
+        var rvv = await cxResolveVar(rvars2[rvi3], rvModeId, allCols);
         if (typeof rvv === "number") radiusVarByValue[rvv] = rvars2[rvi3];
       } catch(e) {}
     }
@@ -186,7 +187,7 @@ export async function generateComponentsPageComplex() {
     var opModeId = opacityCol.modes[0].modeId;
     for (var opi = 0; opi < opVars.length; opi++) {
       try {
-        var opVal = cxResolveVar(opVars[opi], opModeId, allCols);
+        var opVal = await cxResolveVar(opVars[opi], opModeId, allCols);
         if (typeof opVal === "number") opacityVarMapComp[Math.round(opVal * 100)] = opVars[opi];
       } catch(e) {}
     }
@@ -247,7 +248,7 @@ export async function generateComponentsPageComplex() {
 
       var btnText = figma.createText();
       if (ts) {
-        btnText.textStyleId = ts.id;
+        await btnText.setTextStyleIdAsync(ts.id);
       } else {
         btnText.fontName = { family: "Inter", style: "Semi Bold" };
         btnText.fontSize = bs.style === "lg" ? 18 : (bs.style === "sm" ? 14 : 16);
@@ -395,7 +396,7 @@ export async function generateComponentsPageComplex() {
 
           var floatInput = figma.createText();
           if (inputStyle) {
-            floatInput.textStyleId = inputStyle.id;
+            await floatInput.setTextStyleIdAsync(inputStyle.id);
           } else {
             floatInput.fontName = { family: "Inter", style: "Regular" };
             floatInput.fontSize = 14;
@@ -414,7 +415,7 @@ export async function generateComponentsPageComplex() {
         var floatLbl = figma.createText();
         if (isDefault) {
           if (inputStyle) {
-            floatLbl.textStyleId = inputStyle.id;
+            await floatLbl.setTextStyleIdAsync(inputStyle.id);
           } else {
             floatLbl.fontName = { family: "Inter", style: "Regular" };
             floatLbl.fontSize = 14;
@@ -425,7 +426,7 @@ export async function generateComponentsPageComplex() {
         } else {
           var flStyle = pickLabelStyle(ist.label);
           if (flStyle) {
-            floatLbl.textStyleId = flStyle.id;
+            await floatLbl.setTextStyleIdAsync(flStyle.id);
           } else {
             floatLbl.fontName = { family: "Inter", style: "Medium" };
             floatLbl.fontSize = 10;
@@ -454,7 +455,7 @@ export async function generateComponentsPageComplex() {
         var lbl = figma.createText();
         var lblSt = pickLabelStyle(ist.label);
         if (lblSt) {
-          lbl.textStyleId = lblSt.id;
+          await lbl.setTextStyleIdAsync(lblSt.id);
         } else {
           lbl.fontName = { family: "Inter", style: "Medium" };
           lbl.fontSize = 12;
@@ -486,7 +487,7 @@ export async function generateComponentsPageComplex() {
 
         var inputText = figma.createText();
         if (inputStyle) {
-          inputText.textStyleId = inputStyle.id;
+          await inputText.setTextStyleIdAsync(inputStyle.id);
         } else {
           inputText.fontName = { family: "Inter", style: "Regular" };
           inputText.fontSize = 14;
@@ -523,7 +524,7 @@ export async function generateComponentsPageComplex() {
 
         var inputText2 = figma.createText();
         if (inputStyle) {
-          inputText2.textStyleId = inputStyle.id;
+          await inputText2.setTextStyleIdAsync(inputStyle.id);
         } else {
           inputText2.fontName = { family: "Inter", style: "Regular" };
           inputText2.fontSize = 14;
@@ -587,7 +588,7 @@ export async function generateComponentsPageComplex() {
       lblComp.fills = [];
 
       var lblNode = figma.createText();
-      lblNode.textStyleId = ls.style.id;
+      await lblNode.setTextStyleIdAsync(ls.style.id);
       lblNode.characters = ls.text;
       lblComp.appendChild(lblNode);
 
@@ -678,7 +679,7 @@ export async function generateComponentsPageComplex() {
 
     var dText = figma.createText();
     if (inputStyle) {
-      dText.textStyleId = inputStyle.id;
+      await dText.setTextStyleIdAsync(inputStyle.id);
     } else {
       dText.fontName = { family: "Inter", style: "Regular" };
       dText.fontSize = 14;

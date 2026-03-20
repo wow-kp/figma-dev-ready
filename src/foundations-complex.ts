@@ -2,14 +2,14 @@
 import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, cxResolveVar, cxColorToHex, cxFindCol, cxGetFloats, cxStripPrefix } from './utils';
 
 export async function generateFoundationsPageComplex() {
-  var allVars = figma.variables.getLocalVariables();
-  var allCols = figma.variables.getLocalVariableCollections();
-  var textStyles = figma.getLocalTextStyles();
-  var effectStyles = figma.getLocalEffectStyles();
+  var allVars = await figma.variables.getLocalVariablesAsync();
+  var allCols = await figma.variables.getLocalVariableCollectionsAsync();
+  var textStyles = await figma.getLocalTextStylesAsync();
+  var effectStyles = await figma.getLocalEffectStylesAsync();
 
   var page = findPageByHint("foundations");
   if (!page) return;
-  figma.currentPage = page;
+  await figma.setCurrentPageAsync(page);
 
   // Load Inter weights
   var stdW = [100,200,300,400,500,600,700,800,900];
@@ -73,7 +73,7 @@ export async function generateFoundationsPageComplex() {
     for (var fcvi = 0; fcvi < fColorVars.length; fcvi++) fColorVarMap[fColorVars[fcvi].name] = fColorVars[fcvi];
     for (var bvi = 0; bvi < allVars.length; bvi++) {
       if (allVars[bvi].variableCollectionId === colorCol.id && allVars[bvi].name === "brand/primary") {
-        var bVal = cxResolveVar(allVars[bvi], cMid, allCols);
+        var bVal = await cxResolveVar(allVars[bvi], cMid, allCols);
         var bh = cxColorToHex(bVal);
         if (bh) brandHex = bh;
         break;
@@ -101,7 +101,7 @@ export async function generateFoundationsPageComplex() {
       var group = parts.length > 1 ? parts[0] : "other";
       var shade = parts.length > 1 ? parts.slice(1).join("/") : parts[0];
       if (!colorGroups[group]) { colorGroups[group] = []; groupOrder.push(group); }
-      var val = cxResolveVar(primVars[pvi], primMid, allCols);
+      var val = await cxResolveVar(primVars[pvi], primMid, allCols);
       var hex = cxColorToHex(val);
       if (hex) colorGroups[group].push({ shade: shade, hex: hex, variable: primVars[pvi] });
     }
@@ -185,7 +185,7 @@ export async function generateFoundationsPageComplex() {
           for (var svj = 0; svj < sgVars.length; svj++) {
             var sv = sgVars[svj];
             var svName = cxStripPrefix(sv.name);
-            var svVal = cxResolveVar(sv, modeId, allCols);
+            var svVal = await cxResolveVar(sv, modeId, allCols);
             var svHex = cxColorToHex(svVal) || "#000000";
             if (svx + SSW + 48 > mx + COL_W) { myStart += SSH + 22; svx = mx; }
             var svRect = figma.createRectangle();
@@ -299,7 +299,7 @@ export async function generateFoundationsPageComplex() {
         var hFam = hts.fontName.family;
         await loadFontWithFallback(hFam, 700);
         var hNode = figma.createText();
-        hNode.textStyleId = hts.id;
+        await hNode.setTextStyleIdAsync(hts.id);
         var hLabel = hts.name.split("/").pop();
         hNode.characters = hLabel.toUpperCase() + " — The quick brown fox jumps over the lazy dog";
         hNode.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
@@ -324,7 +324,7 @@ export async function generateFoundationsPageComplex() {
         createSpecText(frame, "body/" + bLabel + " · " + bts.fontSize + "px / " + bts.fontName.style, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
         y += 16;
         var bNode = figma.createText();
-        bNode.textStyleId = bts.id;
+        await bNode.setTextStyleIdAsync(bts.id);
         bNode.characters = paraText;
         bNode.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
         fBindFill(bNode, "text/primary");
@@ -348,7 +348,7 @@ export async function generateFoundationsPageComplex() {
         createSpecText(frame, "links/" + lLabel + " · " + lts.fontSize + "px", PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
         y += 16;
         var lNode = figma.createText();
-        lNode.textStyleId = lts.id;
+        await lNode.setTextStyleIdAsync(lts.id);
         lNode.characters = "This is a link example — click here to learn more";
         lNode.fills = [{ type: "SOLID", color: linkColor }];
         fBindFill(lNode, "brand/primary");
@@ -375,7 +375,7 @@ export async function generateFoundationsPageComplex() {
         createSpecText(frame, uts.name + " · " + uts.fontSize + "px / " + uts.fontName.style, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
         y += 16;
         var uNode = figma.createText();
-        uNode.textStyleId = uts.id;
+        await uNode.setTextStyleIdAsync(uts.id);
         uNode.characters = uts.name + " — Sample text preview";
         uNode.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
         fBindFill(uNode, "text/primary");
@@ -391,7 +391,7 @@ export async function generateFoundationsPageComplex() {
   // TYPOGRAPHY SCALE — sizes, weights, line-heights from Typography collection
   // ══════════════════════════════════════════════════════════════════════════
   if (typCol) {
-    var typFloats = cxGetFloats(typCol, allVars, allCols);
+    var typFloats = await cxGetFloats(typCol, allVars, allCols);
     var tSizes = [], tWeights = [], tLH = [];
     for (var tfi2 = 0; tfi2 < typFloats.length; tfi2++) {
       var tf = typFloats[tfi2];
@@ -464,7 +464,7 @@ export async function generateFoundationsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   // RADIUS
   // ══════════════════════════════════════════════════════════════════════════
-  var radiusItems = cxGetFloats(cxFindCol(allCols, "radius"), allVars, allCols);
+  var radiusItems = await cxGetFloats(cxFindCol(allCols, "radius"), allVars, allCols);
   if (radiusItems.length > 0) {
     sectionTitle("Radius");
     var rx = PAD;
@@ -499,7 +499,7 @@ export async function generateFoundationsPageComplex() {
       shRect.name = shEs.name; shRect.resize(120, 80);
       shRect.x = shx; shRect.y = y; shRect.cornerRadius = 8;
       shRect.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-      try { shRect.effectStyleId = shEs.id; } catch(e) {}
+      try { await shRect.setEffectStyleIdAsync(shEs.id); } catch(e) {}
       frame.appendChild(shRect);
       var shLabel = shEs.name.replace(/^shadow\//, "");
       var shVal = (shEff.offset ? shEff.offset.x : 0) + "px " + (shEff.offset ? shEff.offset.y : 0) + "px " + (shEff.radius || 0) + "px";
@@ -514,7 +514,7 @@ export async function generateFoundationsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   // BORDERS
   // ══════════════════════════════════════════════════════════════════════════
-  var borderItems = cxGetFloats(cxFindCol(allCols, "border"), allVars, allCols);
+  var borderItems = await cxGetFloats(cxFindCol(allCols, "border"), allVars, allCols);
   if (borderItems.length > 0) {
     sectionTitle("Borders");
     var bx = PAD;
@@ -538,8 +538,8 @@ export async function generateFoundationsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   // Z-INDEX — overlapping stacked cards
   // ══════════════════════════════════════════════════════════════════════════
-  var zItems = cxGetFloats(cxFindCol(allCols, "z-index"), allVars, allCols);
-  if (zItems.length === 0) zItems = cxGetFloats(cxFindCol(allCols, "zindex"), allVars, allCols);
+  var zItems = await cxGetFloats(cxFindCol(allCols, "z-index"), allVars, allCols);
+  if (zItems.length === 0) zItems = await cxGetFloats(cxFindCol(allCols, "zindex"), allVars, allCols);
   if (zItems.length > 0) {
     sectionTitle("Z-Index");
     var zBrand = hexToFigma(brandHex);
@@ -606,7 +606,7 @@ export async function generateFoundationsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   // SPACING — nested squares visualization
   // ══════════════════════════════════════════════════════════════════════════
-  var spItems = cxGetFloats(cxFindCol(allCols, "spacing"), allVars, allCols);
+  var spItems = await cxGetFloats(cxFindCol(allCols, "spacing"), allVars, allCols);
   if (spItems.length > 0) {
     sectionTitle("Spacing");
     var spBrand = hexToFigma(brandHex);
@@ -656,7 +656,7 @@ export async function generateFoundationsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   // BREAKPOINTS — from Breakpoints collection (nested portrait rectangles)
   // ══════════════════════════════════════════════════════════════════════════
-  var bpItems = cxGetFloats(cxFindCol(allCols, "breakpoint"), allVars, allCols);
+  var bpItems = await cxGetFloats(cxFindCol(allCols, "breakpoint"), allVars, allCols);
   if (bpItems.length > 0) {
     sectionTitle("Breakpoints");
     var bpBrand = hexToFigma(brandHex);

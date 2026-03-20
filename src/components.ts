@@ -5,7 +5,7 @@ import { DESKTOP_WIDTH, PAGE_PADDING, STANDARD_EXPORT_SETTINGS } from './constan
 export async function generateComponentsPage(msg) {
   var page = findPageByHint("components");
   if (!page) return;
-  figma.currentPage = page;
+  await figma.setCurrentPageAsync(page);
 
   var compWeights = [400, 500, 600, 700];
   for (var cw = 0; cw < compWeights.length; cw++) {
@@ -43,10 +43,10 @@ export async function generateComponentsPage(msg) {
   var brandColor = hexToFigma(msg.brandColor || "#3B82F6");
 
   // ── Look up color variables for binding ──
-  var colorCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name === "Colors"; });
+  var colorCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name === "Colors"; });
   var colorVarMap = {};
   if (colorCols.length > 0) {
-    var colorVars = figma.variables.getLocalVariables().filter(function(v) {
+    var colorVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) {
       return v.variableCollectionId === colorCols[0].id && v.resolvedType === "COLOR";
     });
     for (var cvi = 0; cvi < colorVars.length; cvi++) {
@@ -72,7 +72,7 @@ export async function generateComponentsPage(msg) {
   }
 
   // Find text styles by group/name
-  var localStyles = figma.getLocalTextStyles();
+  var localStyles = await figma.getLocalTextStylesAsync();
   function findStyle(group, name) {
     var styleName = group + "/" + name;
     for (var i = 0; i < localStyles.length; i++) {
@@ -90,10 +90,10 @@ export async function generateComponentsPage(msg) {
       break;
     }
   }
-  var radiusCols2 = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name.toLowerCase().indexOf("radius") !== -1; });
+  var radiusCols2 = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("radius") !== -1; });
   var defaultRadiusVar = null;
   if (radiusCols2.length > 0) {
-    var rvars = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
+    var rvars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
     for (var rvi = 0; rvi < rvars.length; rvi++) {
       var rvn = rvars[rvi].name.split("/").pop();
       if (rvn === "md" || rvn === "default") { defaultRadiusVar = rvars[rvi]; break; }
@@ -105,18 +105,18 @@ export async function generateComponentsPage(msg) {
   }
 
   // ── Look up spacing variables for binding ──
-  var spacingCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name.toLowerCase().indexOf("spacing") !== -1; });
+  var spacingCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("spacing") !== -1; });
   var spacingVarMapComp = {};
   if (spacingCols.length > 0) {
-    var spVars = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === spacingCols[0].id && v.resolvedType === "FLOAT"; });
-    var allColsBasic = figma.variables.getLocalVariableCollections();
+    var spVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === spacingCols[0].id && v.resolvedType === "FLOAT"; });
+    var allColsBasic = await figma.variables.getLocalVariableCollectionsAsync();
     for (var svi = 0; svi < spVars.length; svi++) {
       var spv = spVars[svi];
       var modeId = spacingCols[0].modes[0].modeId;
       try {
         var val = spv.valuesByMode[modeId];
         if (val && typeof val === "object" && val.type === "VARIABLE_ALIAS") {
-          val = cxResolveVar(spv, modeId, allColsBasic);
+          val = await cxResolveVar(spv, modeId, allColsBasic);
         }
         if (typeof val === "number") spacingVarMapComp[val] = spv;
       } catch(e) {}
@@ -135,17 +135,17 @@ export async function generateComponentsPage(msg) {
   }
 
   // ── Look up border width variables for binding ──
-  var borderCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name.toLowerCase().indexOf("border") !== -1 && c.name.toLowerCase().indexOf("width") !== -1; });
+  var borderCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("border") !== -1 && c.name.toLowerCase().indexOf("width") !== -1; });
   var borderVarMapComp = {};
   if (borderCols.length > 0) {
-    var bwVars = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === borderCols[0].id && v.resolvedType === "FLOAT"; });
-    var allColsBw = figma.variables.getLocalVariableCollections();
+    var bwVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === borderCols[0].id && v.resolvedType === "FLOAT"; });
+    var allColsBw = await figma.variables.getLocalVariableCollectionsAsync();
     var bwModeId = borderCols[0].modes[0].modeId;
     for (var bwi = 0; bwi < bwVars.length; bwi++) {
       try {
         var bwVal = bwVars[bwi].valuesByMode[bwModeId];
         if (bwVal && typeof bwVal === "object" && bwVal.type === "VARIABLE_ALIAS") {
-          bwVal = cxResolveVar(bwVars[bwi], bwModeId, allColsBw);
+          bwVal = await cxResolveVar(bwVars[bwi], bwModeId, allColsBw);
         }
         if (typeof bwVal === "number") borderVarMapComp[bwVal] = bwVars[bwi];
       } catch(e) {}
@@ -162,14 +162,14 @@ export async function generateComponentsPage(msg) {
   // ── Look up radius variables by value for binding ──
   var radiusVarByValueComp = {};
   if (radiusCols2.length > 0) {
-    var rvars2 = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
-    var allColsRv = figma.variables.getLocalVariableCollections();
+    var rvars2 = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
+    var allColsRv = await figma.variables.getLocalVariableCollectionsAsync();
     var rvModeId = radiusCols2[0].modes[0].modeId;
     for (var rvi2 = 0; rvi2 < rvars2.length; rvi2++) {
       try {
         var rvv = rvars2[rvi2].valuesByMode[rvModeId];
         if (rvv && typeof rvv === "object" && rvv.type === "VARIABLE_ALIAS") {
-          rvv = cxResolveVar(rvars2[rvi2], rvModeId, allColsRv);
+          rvv = await cxResolveVar(rvars2[rvi2], rvModeId, allColsRv);
         }
         if (typeof rvv === "number") radiusVarByValueComp[rvv] = rvars2[rvi2];
       } catch(e) {}
@@ -184,7 +184,7 @@ export async function generateComponentsPage(msg) {
   }
 
   // ── Look up opacity variables for binding ──
-  var opacityCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name.toLowerCase().indexOf("opacity") !== -1; });
+  var opacityCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("opacity") !== -1; });
   var opacityVarMapComp = {};
   var opacityColIdComp = null;
   var opacityPctModeIdComp = null;  // Percentage mode for Figma "Opacity" binding
@@ -194,12 +194,12 @@ export async function generateComponentsPage(msg) {
     for (var omi = 0; omi < opModesComp.length; omi++) {
       if (opModesComp[omi].name === "Percentage") { opacityPctModeIdComp = opModesComp[omi].modeId; break; }
     }
-    var opVars = figma.variables.getLocalVariables().filter(function(v) { return v.variableCollectionId === opacityCols[0].id && v.resolvedType === "FLOAT"; });
+    var opVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === opacityCols[0].id && v.resolvedType === "FLOAT"; });
     var opModeId = opacityCols[0].modes[0].modeId;
-    var allColsBasicOp = figma.variables.getLocalVariableCollections();
+    var allColsBasicOp = await figma.variables.getLocalVariableCollectionsAsync();
     for (var opi = 0; opi < opVars.length; opi++) {
       try {
-        var opVal = cxResolveVar(opVars[opi], opModeId, allColsBasicOp);
+        var opVal = await cxResolveVar(opVars[opi], opModeId, allColsBasicOp);
         if (typeof opVal === "number") opacityVarMapComp[Math.round(opVal * 100)] = opVars[opi];
       } catch(e) {}
     }
@@ -260,7 +260,7 @@ export async function generateComponentsPage(msg) {
 
       var btnText = figma.createText();
       if (ts) {
-        btnText.textStyleId = ts.id;
+        await btnText.setTextStyleIdAsync(ts.id);
       } else {
         btnText.fontName = { family: "Inter", style: "Semi Bold" };
         btnText.fontSize = bs.style === "lg" ? 18 : (bs.style === "sm" ? 14 : 16);
@@ -411,7 +411,7 @@ export async function generateComponentsPage(msg) {
 
           var floatInput = figma.createText();
           if (inputStyle) {
-            floatInput.textStyleId = inputStyle.id;
+            await floatInput.setTextStyleIdAsync(inputStyle.id);
           } else {
             floatInput.fontName = { family: "Inter", style: "Regular" };
             floatInput.fontSize = 14;
@@ -432,7 +432,7 @@ export async function generateComponentsPage(msg) {
         if (isDefault) {
           // Default: label looks like a placeholder, uses input font size
           if (inputStyle) {
-            floatLbl.textStyleId = inputStyle.id;
+            await floatLbl.setTextStyleIdAsync(inputStyle.id);
           } else {
             floatLbl.fontName = { family: "Inter", style: "Regular" };
             floatLbl.fontSize = 14;
@@ -444,7 +444,7 @@ export async function generateComponentsPage(msg) {
           // Focused/Error/Disabled: small label at top
           var flStyle = pickLabelStyle(ist.label);
           if (flStyle) {
-            floatLbl.textStyleId = flStyle.id;
+            await floatLbl.setTextStyleIdAsync(flStyle.id);
           } else {
             floatLbl.fontName = { family: "Inter", style: "Medium" };
             floatLbl.fontSize = 10;
@@ -473,7 +473,7 @@ export async function generateComponentsPage(msg) {
         var lbl = figma.createText();
         var lblSt = pickLabelStyle(ist.label);
         if (lblSt) {
-          lbl.textStyleId = lblSt.id;
+          await lbl.setTextStyleIdAsync(lblSt.id);
         } else {
           lbl.fontName = { family: "Inter", style: "Medium" };
           lbl.fontSize = 12;
@@ -505,7 +505,7 @@ export async function generateComponentsPage(msg) {
 
         var inputText = figma.createText();
         if (inputStyle) {
-          inputText.textStyleId = inputStyle.id;
+          await inputText.setTextStyleIdAsync(inputStyle.id);
         } else {
           inputText.fontName = { family: "Inter", style: "Regular" };
           inputText.fontSize = 14;
@@ -542,7 +542,7 @@ export async function generateComponentsPage(msg) {
 
         var inputText2 = figma.createText();
         if (inputStyle) {
-          inputText2.textStyleId = inputStyle.id;
+          await inputText2.setTextStyleIdAsync(inputStyle.id);
         } else {
           inputText2.fontName = { family: "Inter", style: "Regular" };
           inputText2.fontSize = 14;
@@ -606,7 +606,7 @@ export async function generateComponentsPage(msg) {
       lblComp.fills = [];
 
       var lblNode = figma.createText();
-      lblNode.textStyleId = ls.style.id;
+      await lblNode.setTextStyleIdAsync(ls.style.id);
       lblNode.characters = ls.text;
       lblComp.appendChild(lblNode);
 
@@ -701,7 +701,7 @@ export async function generateComponentsPage(msg) {
     // Select text (placeholder)
     var dText = figma.createText();
     if (inputStyle) {
-      dText.textStyleId = inputStyle.id;
+      await dText.setTextStyleIdAsync(inputStyle.id);
     } else {
       dText.fontName = { family: "Inter", style: "Regular" };
       dText.fontSize = 14;
@@ -762,13 +762,13 @@ export async function generateComponentsPage(msg) {
   sectionTitle("Images");
 
   // Look up the Radius variable collection and build a name→variable map
-  var radiusCols = figma.variables.getLocalVariableCollections().filter(function(c) {
+  var radiusCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) {
     return c.name.toLowerCase().indexOf("radius") !== -1;
   });
   var radiusVarMap = {};
   if (radiusCols.length > 0) {
     var radiusCol = radiusCols[0];
-    var allRadiusVars = figma.variables.getLocalVariables().filter(function(v) {
+    var allRadiusVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) {
       return v.variableCollectionId === radiusCol.id && v.resolvedType === "FLOAT";
     });
     for (var rvi = 0; rvi < allRadiusVars.length; rvi++) {

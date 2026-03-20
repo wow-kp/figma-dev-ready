@@ -844,7 +844,7 @@ function makeIssueRow(key, issue, fixable) {
     btn.addEventListener("click", doRename);
     input.addEventListener("keydown", function(e){ if(e.key==="Enter") doRename(); });
     // AI suggest button (single node)
-    if (key === "naming" && _bhApiKey) {
+    if (key === "naming" && (_bhApiKey || bhHasProxy())) {
       var aiBtn = document.createElement("button");
       aiBtn.className = "action-btn ai-name-btn";
       aiBtn.textContent = "✨";
@@ -1057,7 +1057,7 @@ function renderAudit(data){
     var aiWrap = document.createElement("div"); aiWrap.className = "ai-review-wrap";
     var aiBtn = document.createElement("button"); aiBtn.className = "ai-review-btn";
     aiBtn.innerHTML = "✨ AI Review — Get a prioritized action plan";
-    var aiHasAccess = _bhApiKey;
+    var aiHasAccess = _bhApiKey || bhHasProxy();
     if (!aiHasAccess) { aiBtn.disabled = true; aiBtn.title = "Set up AI access in Settings tab first"; aiBtn.innerHTML = "✨ AI Review — requires API key or proxy"; }
     var aiPanel = document.createElement("div"); aiPanel.className = "ai-review-panel"; aiPanel.style.display = "none";
     aiBtn.addEventListener("click", function(){
@@ -1116,7 +1116,7 @@ function renderAudit(data){
           header.appendChild(fixAllBtn);
         }
         // AI Name All button for naming checks
-        if (key === "naming" && _bhApiKey) {
+        if (key === "naming" && (_bhApiKey || bhHasProxy())) {
           var aiNameAllBtn = document.createElement("button");
           aiNameAllBtn.className = "action-btn ai-name-all-btn";
           aiNameAllBtn.textContent = "✨ AI Name All (" + count + ")";
@@ -1172,6 +1172,15 @@ function renderAudit(data){
 var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true, step2Toggled:false, step2BasicOpen:false, step2ComplexOpen:false, step3Open:true, step4Open:true, step5Open:true };
 var wfTokensData = null;
 var wfStep1Color = "red"; // track step 1 status for step 2 gating
+
+// ── Import Mode (Route B) state ──
+var wfCurrentFileId = null; // tracks which Figma file we're looking at
+var wfImportMode = false;
+var wfImportStep = 0; // 0=not started, 1=archive+analyze, 2=review tokens, 3=organize+bind, 4=done(audit)
+var wfImportAnalysis = null; // AnalysisResult from backend
+var wfImportBindStats = null;
+var wfFileType = null; // "existing" | "fresh" | "managed"
+var wfPagesHaveContent = false; // true if Desktop/Mobile pages have children
 
 var REQUIRED_PAGES = [
   { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover",       critical:false },
@@ -1388,10 +1397,13 @@ var wfGenerated = false;
 var wfStep2Color = "red";
 var wfStep3Color = "red";
 var wfStep4Color = "red";
-var wfAuditData = null; // last audit results for Step 4 (in-memory, not persisted)
+var wfAuditData = null; // last audit results for Step 4 (persisted via clientStorage)
 var wfAuditPassed = false; // persisted: crit+high all passed
 var wfAuditScore = -1; // persisted: last audit score
 var wfAuditIssues = 0; // persisted: last total issue count
+var wfLastAuditTs = 0; // timestamp of last audit run
+var wfLastDocChangeTs = 0; // timestamp of last document change
+var wfAuditStale = false; // true if document changed since last audit
 var wfDevReady = false; // Step 5 handoff
 var wfDevReadyDate = null;
 
@@ -1509,6 +1521,149 @@ var wfZIndex = [
 ];
 var wfZiNextId = 8;
 
+// ── Reset all workflow state to defaults (used on file switch + settings reset) ──
+function resetWorkflowState() {
+  // Import state
+  wfImportMode = false;
+  wfImportStep = 0;
+  wfImportAnalysis = null;
+  wfImportBindStats = null;
+  wfFileType = null;
+  wfPagesHaveContent = false;
+  // Token config
+  wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
+  wfCustomColors = [];
+  wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
+  wfTextStyles = [
+    {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
+    {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
+    {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
+    {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
+    {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
+    {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
+    {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+    {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+    {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+    {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+    {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+    {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
+  ];
+  wfTsNextId = 18;
+  wfSpacing = [
+    {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
+    {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
+    {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
+    {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
+    {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
+    {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
+  ];
+  wfTypography = {
+    sizes: [
+      { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
+      { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
+      { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
+      { name: "6xl", value: "60" }
+    ],
+    weights: [
+      { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
+      { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
+      { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
+    ],
+    lineHeights: [
+      { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
+      { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
+      { name: "loose", value: "2" }
+    ]
+  };
+  wfRadius = [
+    { name: "sm", value: "4" },
+    { name: "md", value: "8" },
+    { name: "lg", value: "16" }
+  ];
+  wfShadows = [
+    { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
+  ];
+  wfBorders = [
+    { name: "thin", value: "1" },
+    { name: "default", value: "1.5" },
+    { name: "thick", value: "2" },
+    { name: "heavy", value: "4" }
+  ];
+  wfBdNextId = 5;
+  wfZIndex = [
+    { name: "hide", value: "-1" },
+    { name: "base", value: "0" },
+    { name: "dropdown", value: "1000" },
+    { name: "sticky", value: "1100" },
+    { name: "overlay", value: "1300" },
+    { name: "modal", value: "1400" },
+    { name: "toast", value: "1700" }
+  ];
+  wfZiNextId = 8;
+  TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
+  // Step status
+  wfTokensData = null;
+  wfStep1Color = "red";
+  wfStep2Color = "red";
+  wfStep3Color = "red";
+  wfStep4Color = "red";
+  wfGenerating = false;
+  wfGenerated = false;
+  // Step 3 — Page structures
+  wfPageType = "promo";
+  wfPromoSections = { hero: true, popup: true, banner: true };
+  wfPromoPopupIncludeForm = true;
+  wfPromoFormFields = [
+    { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+    { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+  ];
+  wfPromoFormFieldNextId = 7;
+  wfPromoFormGrid = [
+    { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+    { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+    { cols: 1, colSpans: [12], fields: [4] }
+  ];
+  wfPromoGenerating = false;
+  wfPromoGenerated = false;
+  wfStep3Skipped = false;
+  // Step 4 — Audit
+  wfAuditData = null;
+  wfAuditPassed = false;
+  wfAuditScore = -1;
+  wfAuditIssues = 0;
+  wfLastAuditTs = 0;
+  wfLastDocChangeTs = 0;
+  wfAuditStale = false;
+  // Step 5 — Handoff
+  wfDevReady = false;
+  wfDevReadyDate = null;
+  // Form UI state
+  wfFormState.project = "";
+  wfFormState.version = "v1.0.0";
+  wfFormState.date = "";
+  wfFormState.designers = "";
+  wfFormState.status = "In Progress";
+  wfFormState.initialised = false;
+  wfFormState.coverOpen = true;
+  wfFormState.stepOpen = true;
+  wfFormState.step2Open = true;
+  wfFormState.step2Toggled = false;
+  wfFormState.step2BasicOpen = false;
+  wfFormState.step2ComplexOpen = false;
+  wfFormState.step3Open = true;
+  wfFormState.step4Open = true;
+  wfFormState.step5Open = true;
+}
+
 // ── Settings persistence ──────────────────────────────────────────────────
 function collectSettings() {
   return {
@@ -1539,7 +1694,10 @@ function collectSettings() {
     devReadyDate: wfDevReadyDate,
     auditPassed: wfAuditPassed,
     auditScore: wfAuditScore,
-    auditIssues: wfAuditIssues
+    auditIssues: wfAuditIssues,
+    auditData: wfAuditData,
+    lastAuditTs: wfLastAuditTs,
+    lastDocChangeTs: wfLastDocChangeTs
   };
 }
 
@@ -1607,6 +1765,29 @@ function applyLoadedSettings(s) {
   if (s.auditPassed !== undefined) wfAuditPassed = s.auditPassed;
   if (s.auditScore !== undefined) wfAuditScore = s.auditScore;
   if (s.auditIssues !== undefined) wfAuditIssues = s.auditIssues;
+  if (s.lastAuditTs) wfLastAuditTs = s.lastAuditTs;
+  if (s.lastDocChangeTs) wfLastDocChangeTs = s.lastDocChangeTs;
+  // Check if document was modified since last audit
+  wfAuditStale = wfLastDocChangeTs > wfLastAuditTs && wfLastAuditTs > 0;
+  if (s.auditData && !wfAuditStale) {
+    wfAuditData = s.auditData;
+    // Also render in the Audit tab if data was persisted
+    window._auditAllTextStyles = (wfAuditData.fixable && wfAuditData.fixable.allTextStyles) || [];
+    renderAudit(wfAuditData);
+  } else if (wfAuditStale) {
+    // Document changed since last audit — invalidate results and revoke dev-ready
+    wfAuditData = null;
+    wfAuditPassed = false;
+    wfAuditScore = -1;
+    wfAuditIssues = 0;
+    if (wfDevReady) {
+      wfDevReady = false;
+      wfDevReadyDate = null;
+    }
+    // Clear the Audit tab
+    var _rr = document.getElementById("results"); if (_rr) { _rr.innerHTML = ""; _rr.style.display = "none"; }
+    var _sb = document.getElementById("score-bar"); if (_sb) _sb.style.display = "none";
+  }
 }
 
 function getWfColors() {
@@ -2861,7 +3042,8 @@ function renderStep3(container) {
   var prev = document.getElementById("wf-step-3");
   if (prev) prev.remove();
 
-  var step3Done = wfPromoGenerated || wfStep3Skipped;
+  // Step 3 done = pages actually have content OR user explicitly skipped
+  var step3Done = wfPagesHaveContent || wfStep3Skipped;
   var locked = wfStep2Color === "red" && !step3Done;
   var indicatorColor = step3Done ? "green" : (locked ? "red" : "yellow");
   var stepOpen = locked ? false : wfFormState.step3Open;
@@ -2872,7 +3054,7 @@ function renderStep3(container) {
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
-  var step3Status = wfPromoGenerated ? " — Generated" : (wfStep3Skipped ? " — Skipped" : "");
+  var step3Status = wfPagesHaveContent ? " — All set" : (wfStep3Skipped ? " — Skipped" : "");
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
@@ -2886,9 +3068,14 @@ function renderStep3(container) {
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step3Open = !wfFormState.step3Open;
-      var prev3 = document.getElementById("wf-step-3");
-      if (prev3) prev3.remove();
-      renderStep3(container);
+      // Refresh page content detection when expanding
+      if (wfFormState.step3Open) {
+        parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+      } else {
+        var prev3 = document.getElementById("wf-step-3");
+        if (prev3) prev3.remove();
+        renderStep3(container);
+      }
     });
   }
   step.appendChild(header);
@@ -2910,7 +3097,7 @@ function renderStep3(container) {
         wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
         wfFormState.step4Open = true;
         saveSettings();
-        renderWorkflow();
+        parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
       });
       container.appendChild(skipBtn);
     }
@@ -2923,7 +3110,7 @@ function renderStep3(container) {
       unskipBtn.addEventListener("click", function() {
         wfStep3Skipped = false;
         saveSettings();
-        renderWorkflow();
+        parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
       });
       container.appendChild(unskipBtn);
     }
@@ -3644,7 +3831,7 @@ function renderStep4(container) {
               chdr.appendChild(fixAllBtnWf);
             }
             // AI Name All button for naming checks (workflow tab)
-            if (key === "naming" && _bhApiKey) {
+            if (key === "naming" && (_bhApiKey || bhHasProxy())) {
               var aiNameAllBtnWf = document.createElement("button");
               aiNameAllBtnWf.className = "action-btn ai-name-all-btn";
               aiNameAllBtnWf.textContent = "✨ AI Name All (" + count + ")";
@@ -3694,7 +3881,7 @@ function renderStep4(container) {
         var aiWrapWf = document.createElement("div"); aiWrapWf.className = "ai-review-wrap";
         var aiBtnWf = document.createElement("button"); aiBtnWf.className = "ai-review-btn";
         aiBtnWf.innerHTML = "✨ AI Review — Get a prioritized action plan";
-        var aiHasAccessWf = _bhApiKey;
+        var aiHasAccessWf = _bhApiKey || bhHasProxy();
         if (!aiHasAccessWf) { aiBtnWf.disabled = true; aiBtnWf.title = "Set up AI access in Settings tab first"; aiBtnWf.innerHTML = "✨ AI Review — requires API key or proxy"; }
         var aiPanelWf = document.createElement("div"); aiPanelWf.className = "ai-review-panel"; aiPanelWf.style.display = "none";
         aiBtnWf.addEventListener("click", function(){
@@ -3805,7 +3992,7 @@ function renderStep5(container) {
     var checks = [
       { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
       { label: "Design tokens generated", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
-      { label: "Wireframes built", done: wfStep3Color === "green" || wfPromoGenerated || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
+      { label: "Wireframes built", done: wfPagesHaveContent || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
       { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
     ];
 
@@ -4065,113 +4252,18 @@ window.onmessage=function(event){
   if(msg.type==="load-settings"){
     applyLoadedSettings(msg.settings);
     // Collapse completed steps by default on load
-    if (wfPromoGenerated || wfStep3Skipped) wfFormState.step3Open = false;
-    if (wfAuditPassed) wfFormState.step4Open = false;
+    if (wfPagesHaveContent || wfStep3Skipped) wfFormState.step3Open = false;
+    if (wfAuditPassed && !wfAuditStale) wfFormState.step4Open = false;
     updateBuildHtmlTab();
     // Re-render workflow if it's visible
     var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
+    // Auto-rerun audit on plugin open if previous results exist (catches changes made while plugin was closed)
+    if (wfLastAuditTs > 0) {
+      parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
+    }
   }
   if(msg.type==="settings-reset"){
-    // Reset all token variables to defaults
-    wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
-    wfCustomColors = [];
-    wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
-    wfTextStyles = [
-      {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
-      {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
-      {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
-      {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
-      {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
-      {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
-      {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
-      {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
-      {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
-      {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
-      {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
-      {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
-    ];
-    wfTsNextId = 18;
-    wfSpacing = [
-      {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
-      {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
-      {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
-      {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
-      {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
-      {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
-    ];
-    wfTypography = {
-      sizes: [
-        { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
-        { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
-        { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
-        { name: "6xl", value: "60" }
-      ],
-      weights: [
-        { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
-        { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
-        { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
-      ],
-      lineHeights: [
-        { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
-        { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
-        { name: "loose", value: "2" }
-      ]
-    };
-    wfRadius = [
-      { name: "sm", value: "4" },
-      { name: "md", value: "8" },
-      { name: "lg", value: "16" }
-    ];
-    wfShadows = [
-      { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
-    ];
-    wfBorders = [
-      { name: "thin", value: "1" },
-      { name: "default", value: "1.5" },
-      { name: "thick", value: "2" },
-      { name: "heavy", value: "4" }
-    ];
-    wfBdNextId = 5;
-    wfZIndex = [
-      { name: "hide", value: "-1" },
-      { name: "base", value: "0" },
-      { name: "dropdown", value: "1000" },
-      { name: "sticky", value: "1100" },
-      { name: "overlay", value: "1300" },
-      { name: "modal", value: "1400" },
-      { name: "toast", value: "1700" }
-    ];
-    wfZiNextId = 8;
-    TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
-    wfPageType = "promo";
-    wfPromoSections = { hero: true, popup: true, banner: true };
-    wfPromoPopupIncludeForm = true;
-    wfPromoFormFields = [
-      { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
-      { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
-    ];
-    wfPromoFormFieldNextId = 7;
-    wfPromoFormGrid = [
-      { cols: 2, colSpans: [6, 6], fields: [0, 1] },
-      { cols: 2, colSpans: [6, 6], fields: [2, 3] },
-      { cols: 1, colSpans: [12], fields: [4] }
-    ];
-    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
-    wfFormState.step2Open = true;
-    wfFormState.step2Toggled = false;
-    wfFormState.step4Open = true;
-    wfFormState.step5Open = true;
-    wfDevReady = false;
-    wfDevReadyDate = null;
+    resetWorkflowState();
     updateBuildHtmlTab();
     // Re-render workflow
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
@@ -4236,17 +4328,105 @@ window.onmessage=function(event){
     renderAudit(msg.results);
     wfAuditData = msg.results;
     // Persist audit summary
-    wfAuditPassed = auditCritHighPass(msg.results);
+    var newPassed = auditCritHighPass(msg.results);
+    wfAuditPassed = newPassed;
     wfAuditScore = (msg.results && !msg.results.noPages) ? msg.results.score : -1;
     wfAuditIssues = (msg.results && msg.results.totalIssues !== undefined) ? msg.results.totalIssues : 0;
-    // Never auto-collapse — user should always see audit results after running
+    wfLastAuditTs = Date.now();
+    wfAuditStale = false;
+    // Revoke dev-ready if audit no longer passes
+    if (wfDevReady && !newPassed) {
+      wfDevReady = false;
+      wfDevReadyDate = null;
+    }
     saveSettings();
     var sc = document.getElementById("wf-container");
-    if (sc) renderStep4(sc);
+    if (sc) { renderStep4(sc); renderStep5(sc); }
   }
   if(msg.type==="pages-data"){
+    // Reset all state when file changes
+    var incomingFileId = (msg.fileInfo && msg.fileInfo.fileId) || "";
+    var isFileChange = incomingFileId && incomingFileId !== wfCurrentFileId;
+    if (isFileChange) {
+      wfCurrentFileId = incomingFileId;
+      resetWorkflowState();
+    }
+    // Update content detection from live page data
+    var hadContentBefore = wfPagesHaveContent;
+    wfPagesHaveContent = !!(msg.fileInfo && (msg.fileInfo.hasDesktopContent || msg.fileInfo.hasMobileContent));
+    // Only auto-collapse on first detection (not when user explicitly toggled)
+    if (wfPagesHaveContent && !hadContentBefore) wfFormState.step3Open = false;
     try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
     catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
+    // Detect if this is an existing unmanaged design
+    if (!wfImportMode && !wfFileType) {
+      parent.postMessage({ pluginMessage: { type: "detect-file-type" } }, "*");
+    }
+  }
+  if(msg.type==="page-content-update"){
+    var hadContent = wfPagesHaveContent;
+    wfPagesHaveContent = !!(msg.hasDesktopContent || msg.hasMobileContent);
+    if (hadContent !== wfPagesHaveContent) {
+      // Content status changed — re-render Step 3 and Step 5
+      // Only auto-collapse on first detection of content (transition from no content to content)
+      if (wfPagesHaveContent && !hadContent) wfFormState.step3Open = false;
+      var sc3 = document.getElementById("wf-container");
+      if (sc3) { renderStep3(sc3); renderStep5(sc3); }
+    }
+  }
+  if(msg.type==="document-changed"){
+    // Record document change timestamp
+    wfLastDocChangeTs = Date.now();
+    // If audit was run before, mark it stale and revoke dev-ready
+    if (wfLastAuditTs > 0) {
+      wfAuditStale = true;
+      if (wfDevReady) {
+        wfDevReady = false;
+        wfDevReadyDate = null;
+        var sc5 = document.getElementById("wf-container");
+        if (sc5) renderStep5(sc5);
+      }
+      saveSettings();
+    }
+    // Auto-rerun audit if results are currently displayed
+    var _scoreBar = document.getElementById("score-bar");
+    var auditTabVisible = _scoreBar && _scoreBar.style.display === "flex";
+    var wfAuditVisible = !!wfAuditData;
+    if (auditTabVisible || wfAuditVisible) {
+      parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
+    }
+  }
+  if(msg.type==="file-type-detected"){
+    wfFileType = msg.fileType || "fresh";
+    if (wfFileType === "existing" && !wfImportMode) {
+      renderImportBanner();
+    }
+  }
+  if(msg.type==="import-progress"){
+    var impProg = document.getElementById("import-progress-text");
+    if (impProg) impProg.textContent = msg.phase || "";
+    var impBar = document.getElementById("import-progress-bar");
+    if (impBar) impBar.style.width = (msg.percent || 0) + "%";
+  }
+  if(msg.type==="import-error"){
+    var impErr = document.getElementById("import-status");
+    if (impErr) impErr.innerHTML = "<div style='color:#f38ba8;font-size:11px;padding:8px;'>Error: " + esc(msg.error) + "</div>";
+  }
+  if(msg.type==="import-archive-done"){
+    // Archive done — auto-start analysis
+    var impS = document.getElementById("import-status");
+    if (impS) impS.innerHTML = "<div style='color:#a6e3a1;font-size:11px;padding:4px 0;'>Archived " + msg.count + " items from " + msg.pageCount + " pages</div>";
+    parent.postMessage({ pluginMessage: { type: "import-analyze" } }, "*");
+  }
+  if(msg.type==="import-analysis"){
+    wfImportAnalysis = msg.analysis;
+    wfImportStep = 2;
+    renderImportReview();
+  }
+  if(msg.type==="import-apply-done"){
+    wfImportBindStats = msg.bindStats;
+    wfImportStep = 4;
+    renderImportDone(msg);
   }
   if(msg.type==="tokens-data"){
     wfTokensData = msg.tokens || null;
@@ -4288,8 +4468,7 @@ window.onmessage=function(event){
     clearAuditDisplay();
     updateBuildHtmlTab();
     saveSettings();
-    var pc = document.getElementById("wf-container");
-    if (pc) renderStep3(pc);
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
   }
   if(msg.type==="wireframes-deleted"){
     wfPromoGenerated = false;
@@ -4299,8 +4478,7 @@ window.onmessage=function(event){
     clearAuditDisplay();
     updateBuildHtmlTab();
     saveSettings();
-    var pc2 = document.getElementById("wf-container");
-    if (pc2) renderStep3(pc2);
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
   }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
@@ -4457,6 +4635,359 @@ function bhTermLog(text, type) {
   line.innerHTML = prefix + esc(text);
   log.appendChild(line);
   log.scrollTop = log.scrollHeight;
+}
+
+// ── Import Design (Route B) UI ──────────────────────────────────────────────
+
+function renderImportBanner() {
+  var container = document.getElementById("wf-container");
+  if (!container) return;
+  // Don't show if already in import mode or if banner already exists
+  if (wfImportMode || document.getElementById("import-banner")) return;
+
+  var banner = document.createElement("div");
+  banner.id = "import-banner";
+  banner.style.cssText = "margin:12px 0;padding:16px;background:linear-gradient(135deg,#1e1e2e,#181825);border:1px solid #45475a;border-radius:10px;";
+  banner.innerHTML =
+    "<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;'>" +
+      "<span style='font-size:24px;'>📥</span>" +
+      "<div>" +
+        "<div style='font-size:13px;font-weight:700;color:#cdd6f4;'>Existing design detected</div>" +
+        "<div style='font-size:11px;color:#6c7086;margin-top:2px;'>This file has content but isn't set up for the dev-ready workflow.</div>" +
+      "</div>" +
+    "</div>" +
+    "<div style='font-size:11px;color:#a6adc8;margin-bottom:12px;line-height:1.5;'>" +
+      "Import will: archive all content for safety, extract colors/spacing/typography as tokens, " +
+      "organize frames into Desktop/Mobile pages, and bind variables. <b>No visual changes</b> to your design." +
+    "</div>" +
+    "<div style='display:flex;gap:8px;'>" +
+      "<button id='import-start-btn' style='flex:1;padding:8px 14px;background:#cba6f7;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;'>Import Existing Design</button>" +
+      "<button id='import-skip-btn' style='padding:8px 14px;background:#313244;color:#a6adc8;font-size:12px;font-weight:500;border:1px solid #45475a;border-radius:6px;cursor:pointer;'>Start Fresh</button>" +
+    "</div>";
+
+  container.insertBefore(banner, container.firstChild);
+
+  document.getElementById("import-start-btn").addEventListener("click", function() {
+    wfImportMode = true;
+    wfImportStep = 1;
+    banner.remove();
+    renderImportStep1();
+  });
+  document.getElementById("import-skip-btn").addEventListener("click", function() {
+    wfFileType = "fresh";
+    banner.remove();
+  });
+}
+
+function renderImportStep1() {
+  var container = document.getElementById("wf-container");
+  if (!container) return;
+
+  // Replace workflow content with import step 1
+  var wrap = document.createElement("div");
+  wrap.id = "import-wrap";
+  wrap.innerHTML =
+    "<div style='padding:16px;'>" +
+      "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;'>Step 1 — Archive & Analyze</div>" +
+      "<div style='font-size:11px;color:#6c7086;margin-bottom:12px;'>Copying all existing content to the Archive page for safety, then analyzing your design.</div>" +
+      "<div style='background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;'>" +
+        "<div id='import-progress-text' style='font-size:11px;color:#a6adc8;margin-bottom:6px;'>Starting…</div>" +
+        "<div style='background:#313244;border-radius:3px;overflow:hidden;height:3px;'>" +
+          "<div id='import-progress-bar' style='height:100%;background:#cba6f7;width:0%;transition:width 0.3s;'></div>" +
+        "</div>" +
+      "</div>" +
+      "<div id='import-status'></div>" +
+    "</div>";
+
+  container.insertBefore(wrap, container.firstChild);
+
+  // Start archive
+  parent.postMessage({ pluginMessage: { type: "import-archive" } }, "*");
+}
+
+function renderImportReview() {
+  var wrap = document.getElementById("import-wrap");
+  if (!wrap || !wfImportAnalysis) return;
+  var a = wfImportAnalysis;
+
+  var html =
+    "<div style='padding:16px;'>" +
+      "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;'>Step 2 — Review Extracted Tokens</div>" +
+      "<div style='font-size:11px;color:#6c7086;margin-bottom:12px;'>" +
+        "Found <b>" + a.colors.length + "</b> colors, <b>" + a.spacing.length + "</b> spacing values, <b>" + a.typography.length + "</b> text styles, " +
+        "<b>" + a.radius.length + "</b> radius, <b>" + a.borders.length + "</b> borders, <b>" + a.shadows.length + "</b> shadows across <b>" + a.totalNodes + "</b> nodes." +
+      "</div>";
+
+  // Colors
+  if (a.colors.length > 0) {
+    html += "<div style='margin-bottom:12px;'>" +
+      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Colors (" + a.colors.length + ")</div>" +
+      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
+    for (var ci = 0; ci < a.colors.length; ci++) {
+      var c = a.colors[ci];
+      html += "<div title='" + esc(c.name) + " — " + c.hex + " (" + c.count + " uses)' style='display:flex;align-items:center;gap:4px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
+        "<span style='width:12px;height:12px;border-radius:2px;background:" + c.hex + ";border:1px solid #45475a;display:inline-block;'></span>" +
+        "<input class='import-color-name' data-idx='" + ci + "' value='" + esc(c.name) + "' style='background:transparent;border:none;color:#cdd6f4;font-size:10px;width:60px;padding:0;font-family:inherit;' />" +
+      "</div>";
+    }
+    html += "</div></div>";
+  }
+
+  // Spacing
+  if (a.spacing.length > 0) {
+    html += "<div style='margin-bottom:12px;'>" +
+      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Spacing (" + a.spacing.length + ")</div>" +
+      "<div style='display:flex;flex-wrap:wrap;gap:4px;'>";
+    for (var si = 0; si < a.spacing.length; si++) {
+      var sp = a.spacing[si];
+      html += "<span style='padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" + esc(sp.name) + ": " + sp.value + "px</span>";
+    }
+    html += "</div></div>";
+  }
+
+  // Typography
+  if (a.typography.length > 0) {
+    html += "<div style='margin-bottom:12px;'>" +
+      "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Text Styles (" + a.typography.length + ")</div>" +
+      "<div style='display:flex;flex-direction:column;gap:3px;'>";
+    for (var ti = 0; ti < Math.min(a.typography.length, 15); ti++) {
+      var t = a.typography[ti];
+      html += "<div style='display:flex;align-items:center;gap:8px;padding:3px 8px;background:#313244;border-radius:4px;font-size:10px;color:#a6adc8;'>" +
+        "<span style='color:#cba6f7;min-width:90px;'>" + esc(t.group + "/" + t.name) + "</span>" +
+        "<span>" + esc(t.fontFamily) + " " + t.fontWeight + " / " + t.fontSize + "px</span>" +
+        "<span style='color:#585858;'>(" + t.count + "x)</span>" +
+      "</div>";
+    }
+    if (a.typography.length > 15) html += "<div style='font-size:10px;color:#585858;padding:2px 8px;'>+" + (a.typography.length - 15) + " more</div>";
+    html += "</div></div>";
+  }
+
+  // Radius / Borders / Shadows (compact)
+  var compactTokens = [];
+  if (a.radius.length > 0) compactTokens.push("Radius: " + a.radius.map(function(r) { return r.name + "(" + r.value + "px)"; }).join(", "));
+  if (a.borders.length > 0) compactTokens.push("Borders: " + a.borders.map(function(b) { return b.name + "(" + b.value + "px)"; }).join(", "));
+  if (a.shadows.length > 0) compactTokens.push("Shadows: " + a.shadows.map(function(s) { return s.name; }).join(", "));
+  if (compactTokens.length > 0) {
+    html += "<div style='margin-bottom:12px;font-size:10px;color:#6c7086;line-height:1.6;'>" + compactTokens.join("<br>") + "</div>";
+  }
+
+  // Frames classification
+  var dFrames = a.frames.filter(function(f) { return f.classification === "desktop"; });
+  var mFrames = a.frames.filter(function(f) { return f.classification === "mobile"; });
+  var cFrames = a.frames.filter(function(f) { return f.classification === "component"; });
+  var oFrames = a.frames.filter(function(f) { return f.classification === "other"; });
+
+  html += "<div style='margin-bottom:12px;'>" +
+    "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>Frames (" + a.frames.length + ")</div>" +
+    "<div style='font-size:10px;color:#a6adc8;line-height:1.6;'>" +
+      "🖥️ Desktop: <b>" + dFrames.length + "</b> &nbsp; 📱 Mobile: <b>" + mFrames.length + "</b> &nbsp; 🧩 Components: <b>" + cFrames.length + "</b>" +
+      (oFrames.length > 0 ? " &nbsp; ❓ Other: <b>" + oFrames.length + "</b>" : "") +
+    "</div>" +
+  "</div>";
+
+  // AI refine + Apply buttons
+  var hasAI = !!(_bhApiKey || (bhHasProxy() && _bhProxyHealthy));
+  html += "<div style='display:flex;gap:8px;'>" +
+    (hasAI ? "<button id='import-ai-btn' style='padding:8px 14px;background:#313244;color:#cba6f7;font-size:12px;font-weight:500;border:1px solid #cba6f740;border-radius:6px;cursor:pointer;'>✨ Refine Names with AI</button>" : "") +
+    "<button id='import-apply-btn' style='flex:1;padding:8px 14px;background:#a6e3a1;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;'>Apply Tokens & Organize</button>" +
+    "<button id='import-cancel-btn' style='padding:8px 14px;background:#313244;color:#a6adc8;font-size:12px;font-weight:500;border:1px solid #45475a;border-radius:6px;cursor:pointer;'>Cancel</button>" +
+  "</div>";
+
+  html += "<div id='import-status' style='margin-top:8px;'></div>";
+  html += "</div>";
+
+  wrap.innerHTML = html;
+
+  // Bind color name edits back to analysis
+  var colorInputs = wrap.querySelectorAll(".import-color-name");
+  for (var ii = 0; ii < colorInputs.length; ii++) {
+    colorInputs[ii].addEventListener("input", function(ev) {
+      var idx = parseInt(ev.target.getAttribute("data-idx"), 10);
+      if (wfImportAnalysis && wfImportAnalysis.colors[idx]) {
+        wfImportAnalysis.colors[idx].name = ev.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-|-$/g, "");
+      }
+    });
+  }
+
+  // AI refine button
+  var aiBtn = document.getElementById("import-ai-btn");
+  if (aiBtn) {
+    aiBtn.addEventListener("click", function() {
+      aiBtn.disabled = true; aiBtn.textContent = "✨ Refining…";
+      bhCallWithRetry(function(retryCb) {
+        bhCallTokenNamingAI(wfImportAnalysis, retryCb);
+      }, 1, function(err, result) {
+        if (err) {
+          aiBtn.textContent = "✨ Failed — " + err;
+          aiBtn.disabled = false;
+          return;
+        }
+        // Apply AI suggestions to analysis
+        if (result.colors && Array.isArray(result.colors)) {
+          for (var aci = 0; aci < result.colors.length; aci++) {
+            var sc = result.colors[aci];
+            if (wfImportAnalysis.colors[sc.index]) {
+              wfImportAnalysis.colors[sc.index].name = sc.name;
+            }
+          }
+        }
+        if (result.typography && Array.isArray(result.typography)) {
+          for (var ati = 0; ati < result.typography.length; ati++) {
+            var st = result.typography[ati];
+            if (wfImportAnalysis.typography[st.index]) {
+              wfImportAnalysis.typography[st.index].group = st.group;
+              wfImportAnalysis.typography[st.index].name = st.name;
+            }
+          }
+        }
+        // Re-render the review step with updated names
+        renderImportReview();
+      });
+    });
+  }
+
+  document.getElementById("import-apply-btn").addEventListener("click", function() {
+    var btn = document.getElementById("import-apply-btn");
+    btn.disabled = true; btn.textContent = "Applying…";
+    wfImportStep = 3;
+
+    // Send analysis back for application
+    parent.postMessage({ pluginMessage: {
+      type: "import-apply",
+      analysis: wfImportAnalysis,
+      coverData: {
+        project: wfFormState.project || "Imported Design",
+        version: wfFormState.version || "v1.0.0",
+        date: wfFormState.date || new Date().toISOString().slice(0, 10),
+        designers: wfFormState.designers || "",
+        status: "In Progress"
+      }
+    } }, "*");
+
+    // Show progress
+    wrap.innerHTML =
+      "<div style='padding:16px;'>" +
+        "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:4px;'>Step 3 — Applying Tokens & Organizing</div>" +
+        "<div style='background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;'>" +
+          "<div id='import-progress-text' style='font-size:11px;color:#a6adc8;margin-bottom:6px;'>Creating tokens…</div>" +
+          "<div style='background:#313244;border-radius:3px;overflow:hidden;height:3px;'>" +
+            "<div id='import-progress-bar' style='height:100%;background:#a6e3a1;width:50%;transition:width 0.3s;'></div>" +
+          "</div>" +
+        "</div>" +
+        "<div id='import-status'></div>" +
+      "</div>";
+  });
+
+  document.getElementById("import-cancel-btn").addEventListener("click", function() {
+    wfImportMode = false;
+    wfImportStep = 0;
+    wfImportAnalysis = null;
+    var w = document.getElementById("import-wrap");
+    if (w) w.remove();
+    // Re-request pages to re-render normal workflow
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+  });
+}
+
+function bhCallTokenNamingAI(analysis, callback) {
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured.", null); return; }
+
+  // Build a compact summary for AI
+  var colorSummary = analysis.colors.map(function(c) { return { hex: c.hex, uses: c.count, currentName: c.name }; });
+  var typoSummary = analysis.typography.map(function(t) {
+    return { family: t.fontFamily, size: t.fontSize, weight: t.fontWeight, uses: t.count, sample: t.sampleText, currentName: t.group + "/" + t.name };
+  });
+
+  var systemPrompt = "You are a design system token naming expert. Given extracted design tokens, suggest better semantic names.\n\n"
+    + "Rules:\n"
+    + "1. Color names: use semantic names like primary, secondary, tertiary, success, error, warning, info, surface, on-surface, muted. Keep black, white, gray as-is.\n"
+    + "2. Text style names: use group/name format like heading/h1, heading/h2, body/default, body/sm, label/default, caption/default, overline/default.\n"
+    + "3. Prefer short, developer-friendly names.\n"
+    + "4. Return ONLY valid JSON: {\"colors\": [{\"index\": 0, \"name\": \"primary\"}, ...], \"typography\": [{\"index\": 0, \"group\": \"heading\", \"name\": \"h1\"}, ...]}\n"
+    + "No markdown, no explanation — just the JSON.";
+
+  var userContent = JSON.stringify({ colors: colorSummary, typography: typoSummary });
+
+  var body = JSON.stringify({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [
+      { role: "user", content: userContent },
+      { role: "assistant", content: "{" }
+    ]
+  });
+
+  var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
+  if (useProxy) {
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        text = "{" + text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        var result = JSON.parse(text);
+        callback(null, result);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else {
+      callback("API error (" + xhr.status + ")", null);
+    }
+  };
+  xhr.onerror = function() { callback("Network error.", null); };
+  xhr.timeout = 30000;
+  xhr.ontimeout = function() { callback("AI request timed out.", null); };
+  xhr.send(body);
+}
+
+function renderImportDone(msg) {
+  var wrap = document.getElementById("import-wrap");
+  if (!wrap) return;
+  var bs = msg.bindStats || {};
+
+  wrap.innerHTML =
+    "<div style='padding:16px;'>" +
+      "<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;'>" +
+        "<span style='font-size:24px;'>✅</span>" +
+        "<div style='font-size:14px;font-weight:700;color:#a6e3a1;'>Import Complete</div>" +
+      "</div>" +
+      "<div style='background:#1a1a1a;border-radius:8px;padding:12px;margin-bottom:12px;font-size:11px;color:#a6adc8;line-height:1.8;'>" +
+        "<div>📦 Moved <b>" + (msg.moved || 0) + "</b> frames to organized pages</div>" +
+        "<div>🎨 Bound <b>" + (bs.colors || 0) + "</b> colors to variables</div>" +
+        "<div>📏 Bound <b>" + (bs.spacing || 0) + "</b> spacing values</div>" +
+        "<div>🔘 Bound <b>" + (bs.radius || 0) + "</b> radius values</div>" +
+        "<div>📝 Applied <b>" + (bs.textStyles || 0) + "</b> text styles</div>" +
+        (bs.borders ? "<div>🔲 Bound <b>" + bs.borders + "</b> border widths</div>" : "") +
+        (bs.effects ? "<div>💫 Applied <b>" + bs.effects + "</b> effect styles</div>" : "") +
+      "</div>" +
+      "<div style='font-size:11px;color:#6c7086;margin-bottom:12px;'>Your original content is safely archived. Run the audit to see remaining issues.</div>" +
+      "<button id='import-done-btn' style='width:100%;padding:8px 14px;background:#cba6f7;color:#1e1e2e;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;'>Continue to Workflow →</button>" +
+    "</div>";
+
+  document.getElementById("import-done-btn").addEventListener("click", function() {
+    wfImportMode = false;
+    wfImportStep = 0;
+    var w = document.getElementById("import-wrap");
+    if (w) w.remove();
+    // Refresh workflow — pages now exist, tokens created, should land at Step 4
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+    parent.postMessage({ pluginMessage: { type: "get-tokens" } }, "*");
+  });
 }
 
 // ── Build HTML button handlers ──

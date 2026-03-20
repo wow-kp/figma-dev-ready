@@ -9,6 +9,7 @@ import { generateFoundationsPageComplex } from './foundations-complex';
 import { generateComponentsPageComplex } from './components-complex';
 import { importTokens } from './tokens-import';
 import { generateTokenData } from './tokens-generate';
+import { detectFileType, analyzeDesign, archiveExistingContent, createTokensFromAnalysis, reorganizeFrames, bindTokensToDesign } from './design-import';
 import {
   _htmlImageNameCount, htmlWalkNode, htmlCountImages, htmlCollectImages,
   htmlRenderCSS, htmlSanitizeName, htmlRenderNodeClean,
@@ -17,22 +18,35 @@ import {
 
 figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for Designers by wowbrands" });
 
-// Load saved settings and send to UI
+// Helper: check if Desktop/Mobile pages have content and notify UI
+async function sendPageContentUpdate() {
+  try { await figma.loadAllPagesAsync(); } catch(e) {}
+  var hasDesktopContent = false;
+  var hasMobileContent = false;
+  for (var pi = 0; pi < figma.root.children.length; pi++) {
+    var pg = figma.root.children[pi];
+    var pn = pg.name.toLowerCase();
+    if (pn.indexOf("desktop") !== -1 && pg.children.length > 0) hasDesktopContent = true;
+    if (pn.indexOf("mobile") !== -1 && pg.children.length > 0) hasMobileContent = true;
+  }
+  figma.ui.postMessage({ type: "page-content-update", hasDesktopContent: hasDesktopContent, hasMobileContent: hasMobileContent });
+}
+
+// Load saved settings, then load all pages and register documentchange
 (async function() {
+  // Settings first (fast, non-blocking)
   try {
     var saved = await figma.clientStorage.getAsync("wf-settings");
     if (saved) {
       figma.ui.postMessage({ type: "load-settings", settings: saved });
     }
   } catch(e) {}
-  // Load saved AI config
   try {
     var aiConfig = await figma.clientStorage.getAsync("ai-config");
     if (aiConfig) {
       figma.ui.postMessage({ type: "ai-config-loaded", config: aiConfig });
     }
   } catch(e) {}
-  // Send Figma user info for proxy auth
   if (figma.currentUser) {
     figma.ui.postMessage({
       type: "user-info",
@@ -40,76 +54,96 @@ figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for De
       userName: figma.currentUser.name || ""
     });
   }
+  // Load all pages (required before registering documentchange in dynamic-page mode)
+  try {
+    await figma.loadAllPagesAsync();
+    var _docChangeTimer: ReturnType<typeof setTimeout> | null = null;
+    var _auditRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    figma.on("documentchange", function() {
+      if (_docChangeTimer) clearTimeout(_docChangeTimer);
+      _docChangeTimer = setTimeout(sendPageContentUpdate, 300);
+      // Notify UI that the document changed so it can auto-refresh the audit
+      if (_auditRefreshTimer) clearTimeout(_auditRefreshTimer);
+      _auditRefreshTimer = setTimeout(function() {
+        figma.ui.postMessage({ type: "document-changed" });
+      }, 800);
+    });
+  } catch(e) {}
 })();
 
 figma.on("selectionchange", function() { pushDebugData(); });
 
 figma.ui.onmessage = async function(msg) {
   if (msg.type === "run-audit") {
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    await figma.loadAllPagesAsync();
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "focus-node") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node) {
       // Switch to the node's page if needed
       var pg = node;
       while (pg && pg.type !== "PAGE") pg = pg.parent;
-      if (pg && pg.type === "PAGE" && figma.currentPage !== pg) figma.currentPage = pg;
+      if (pg && pg.type === "PAGE" && figma.currentPage !== pg) await figma.setCurrentPageAsync(pg);
       figma.currentPage.selection = [node];
       figma.viewport.scrollAndZoomIntoView([node]);
     }
   }
   // ── Per-issue inline fixes ────────────────────────────────────────────────
   if (msg.type === "rename-node") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && msg.name && msg.name.trim()) { node.name = msg.name.trim(); }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "delete-node") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node) { try { node.remove(); } catch(e) {} }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "bind-fill") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && "fills" in node && Array.isArray(node.fills)) {
-      var colorVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "COLOR"; });
+      var colorVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v){ return v.resolvedType === "COLOR"; });
       if (colorVars.length > 0) {
-        var newFills = node.fills.map(function(fill, i) {
-          if (fill.type !== "SOLID" || fill.visible === false) return fill;
-          var bv = node.boundVariables && node.boundVariables.fills && node.boundVariables.fills[i];
-          if (bv) return fill;
-          var nearest = findNearestColorVar(fill.color, colorVars);
-          if (nearest) { try { return figma.variables.setBoundVariableForPaint(fill,"color",nearest); } catch(e) { return fill; } }
-          return fill;
-        });
+        var newFills = [];
+        for (var _bfi = 0; _bfi < node.fills.length; _bfi++) {
+          var fill = node.fills[_bfi];
+          if (fill.type !== "SOLID" || fill.visible === false) { newFills.push(fill); continue; }
+          var bv = node.boundVariables && node.boundVariables.fills && node.boundVariables.fills[_bfi];
+          if (bv) { newFills.push(fill); continue; }
+          var nearest = await findNearestColorVar(fill.color, colorVars);
+          if (nearest) { try { newFills.push(figma.variables.setBoundVariableForPaint(fill,"color",nearest)); } catch(e) { newFills.push(fill); } }
+          else { newFills.push(fill); }
+        }
         try { node.fills = newFills; } catch(e) {}
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "bind-stroke") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && "strokes" in node && Array.isArray(node.strokes)) {
-      var colorVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "COLOR"; });
+      var colorVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v){ return v.resolvedType === "COLOR"; });
       if (colorVars.length > 0) {
-        var newStrokes = node.strokes.map(function(stroke, i) {
-          if (stroke.type !== "SOLID" || stroke.visible === false) return stroke;
-          var bv = node.boundVariables && node.boundVariables.strokes && node.boundVariables.strokes[i];
-          if (bv) return stroke;
-          var nearest = findNearestColorVar(stroke.color, colorVars);
-          if (nearest) { try { return figma.variables.setBoundVariableForPaint(stroke,"color",nearest); } catch(e) { return stroke; } }
-          return stroke;
-        });
+        var newStrokes = [];
+        for (var _bsi = 0; _bsi < node.strokes.length; _bsi++) {
+          var stroke = node.strokes[_bsi];
+          if (stroke.type !== "SOLID" || stroke.visible === false) { newStrokes.push(stroke); continue; }
+          var bv = node.boundVariables && node.boundVariables.strokes && node.boundVariables.strokes[_bsi];
+          if (bv) { newStrokes.push(stroke); continue; }
+          var nearest = await findNearestColorVar(stroke.color, colorVars);
+          if (nearest) { try { newStrokes.push(figma.variables.setBoundVariableForPaint(stroke,"color",nearest)); } catch(e) { newStrokes.push(stroke); } }
+          else { newStrokes.push(stroke); }
+        }
         try { node.strokes = newStrokes; } catch(e) {}
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "bind-spacing") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && "layoutMode" in node && node.layoutMode !== "NONE") {
-      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var floatVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v){ return v.resolvedType === "FLOAT"; });
       var spacingProps = ["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];
       for (var spi = 0; spi < spacingProps.length; spi++) {
         var prop = spacingProps[spi];
@@ -118,16 +152,16 @@ figma.ui.onmessage = async function(msg) {
         if (val === figma.mixed || !val || val <= 0) continue;
         var bv = node.boundVariables && node.boundVariables[prop];
         if (bv) continue;
-        var nearest = findNearestFloatVar(val, floatVars);
+        var nearest = await findNearestFloatVar(val, floatVars);
         if (nearest) { try { node.setBoundVariable(prop, nearest); } catch(e) {} }
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "bind-radius") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && "cornerRadius" in node) {
-      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var floatVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v){ return v.resolvedType === "FLOAT"; });
       var radiusProps = ["cornerRadius","topLeftRadius","topRightRadius","bottomLeftRadius","bottomRightRadius"];
       for (var rpi = 0; rpi < radiusProps.length; rpi++) {
         var prop = radiusProps[rpi];
@@ -136,51 +170,51 @@ figma.ui.onmessage = async function(msg) {
         if (val === figma.mixed || !val || val <= 0) continue;
         var bv = node.boundVariables && node.boundVariables[prop];
         if (bv) continue;
-        var nearest = findNearestFloatVar(val, floatVars);
+        var nearest = await findNearestFloatVar(val, floatVars);
         if (nearest) { try { node.setBoundVariable(prop, nearest); } catch(e) {} }
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "bind-opacity") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && "opacity" in node && node.opacity < 1 && node.opacity > 0) {
-      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var floatVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v){ return v.resolvedType === "FLOAT"; });
       var bv = node.boundVariables && node.boundVariables.opacity;
       if (!bv) {
-        var nearest = findNearestFloatVar(node.opacity, floatVars);
+        var nearest = await findNearestFloatVar(node.opacity, floatVars);
         if (nearest) { try { node.setBoundVariable("opacity", nearest); } catch(e) {} }
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "bind-border-width") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && "strokeWeight" in node && node.strokeWeight > 0) {
-      var floatVars = figma.variables.getLocalVariables().filter(function(v){ return v.resolvedType === "FLOAT"; });
+      var floatVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v){ return v.resolvedType === "FLOAT"; });
       var bv = node.boundVariables && node.boundVariables.strokeWeight;
       if (!bv) {
-        var nearest = findNearestFloatVar(node.strokeWeight, floatVars);
+        var nearest = await findNearestFloatVar(node.strokeWeight, floatVars);
         if (nearest) { try { node.setBoundVariable("strokeWeight", nearest); } catch(e) {} }
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "bind-text-style") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && node.type === "TEXT" && msg.styleId) {
-      var ts = figma.getStyleById(msg.styleId);
+      var ts = await figma.getStyleByIdAsync(msg.styleId);
       if (ts) {
         try {
           await figma.loadFontAsync(ts.fontName);
-          node.textStyleId = ts.id;
+          await node.setTextStyleIdAsync(ts.id);
         } catch(e) {}
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "create-text-style") {
-    var node = figma.getNodeById(msg.id);
+    var node = await figma.getNodeByIdAsync(msg.id);
     if (node && node.type === "TEXT" && msg.styleName) {
       try {
         var fn = node.fontName !== figma.mixed ? node.fontName : { family: "Inter", style: "Regular" };
@@ -191,17 +225,17 @@ figma.ui.onmessage = async function(msg) {
         newTs.fontSize = node.fontSize !== figma.mixed ? node.fontSize : 14;
         if (node.lineHeight !== figma.mixed && node.lineHeight) newTs.lineHeight = node.lineHeight;
         if (node.letterSpacing !== figma.mixed && node.letterSpacing) newTs.letterSpacing = node.letterSpacing;
-        node.textStyleId = newTs.id;
+        await node.setTextStyleIdAsync(newTs.id);
       } catch(e) {}
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "create-and-bind") {
     // Create a new variable and bind it to the node property
-    var node = figma.getNodeById(msg.nodeId);
+    var node = await figma.getNodeByIdAsync(msg.nodeId);
     if (node && msg.varName) {
       try {
-        var cols = figma.variables.getLocalVariableCollections();
+        var cols = await figma.variables.getLocalVariableCollectionsAsync();
         var targetCol = null;
         var colName = msg.collection || "";
         // Find or create the target collection
@@ -209,11 +243,11 @@ figma.ui.onmessage = async function(msg) {
           if (cols[ci].name.toLowerCase() === colName.toLowerCase()) { targetCol = cols[ci]; break; }
         }
         if (!targetCol) {
-          targetCol = figma.variables.createVariableCollection(colName || "Variables");
+          targetCol = await figma.variables.createVariableCollectionAsync(colName || "Variables");
         }
         var modeId = targetCol.modes[0].modeId;
         if (msg.varType === "COLOR") {
-          var newVar = figma.variables.createVariable(msg.varName, targetCol, "COLOR");
+          var newVar = await figma.variables.createVariableAsync(msg.varName, targetCol, "COLOR");
           var rgb = hexToFigma(msg.rawValue || "#000000");
           newVar.setValueForMode(modeId, { r: rgb.r, g: rgb.g, b: rgb.b, a: 1 });
           // Bind to the appropriate paint
@@ -232,7 +266,7 @@ figma.ui.onmessage = async function(msg) {
           }
         } else {
           // FLOAT variable
-          var newVar = figma.variables.createVariable(msg.varName, targetCol, "FLOAT");
+          var newVar = await figma.variables.createVariableAsync(msg.varName, targetCol, "FLOAT");
           newVar.setValueForMode(modeId, parseFloat(msg.rawValue) || 0);
           // Bind based on type
           if (msg.bindType === "spacing") {
@@ -257,14 +291,14 @@ figma.ui.onmessage = async function(msg) {
         }
       } catch(e) {}
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   // ── AI Naming: serialize node context for AI ───────────────────────────────
   if (msg.type === "ai-name-suggest") {
     var nodeIds = msg.nodeIds || [];
     var serialized = [];
     for (var ni = 0; ni < nodeIds.length; ni++) {
-      var node = figma.getNodeById(nodeIds[ni]);
+      var node = await figma.getNodeByIdAsync(nodeIds[ni]);
       if (node) serialized.push(serializeNodeForNaming(node));
     }
     figma.ui.postMessage({ type: "ai-name-context", nodes: serialized });
@@ -275,17 +309,18 @@ figma.ui.onmessage = async function(msg) {
     for (var ani = 0; ani < names.length; ani++) {
       var entry = names[ani];
       if (entry.id && entry.name) {
-        var node = figma.getNodeById(entry.id);
+        var node = await figma.getNodeByIdAsync(entry.id);
         if (node && node.type !== "TEXT") {
           try { node.name = entry.name; } catch(e) {}
         }
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "fix-all-check") {
+    await figma.loadAllPagesAsync();
     var checkKey = msg.checkKey;
-    var auditResult = runAudit();
+    var auditResult = await runAudit();
     var checkData = auditResult.checks[checkKey];
     if (checkData && checkData.issues.length > 0) {
       var ids = [];
@@ -296,32 +331,32 @@ figma.ui.onmessage = async function(msg) {
       for (var fi = 0; fi < ids.length; fi++) {
         var fakeMsg = { id: ids[fi] };
         if (checkKey === "naming") {
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n && n.type !== "TEXT") {
             var iss = checkData.issues.filter(function(is){ return is.id === ids[fi]; })[0];
             if (iss && iss.suggestedName) n.name = iss.suggestedName;
           }
         } else if (checkKey === "namingFormat") {
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n && n.type !== "TEXT") {
             var iss = checkData.issues.filter(function(is){ return is.id === ids[fi]; })[0];
             if (iss && iss.suggestedName) n.name = iss.suggestedName;
           }
         } else if (checkKey === "hidden") {
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n) { try { n.remove(); } catch(e) {} }
         } else if (checkKey === "empty") {
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n) { try { n.remove(); } catch(e) {} }
         } else if (checkKey === "colors") {
           // Only bind issues that have a suggestedVar
           var issuesForNode = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; });
           if (issuesForNode.length === 0) continue;
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n) {
             for (var ii = 0; ii < issuesForNode.length; ii++) {
               var iss = issuesForNode[ii];
-              var v = figma.variables.getVariableById(iss.suggestedVar.id);
+              var v = await figma.variables.getVariableByIdAsync(iss.suggestedVar.id);
               if (!v) continue;
               if (iss.bindType === "fill" && "fills" in n && Array.isArray(n.fills)) {
                 var idx = iss.bindIndex || 0;
@@ -339,11 +374,11 @@ figma.ui.onmessage = async function(msg) {
         } else if (checkKey === "spacingVars") {
           var issuesForNode = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; });
           if (issuesForNode.length === 0) continue;
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n) {
             for (var ii = 0; ii < issuesForNode.length; ii++) {
               var iss = issuesForNode[ii];
-              var v = figma.variables.getVariableById(iss.suggestedVar.id);
+              var v = await figma.variables.getVariableByIdAsync(iss.suggestedVar.id);
               if (!v || !iss.bindType) continue;
               try { n.setBoundVariable(iss.bindType, v); } catch(e) {}
             }
@@ -351,11 +386,11 @@ figma.ui.onmessage = async function(msg) {
         } else if (checkKey === "radiusVars") {
           var issuesForNode = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; });
           if (issuesForNode.length === 0) continue;
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n) {
             for (var ii = 0; ii < issuesForNode.length; ii++) {
               var iss = issuesForNode[ii];
-              var v = figma.variables.getVariableById(iss.suggestedVar.id);
+              var v = await figma.variables.getVariableByIdAsync(iss.suggestedVar.id);
               if (!v || !iss.bindType) continue;
               try { n.setBoundVariable(iss.bindType, v); } catch(e) {}
             }
@@ -363,46 +398,49 @@ figma.ui.onmessage = async function(msg) {
         } else if (checkKey === "opacityVars") {
           var iss = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; })[0];
           if (!iss) continue;
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n) {
-            var v = figma.variables.getVariableById(iss.suggestedVar.id);
+            var v = await figma.variables.getVariableByIdAsync(iss.suggestedVar.id);
             if (v) { try { n.setBoundVariable("opacity", v); } catch(e) {} }
           }
         } else if (checkKey === "borderVars") {
           var iss = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedVar; })[0];
           if (!iss) continue;
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n) {
-            var v = figma.variables.getVariableById(iss.suggestedVar.id);
+            var v = await figma.variables.getVariableByIdAsync(iss.suggestedVar.id);
             if (v) { try { n.setBoundVariable("strokeWeight", v); } catch(e) {} }
           }
         } else if (checkKey === "textStyles") {
           var iss = checkData.issues.filter(function(is){ return is.id === ids[fi] && is.suggestedStyle; })[0];
           if (!iss) continue;
-          var n = figma.getNodeById(ids[fi]);
+          var n = await figma.getNodeByIdAsync(ids[fi]);
           if (n && n.type === "TEXT" && iss.suggestedStyle.id) {
-            var ts = figma.getStyleById(iss.suggestedStyle.id);
+            var ts = await figma.getStyleByIdAsync(iss.suggestedStyle.id);
             if (ts && ts.type === "TEXT") {
               try {
                 await figma.loadFontAsync(ts.fontName);
-                n.textStyleId = ts.id;
+                await n.setTextStyleIdAsync(ts.id);
               } catch(e) {}
             }
           }
         }
       }
     }
-    figma.ui.postMessage({ type:"audit-results", results:runAudit() });
+    figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   // ── Bulk fix (kept for backward compat) ──────────────────────────────────
   if (msg.type === "run-fixes") {
-    figma.ui.postMessage({ type:"audit-results", results:(function(){ runFixes(msg.fixes); return runAudit(); })() });
+    await figma.loadAllPagesAsync();
+    await runFixes(msg.fixes); figma.ui.postMessage({ type:"audit-results", results:await runAudit() });
   }
   if (msg.type === "generate-cover") {
+    await figma.loadAllPagesAsync();
     await generateCover(msg);
     figma.ui.postMessage({ type: "cover-generated" });
   }
   if (msg.type === "update-cover-status") {
+    await figma.loadAllPagesAsync();
     await updateCoverStatus(msg);
   }
   if (msg.type === "import-tokens") {
@@ -414,6 +452,7 @@ figma.ui.onmessage = async function(msg) {
     }
   }
   if (msg.type === "generate-specimens-from-vars") {
+    await figma.loadAllPagesAsync();
     try {
       ensureEssentialColors();
       await ensureComponentTextStyles();
@@ -426,10 +465,10 @@ figma.ui.onmessage = async function(msg) {
     }
     // Refresh token counts
     try {
-      var allVars2 = figma.variables.getLocalVariables();
-      var cols2 = figma.variables.getLocalVariableCollections();
-      var ts2 = figma.getLocalTextStyles();
-      var es2 = figma.getLocalEffectStyles();
+      var allVars2 = await figma.variables.getLocalVariablesAsync();
+      var cols2 = await figma.variables.getLocalVariableCollectionsAsync();
+      var ts2 = await figma.getLocalTextStylesAsync();
+      var es2 = await figma.getLocalEffectStylesAsync();
       var counts2 = countTokensByCategory(allVars2, cols2);
       for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)counts2.shadows++;}
       counts2.textStyles = ts2.length;
@@ -439,20 +478,94 @@ figma.ui.onmessage = async function(msg) {
     } catch(e){}
   }
   if (msg.type === "request-debug") { pushDebugData(); }
+  // ── Design Import (Route B) ────────────────────────────────────────────
+  if (msg.type === "detect-file-type") {
+    await figma.loadAllPagesAsync();
+    try {
+      var fileType = await detectFileType();
+      figma.ui.postMessage({ type: "file-type-detected", fileType: fileType });
+    } catch (e) {
+      figma.ui.postMessage({ type: "file-type-detected", fileType: "fresh", error: String(e) });
+    }
+  }
+  if (msg.type === "import-archive") {
+    await figma.loadAllPagesAsync();
+    try {
+      figma.ui.postMessage({ type: "import-progress", phase: "Archiving existing content…", percent: 10 });
+      var archiveResult = archiveExistingContent();
+      figma.ui.postMessage({ type: "import-archive-done", count: archiveResult.count, pageCount: archiveResult.pageCount });
+    } catch (e) {
+      figma.ui.postMessage({ type: "import-error", error: "Archive failed: " + String(e) });
+    }
+  }
+  if (msg.type === "import-analyze") {
+    await figma.loadAllPagesAsync();
+    try {
+      figma.ui.postMessage({ type: "import-progress", phase: "Analyzing design…", percent: 30 });
+      var analysis = analyzeDesign();
+      figma.ui.postMessage({ type: "import-analysis", analysis: analysis });
+    } catch (e) {
+      figma.ui.postMessage({ type: "import-error", error: "Analysis failed: " + String(e) });
+    }
+  }
+  if (msg.type === "import-apply") {
+    await figma.loadAllPagesAsync();
+    (async function() {
+      try {
+        // Create tokens
+        figma.ui.postMessage({ type: "import-progress", phase: "Creating design tokens…", percent: 50 });
+        var tokenResults = await createTokensFromAnalysis(msg.analysis);
+
+        // Create pages and reorganize frames
+        figma.ui.postMessage({ type: "import-progress", phase: "Organizing pages…", percent: 70 });
+        var reorgResult = await reorganizeFrames(msg.analysis.frames);
+
+        // Bind variables to design
+        figma.ui.postMessage({ type: "import-progress", phase: "Binding variables…", percent: 80 });
+        var bindStats = await bindTokensToDesign(function(phase, count, total) {
+          var pct = 80 + Math.round((count / Math.max(total, 1)) * 15);
+          figma.ui.postMessage({ type: "import-progress", phase: "Binding variables… (" + count + "/" + total + ")", percent: pct });
+        });
+
+        // Generate cover
+        figma.ui.postMessage({ type: "import-progress", phase: "Creating cover page…", percent: 96 });
+        try { generateCover(msg.coverData || {}); } catch(e) {}
+
+        figma.ui.postMessage({
+          type: "import-apply-done",
+          tokenResults: tokenResults,
+          moved: reorgResult.moved,
+          bindStats: bindStats
+        });
+      } catch (e) {
+        figma.ui.postMessage({ type: "import-error", error: "Import failed: " + String(e) });
+      }
+    })();
+  }
   // ── Workflow: page structure ──────────────────────────────────────────────
   if (msg.type === "check-pages") {
+    await figma.loadAllPagesAsync();
     try {
       var pages = [];
+      var hasDesktopContent = false;
+      var hasMobileContent = false;
       for (var pi = 0; pi < figma.root.children.length; pi++) {
-        pages.push({ id: figma.root.children[pi].id, name: figma.root.children[pi].name });
+        var pg = figma.root.children[pi];
+        pages.push({ id: pg.id, name: pg.name });
+        var pn = pg.name.toLowerCase();
+        if (pn.indexOf("desktop") !== -1 && pg.children.length > 0) hasDesktopContent = true;
+        if (pn.indexOf("mobile") !== -1 && pg.children.length > 0) hasMobileContent = true;
       }
       var fileInfo = {
+        fileId: figma.root.id,
         fileName: figma.root.name || "Untitled",
         userName: figma.currentUser ? (figma.currentUser.name || "") : "",
+        hasDesktopContent: hasDesktopContent,
+        hasMobileContent: hasMobileContent,
       };
       figma.ui.postMessage({ type: "pages-data", pages: pages, fileInfo: fileInfo });
     } catch(e) {
-      figma.ui.postMessage({ type: "pages-data", pages: [], fileInfo: { fileName: "", userName: "" }, error: String(e) });
+      figma.ui.postMessage({ type: "pages-data", pages: [], fileInfo: { fileId: "", fileName: "", userName: "" }, error: String(e) });
     }
   }
   if (msg.type === "create-pages") {
@@ -486,21 +599,30 @@ figma.ui.onmessage = async function(msg) {
     allPages.forEach(function(p) { sorted.push(p); });
     sorted.forEach(function(p, i) { figma.root.insertChild(i, p); });
     var updatedPages = [];
+    var hasDesktopContent2 = false;
+    var hasMobileContent2 = false;
     for (var pi = 0; pi < figma.root.children.length; pi++) {
-      updatedPages.push({ id: figma.root.children[pi].id, name: figma.root.children[pi].name });
+      var cpg = figma.root.children[pi];
+      updatedPages.push({ id: cpg.id, name: cpg.name });
+      var cpn = cpg.name.toLowerCase();
+      if (cpn.indexOf("desktop") !== -1 && cpg.children.length > 0) hasDesktopContent2 = true;
+      if (cpn.indexOf("mobile") !== -1 && cpg.children.length > 0) hasMobileContent2 = true;
     }
     figma.ui.postMessage({ type: "pages-data", pages: updatedPages, fileInfo: {
+      fileId: figma.root.id,
       fileName: figma.root.name || "Untitled",
       userName: figma.currentUser ? (figma.currentUser.name || "") : "",
+      hasDesktopContent: hasDesktopContent2,
+      hasMobileContent: hasMobileContent2,
     }});
   }
   // ── Workflow: design tokens check ─────────────────────────────────────────
   if (msg.type === "check-tokens") {
     try {
-      var allVars = figma.variables.getLocalVariables();
-      var collections = figma.variables.getLocalVariableCollections();
-      var textStyles = figma.getLocalTextStyles();
-      var effectStyles = figma.getLocalEffectStyles();
+      var allVars = await figma.variables.getLocalVariablesAsync();
+      var collections = await figma.variables.getLocalVariableCollectionsAsync();
+      var textStyles = await figma.getLocalTextStylesAsync();
+      var effectStyles = await figma.getLocalEffectStylesAsync();
 
       var counts = countTokensByCategory(allVars, collections);
       for (var esi = 0; esi < effectStyles.length; esi++) {
@@ -575,10 +697,10 @@ figma.ui.onmessage = async function(msg) {
     figma.ui.postMessage({ type:"generate-complete" });
     // Refresh token counts for workflow step 2
     try {
-      var allVars2 = figma.variables.getLocalVariables();
-      var cols2 = figma.variables.getLocalVariableCollections();
-      var ts2 = figma.getLocalTextStyles();
-      var es2 = figma.getLocalEffectStyles();
+      var allVars2 = await figma.variables.getLocalVariablesAsync();
+      var cols2 = await figma.variables.getLocalVariableCollectionsAsync();
+      var ts2 = await figma.getLocalTextStylesAsync();
+      var es2 = await figma.getLocalEffectStylesAsync();
       var counts2 = countTokensByCategory(allVars2, cols2);
       for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)counts2.shadows++;}
       counts2.textStyles = ts2.length;
@@ -589,6 +711,7 @@ figma.ui.onmessage = async function(msg) {
   }
 
   if (msg.type === "generate-promo-pages") {
+    await figma.loadAllPagesAsync();
     try {
       await generatePromoStructure(msg);
       figma.ui.postMessage({ type: "promo-generated", success: true });
@@ -599,6 +722,7 @@ figma.ui.onmessage = async function(msg) {
   }
 
   if (msg.type === "delete-wireframes") {
+    await figma.loadAllPagesAsync();
     try {
       var promoNames = ["promo/hero", "promo/popup", "promo/popup-thankyou", "promo/banner"];
       var allPages = figma.root.children;
@@ -624,6 +748,7 @@ figma.ui.onmessage = async function(msg) {
   }
 
   if (msg.type === "check-images-export") {
+    await figma.loadAllPagesAsync();
     try {
       var auditPages2 = getAuditPages();
       var missingExport = [];
@@ -653,6 +778,7 @@ figma.ui.onmessage = async function(msg) {
   }
 
   if (msg.type === "build-html") {
+    await figma.loadAllPagesAsync();
     try {
       var opts = msg.options || {};
       var includeMobile = opts.includeMobile !== false;
@@ -684,7 +810,7 @@ figma.ui.onmessage = async function(msg) {
       for (var dci = 0; dci < desktopPage.children.length; dci++) {
         var dChild = desktopPage.children[dci];
         if (dChild.visible === false) continue;
-        var dTree = htmlWalkNode(dChild, cssVars, images, 0, null, pageType);
+        var dTree = await htmlWalkNode(dChild, cssVars, images, 0, null, pageType);
         if (dTree) desktopTrees.push(dTree);
       }
 
@@ -695,7 +821,7 @@ figma.ui.onmessage = async function(msg) {
         for (var mci = 0; mci < mobilePage.children.length; mci++) {
           var mChild = mobilePage.children[mci];
           if (mChild.visible === false) continue;
-          var mTree = htmlWalkNode(mChild, cssVars, images, 0, null, pageType);
+          var mTree = await htmlWalkNode(mChild, cssVars, images, 0, null, pageType);
           if (mTree) mobileTrees.push(mTree);
         }
       }
@@ -706,11 +832,11 @@ figma.ui.onmessage = async function(msg) {
       var spacingLookup = htmlBuildSpacingLookup(tokens, cssVars);
       htmlAddColorUtilities(utilMap, cssVars);
       for (var uti = 0; uti < desktopTrees.length; uti++) {
-        htmlAssignUtilities(desktopTrees[uti], utilMap, spacingLookup);
+        await htmlAssignUtilities(desktopTrees[uti], utilMap, spacingLookup);
       }
       if (mobileTrees) {
         for (var muti = 0; muti < mobileTrees.length; muti++) {
-          htmlAssignUtilities(mobileTrees[muti], utilMap, spacingLookup);
+          await htmlAssignUtilities(mobileTrees[muti], utilMap, spacingLookup);
         }
       }
 
@@ -823,20 +949,21 @@ figma.ui.onmessage = async function(msg) {
   }
 
   if (msg.type === "reset-tokens") {
+    await figma.loadAllPagesAsync();
     try {
-      var localTS = figma.getLocalTextStyles();
+      var localTS = await figma.getLocalTextStylesAsync();
       for (var ti = 0; ti < localTS.length; ti++) {
         localTS[ti].remove();
       }
-      var localES = figma.getLocalEffectStyles();
+      var localES = await figma.getLocalEffectStylesAsync();
       for (var ei = 0; ei < localES.length; ei++) {
         localES[ei].remove();
       }
-      var localVars = figma.variables.getLocalVariables();
+      var localVars = await figma.variables.getLocalVariablesAsync();
       for (var vi = 0; vi < localVars.length; vi++) {
         localVars[vi].remove();
       }
-      var localCols = figma.variables.getLocalVariableCollections();
+      var localCols = await figma.variables.getLocalVariableCollectionsAsync();
       for (var ci = 0; ci < localCols.length; ci++) {
         localCols[ci].remove();
       }

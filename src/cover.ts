@@ -138,7 +138,7 @@ export async function generateCover(info) {
   frame.appendChild(badgeText);
 
   // Navigate to cover page and zoom to frame
-  figma.currentPage = coverPage;
+  await figma.setCurrentPageAsync(coverPage);
   figma.viewport.scrollAndZoomIntoView([frame]);
 }
 

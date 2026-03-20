@@ -22,29 +22,29 @@ function bytesToDataUrl(bytes, format) {
   return "data:" + mime + ";base64," + bytesToBase64(bytes);
 }
 
-export function htmlResolveVarToCSSName(variableId) {
+export async function htmlResolveVarToCSSName(variableId) {
   try {
-    var v = figma.variables.getVariableById(variableId);
+    var v = await figma.variables.getVariableByIdAsync(variableId);
     if (!v) return null;
     return "--" + v.name.replace(/\//g, "-").replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase();
   } catch(e) { return null; }
 }
 
-export function htmlResolveVarValue(variableId, _seen) {
+export async function htmlResolveVarValue(variableId, _seen) {
   try {
     var seen = _seen || {};
     if (seen[variableId]) return null; // circular reference
     seen[variableId] = true;
-    var v = figma.variables.getVariableById(variableId);
+    var v = await figma.variables.getVariableByIdAsync(variableId);
     if (!v) return null;
-    var col = figma.variables.getVariableCollectionById(v.variableCollectionId);
+    var col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
     if (!col || !col.modes || !col.modes.length) return null;
     var modeId = col.modes[0].modeId;
     var val = v.valuesByMode[modeId];
     if (!val) return null;
     // Resolve alias
     if (val.type === "VARIABLE_ALIAS") {
-      return htmlResolveVarValue(val.id, seen);
+      return await htmlResolveVarValue(val.id, seen);
     }
     return val;
   } catch(e) { return null; }
@@ -72,21 +72,21 @@ export function htmlSanitizeName(name) {
 }
 
 // ── Shared helper: resolve variable binding to CSS var() or raw value ──
-function cssBindVar(alias, rawValue, unit, cssVars) {
+async function cssBindVar(alias, rawValue, unit, cssVars) {
   if (!alias || !alias.id) return rawValue + unit;
-  var name = htmlResolveVarToCSSName(alias.id);
+  var name = await htmlResolveVarToCSSName(alias.id);
   if (!name) return rawValue + unit;
   cssVars[name] = rawValue + unit;
   return "var(" + name + ")";
 }
 
 // Resolve a bound fill color to CSS, with variable binding support
-function cssFillColor(fillAlias, color, paintOpacity, cssVars) {
+async function cssFillColor(fillAlias, color, paintOpacity, cssVars) {
   var raw = htmlColorToCSS(color, paintOpacity);
   if (!fillAlias || !fillAlias.id) return raw;
-  var name = htmlResolveVarToCSSName(fillAlias.id);
+  var name = await htmlResolveVarToCSSName(fillAlias.id);
   if (!name) return raw;
-  var resolved = htmlResolveVarValue(fillAlias.id, null);
+  var resolved = await htmlResolveVarValue(fillAlias.id, null);
   cssVars[name] = resolved ? htmlColorToCSS(resolved, paintOpacity) : raw;
   // When paint has sub-1 opacity, the resolved color already bakes it in — use raw value
   if (paintOpacity < 1) return cssVars[name];
@@ -161,7 +161,7 @@ function extractPosition(node, styles, cssVars, bv) {
 }
 
 // ── 2. extractLayout — Flexbox/Grid from auto-layout ──
-function extractLayout(node, styles, cssVars, bv) {
+async function extractLayout(node, styles, cssVars, bv) {
   if (!node.layoutMode || node.layoutMode === "NONE") return;
 
   // Grid layout
@@ -190,8 +190,8 @@ function extractLayout(node, styles, cssVars, bv) {
       styles["grid-template-rows"] = rows.join(" ");
     }
     // Grid gap
-    var colGap = node.itemSpacing > 0 ? cssBindVar(bv.itemSpacing, node.itemSpacing, "px", cssVars) : null;
-    var rowGap = node.counterAxisSpacing > 0 ? cssBindVar(bv.counterAxisSpacing, node.counterAxisSpacing, "px", cssVars) : null;
+    var colGap = node.itemSpacing > 0 ? await cssBindVar(bv.itemSpacing, node.itemSpacing, "px", cssVars) : null;
+    var rowGap = node.counterAxisSpacing > 0 ? await cssBindVar(bv.counterAxisSpacing, node.counterAxisSpacing, "px", cssVars) : null;
     if (colGap && rowGap) styles["gap"] = rowGap + " " + colGap;
     else if (colGap) styles["column-gap"] = colGap;
     else if (rowGap) styles["row-gap"] = rowGap;
@@ -216,11 +216,11 @@ function extractLayout(node, styles, cssVars, bv) {
 
     // Gap (primary axis)
     if (node.itemSpacing > 0) {
-      styles["gap"] = cssBindVar(bv.itemSpacing, node.itemSpacing, "px", cssVars);
+      styles["gap"] = await cssBindVar(bv.itemSpacing, node.itemSpacing, "px", cssVars);
     }
     // Counter-axis gap (wrap only — row-gap separate from column-gap)
     if (node.layoutWrap === "WRAP" && node.counterAxisSpacing !== null && node.counterAxisSpacing !== undefined && node.counterAxisSpacing > 0) {
-      styles["row-gap"] = cssBindVar(bv.counterAxisSpacing, node.counterAxisSpacing, "px", cssVars);
+      styles["row-gap"] = await cssBindVar(bv.counterAxisSpacing, node.counterAxisSpacing, "px", cssVars);
     }
   }
 
@@ -230,7 +230,7 @@ function extractLayout(node, styles, cssVars, bv) {
   for (var pi = 0; pi < padProps.length; pi++) {
     var pv = node[padProps[pi]];
     if (pv > 0) {
-      padVals.push(cssBindVar(bv[padProps[pi]], pv, "px", cssVars));
+      padVals.push(await cssBindVar(bv[padProps[pi]], pv, "px", cssVars));
     } else padVals.push("0");
   }
   if (padVals.some(function(v) { return v !== "0"; })) {
@@ -244,7 +244,7 @@ function extractLayout(node, styles, cssVars, bv) {
 }
 
 // ── 3. extractSizing — Width, height, flex, min/max, overflow ──
-function extractSizing(node, styles, cssVars, bv) {
+async function extractSizing(node, styles, cssVars, bv) {
   // Absolute elements: dimensions handled by extractPosition
   if (node.layoutPositioning === "ABSOLUTE") {
     if (node.clipsContent) styles["overflow"] = "hidden";
@@ -258,7 +258,7 @@ function extractSizing(node, styles, cssVars, bv) {
     if (parentDir === "HORIZONTAL") {
       var flexBasis = "auto";
       if (node.minWidth && node.minWidth > 0 && node.minWidth < 10000) {
-        flexBasis = cssBindVar(bv.minWidth, Math.round(node.minWidth), "px", cssVars);
+        flexBasis = await cssBindVar(bv.minWidth, Math.round(node.minWidth), "px", cssVars);
         styles["min-width"] = flexBasis;
       }
       styles["flex"] = "1 1 " + flexBasis;
@@ -282,18 +282,18 @@ function extractSizing(node, styles, cssVars, bv) {
 
   // Max/min width
   if (node.maxWidth && node.maxWidth < 10000) {
-    styles["max-width"] = cssBindVar(bv.maxWidth, Math.round(node.maxWidth), "px", cssVars);
+    styles["max-width"] = await cssBindVar(bv.maxWidth, Math.round(node.maxWidth), "px", cssVars);
   }
   if (!styles["min-width"] && node.minWidth && node.minWidth > 0 && node.minWidth < 10000) {
-    styles["min-width"] = cssBindVar(bv.minWidth, Math.round(node.minWidth), "px", cssVars);
+    styles["min-width"] = await cssBindVar(bv.minWidth, Math.round(node.minWidth), "px", cssVars);
   }
 
   // Min/max height
   if (node.minHeight && node.minHeight > 0 && node.minHeight < 10000) {
-    styles["min-height"] = cssBindVar(bv.minHeight, Math.round(node.minHeight), "px", cssVars);
+    styles["min-height"] = await cssBindVar(bv.minHeight, Math.round(node.minHeight), "px", cssVars);
   }
   if (node.maxHeight && node.maxHeight < 10000) {
-    styles["max-height"] = cssBindVar(bv.maxHeight, Math.round(node.maxHeight), "px", cssVars);
+    styles["max-height"] = await cssBindVar(bv.maxHeight, Math.round(node.maxHeight), "px", cssVars);
   }
 
   // Overflow
@@ -301,7 +301,7 @@ function extractSizing(node, styles, cssVars, bv) {
 }
 
 // ── 4. extractFills — Background colors, gradients, images ──
-function extractFills(node, styles, cssVars, bv) {
+async function extractFills(node, styles, cssVars, bv) {
   // TEXT fills are text color, not background — handled in extractText
   if (node.type === "TEXT") return;
   if (!node.fills || !Array.isArray(node.fills) || node.fills.length === 0) return;
@@ -316,15 +316,15 @@ function extractFills(node, styles, cssVars, bv) {
     var paintOpacity = fill.opacity !== undefined ? fill.opacity : 1;
 
     if (fill.type === "SOLID") {
-      bgColors.push(cssFillColor(fillBindings[fi], fill.color, paintOpacity, cssVars));
+      bgColors.push(await cssFillColor(fillBindings[fi], fill.color, paintOpacity, cssVars));
     } else if (fill.type === "GRADIENT_LINEAR" && fill.gradientStops && fill.gradientStops.length > 0) {
       var stops = [];
       for (var gi = 0; gi < fill.gradientStops.length; gi++) {
         var gs = fill.gradientStops[gi];
         var stopColor = htmlColorToCSS(gs.color, paintOpacity);
         if (gs.boundVariables && gs.boundVariables.color) {
-          var scn = htmlResolveVarToCSSName(gs.boundVariables.color.id);
-          if (scn) { var scResolved = htmlResolveVarValue(gs.boundVariables.color.id, null); cssVars[scn] = scResolved ? htmlColorToCSS(scResolved, paintOpacity) : stopColor; stopColor = "var(" + scn + ")"; }
+          var scn = await htmlResolveVarToCSSName(gs.boundVariables.color.id);
+          if (scn) { var scResolved = await htmlResolveVarValue(gs.boundVariables.color.id, null); cssVars[scn] = scResolved ? htmlColorToCSS(scResolved, paintOpacity) : stopColor; stopColor = "var(" + scn + ")"; }
         }
         stops.push(stopColor + " " + Math.round(gs.position * 100) + "%");
       }
@@ -393,11 +393,11 @@ function extractFills(node, styles, cssVars, bv) {
 }
 
 // ── 5. extractCorners — Border radius ──
-function extractCorners(node, styles, cssVars, bv) {
+async function extractCorners(node, styles, cssVars, bv) {
   if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
     // Uniform radius — check for variable binding
     var alias = bv.topLeftRadius || bv.cornerRadius;
-    styles["border-radius"] = cssBindVar(alias, node.cornerRadius, "px", cssVars);
+    styles["border-radius"] = await cssBindVar(alias, node.cornerRadius, "px", cssVars);
   } else if (node.cornerRadius !== undefined && typeof node.cornerRadius !== "number") {
     // Mixed corners — individual values with variable bindings
     var tl = node.topLeftRadius || 0;
@@ -405,17 +405,17 @@ function extractCorners(node, styles, cssVars, bv) {
     var br = node.bottomRightRadius || 0;
     var bl = node.bottomLeftRadius || 0;
     if (tl > 0 || tr > 0 || br > 0 || bl > 0) {
-      var tlv = tl > 0 ? cssBindVar(bv.topLeftRadius, tl, "px", cssVars) : "0";
-      var trv = tr > 0 ? cssBindVar(bv.topRightRadius, tr, "px", cssVars) : "0";
-      var brv = br > 0 ? cssBindVar(bv.bottomRightRadius, br, "px", cssVars) : "0";
-      var blv = bl > 0 ? cssBindVar(bv.bottomLeftRadius, bl, "px", cssVars) : "0";
+      var tlv = tl > 0 ? await cssBindVar(bv.topLeftRadius, tl, "px", cssVars) : "0";
+      var trv = tr > 0 ? await cssBindVar(bv.topRightRadius, tr, "px", cssVars) : "0";
+      var brv = br > 0 ? await cssBindVar(bv.bottomRightRadius, br, "px", cssVars) : "0";
+      var blv = bl > 0 ? await cssBindVar(bv.bottomLeftRadius, bl, "px", cssVars) : "0";
       styles["border-radius"] = tlv + " " + trv + " " + brv + " " + blv;
     }
   }
 }
 
 // ── 6. extractStrokes — Borders ──
-function extractStrokes(node, styles, cssVars, bv) {
+async function extractStrokes(node, styles, cssVars, bv) {
   if (!node.strokes || node.strokes.length === 0) return;
 
   var stroke = node.strokes[0];
@@ -429,7 +429,7 @@ function extractStrokes(node, styles, cssVars, bv) {
   }
 
   // Stroke color with variable binding
-  var sc = cssFillColor(bv.strokes && bv.strokes[0], stroke.color, 1, cssVars);
+  var sc = await cssFillColor(bv.strokes && bv.strokes[0], stroke.color, 1, cssVars);
 
   // Check for individual stroke weights
   var hasIndividual = typeof node.strokeTopWeight === "number" && typeof node.strokeBottomWeight === "number"
@@ -440,19 +440,19 @@ function extractStrokes(node, styles, cssVars, bv) {
     // Individual stroke weights per side
     styles["border-style"] = borderStyle;
     styles["border-color"] = sc;
-    if (node.strokeTopWeight > 0) styles["border-top-width"] = cssBindVar(bv.strokeTopWeight, node.strokeTopWeight, "px", cssVars);
+    if (node.strokeTopWeight > 0) styles["border-top-width"] = await cssBindVar(bv.strokeTopWeight, node.strokeTopWeight, "px", cssVars);
     else styles["border-top-width"] = "0";
-    if (node.strokeRightWeight > 0) styles["border-right-width"] = cssBindVar(bv.strokeRightWeight, node.strokeRightWeight, "px", cssVars);
+    if (node.strokeRightWeight > 0) styles["border-right-width"] = await cssBindVar(bv.strokeRightWeight, node.strokeRightWeight, "px", cssVars);
     else styles["border-right-width"] = "0";
-    if (node.strokeBottomWeight > 0) styles["border-bottom-width"] = cssBindVar(bv.strokeBottomWeight, node.strokeBottomWeight, "px", cssVars);
+    if (node.strokeBottomWeight > 0) styles["border-bottom-width"] = await cssBindVar(bv.strokeBottomWeight, node.strokeBottomWeight, "px", cssVars);
     else styles["border-bottom-width"] = "0";
-    if (node.strokeLeftWeight > 0) styles["border-left-width"] = cssBindVar(bv.strokeLeftWeight, node.strokeLeftWeight, "px", cssVars);
+    if (node.strokeLeftWeight > 0) styles["border-left-width"] = await cssBindVar(bv.strokeLeftWeight, node.strokeLeftWeight, "px", cssVars);
     else styles["border-left-width"] = "0";
   } else {
     // Uniform stroke weight
     var swVal = typeof node.strokeWeight === "number" ? node.strokeWeight : 0;
     if (swVal > 0) {
-      var swCss = cssBindVar(bv.strokeWeight, swVal, "px", cssVars);
+      var swCss = await cssBindVar(bv.strokeWeight, swVal, "px", cssVars);
       styles["border"] = swCss + " " + borderStyle + " " + sc;
     }
   }
@@ -469,7 +469,7 @@ function extractStrokes(node, styles, cssVars, bv) {
 }
 
 // ── 7. extractEffects — Shadows, blur, backdrop-filter ──
-function extractEffects(node, styles, cssVars, bv) {
+async function extractEffects(node, styles, cssVars, bv) {
   if (!node.effects || node.effects.length === 0) return;
 
   var shadows = [];
@@ -490,25 +490,25 @@ function extractEffects(node, styles, cssVars, bv) {
       var eColor = htmlColorToCSS(eff.color, 1);
 
       // Variable bindings for shadow properties
-      var oxCss = ebv.offsetX ? cssBindVar(ebv.offsetX, ox, "px", cssVars) : ox + "px";
-      var oyCss = ebv.offsetY ? cssBindVar(ebv.offsetY, oy, "px", cssVars) : oy + "px";
-      var erCss = ebv.radius ? cssBindVar(ebv.radius, eRadius, "px", cssVars) : eRadius + "px";
-      var esCss = ebv.spread ? cssBindVar(ebv.spread, eSpread, "px", cssVars) : eSpread + "px";
+      var oxCss = ebv.offsetX ? await cssBindVar(ebv.offsetX, ox, "px", cssVars) : ox + "px";
+      var oyCss = ebv.offsetY ? await cssBindVar(ebv.offsetY, oy, "px", cssVars) : oy + "px";
+      var erCss = ebv.radius ? await cssBindVar(ebv.radius, eRadius, "px", cssVars) : eRadius + "px";
+      var esCss = ebv.spread ? await cssBindVar(ebv.spread, eSpread, "px", cssVars) : eSpread + "px";
       if (ebv.color) {
-        var ecn = htmlResolveVarToCSSName(ebv.color.id);
-        if (ecn) { var ecResolved = htmlResolveVarValue(ebv.color.id, null); cssVars[ecn] = ecResolved ? htmlColorToCSS(ecResolved, 1) : eColor; eColor = "var(" + ecn + ")"; }
+        var ecn = await htmlResolveVarToCSSName(ebv.color.id);
+        if (ecn) { var ecResolved = await htmlResolveVarValue(ebv.color.id, null); cssVars[ecn] = ecResolved ? htmlColorToCSS(ecResolved, 1) : eColor; eColor = "var(" + ecn + ")"; }
       }
 
       shadows.push(prefix + oxCss + " " + oyCss + " " + erCss + " " + esCss + " " + eColor);
     } else if (eff.type === "LAYER_BLUR") {
       var blurR = eff.radius || 0;
       var blurBv = eff.boundVariables || {};
-      var blurCss = blurBv.radius ? cssBindVar(blurBv.radius, blurR, "px", cssVars) : blurR + "px";
+      var blurCss = blurBv.radius ? await cssBindVar(blurBv.radius, blurR, "px", cssVars) : blurR + "px";
       filters.push("blur(" + blurCss + ")");
     } else if (eff.type === "BACKGROUND_BLUR") {
       var bbR = eff.radius || 0;
       var bbBv = eff.boundVariables || {};
-      var bbCss = bbBv.radius ? cssBindVar(bbBv.radius, bbR, "px", cssVars) : bbR + "px";
+      var bbCss = bbBv.radius ? await cssBindVar(bbBv.radius, bbR, "px", cssVars) : bbR + "px";
       backdropFilters.push("blur(" + bbCss + ")");
     } else if (eff.type === "GLASS") {
       // Approximate glass as backdrop blur
@@ -523,11 +523,11 @@ function extractEffects(node, styles, cssVars, bv) {
 }
 
 // ── 8. extractOpacity — Layer opacity ──
-function extractOpacity(node, styles, cssVars, bv) {
+async function extractOpacity(node, styles, cssVars, bv) {
   if (node.opacity === undefined || node.opacity >= 1) return;
   var val = Math.round(node.opacity * 100) + "%";
   if (bv.opacity) {
-    var name = htmlResolveVarToCSSName(bv.opacity.id);
+    var name = await htmlResolveVarToCSSName(bv.opacity.id);
     if (name) { cssVars[name] = val; styles["opacity"] = "var(" + name + ")"; return; }
   }
   styles["opacity"] = val;
@@ -548,7 +548,7 @@ function extractBlendMode(node, styles, cssVars, bv) {
 }
 
 // ── 10. extractText — Typography (TEXT nodes only) ──
-function extractText(node, styles, cssVars, bv) {
+async function extractText(node, styles, cssVars, bv) {
   // Font family
   if (node.fontName && typeof node.fontName === "object" && node.fontName.family) {
     styles["font-family"] = "'" + node.fontName.family + "', sans-serif";
@@ -556,12 +556,12 @@ function extractText(node, styles, cssVars, bv) {
 
   // Font size with variable binding
   if (typeof node.fontSize === "number" && node.fontSize > 0) {
-    styles["font-size"] = cssBindVar(bv.fontSize, node.fontSize, "px", cssVars);
+    styles["font-size"] = await cssBindVar(bv.fontSize, node.fontSize, "px", cssVars);
   }
 
   // Font weight — prefer numeric fontWeight, fallback to style name parsing
   if (typeof node.fontWeight === "number") {
-    styles["font-weight"] = cssBindVar(bv.fontWeight, node.fontWeight, "", cssVars);
+    styles["font-weight"] = await cssBindVar(bv.fontWeight, node.fontWeight, "", cssVars);
   } else if (node.fontName && typeof node.fontName === "object" && node.fontName.style) {
     var styleWeightMap = { "Thin": "100", "Hairline": "100", "ExtraLight": "200", "UltraLight": "200", "Light": "300", "Regular": "400", "Normal": "400", "Medium": "500", "SemiBold": "600", "DemiBold": "600", "Bold": "700", "ExtraBold": "800", "UltraBold": "800", "Black": "900", "Heavy": "900" };
     var rawStyle = node.fontName.style;
@@ -577,9 +577,9 @@ function extractText(node, styles, cssVars, bv) {
   if (node.lineHeight && typeof node.lineHeight === "object" && node.lineHeight.value) {
     if (node.lineHeight.unit === "PERCENT") {
       var lhVal = Math.round(node.lineHeight.value) / 100;
-      styles["line-height"] = bv.lineHeight ? cssBindVar(bv.lineHeight, lhVal, "", cssVars) : String(lhVal);
+      styles["line-height"] = bv.lineHeight ? await cssBindVar(bv.lineHeight, lhVal, "", cssVars) : String(lhVal);
     } else if (node.lineHeight.unit === "PIXELS") {
-      styles["line-height"] = cssBindVar(bv.lineHeight, node.lineHeight.value, "px", cssVars);
+      styles["line-height"] = await cssBindVar(bv.lineHeight, node.lineHeight.value, "px", cssVars);
     }
   }
 
@@ -587,9 +587,9 @@ function extractText(node, styles, cssVars, bv) {
   if (node.letterSpacing && typeof node.letterSpacing === "object" && node.letterSpacing.value) {
     if (node.letterSpacing.unit === "PERCENT") {
       var lsVal = node.letterSpacing.value / 100;
-      styles["letter-spacing"] = bv.letterSpacing ? cssBindVar(bv.letterSpacing, lsVal, "em", cssVars) : lsVal + "em";
+      styles["letter-spacing"] = bv.letterSpacing ? await cssBindVar(bv.letterSpacing, lsVal, "em", cssVars) : lsVal + "em";
     } else {
-      styles["letter-spacing"] = cssBindVar(bv.letterSpacing, node.letterSpacing.value, "px", cssVars);
+      styles["letter-spacing"] = await cssBindVar(bv.letterSpacing, node.letterSpacing.value, "px", cssVars);
     }
   }
 
@@ -639,34 +639,34 @@ function extractText(node, styles, cssVars, bv) {
 
   // Paragraph spacing with variable binding
   if (typeof node.paragraphSpacing === "number" && node.paragraphSpacing > 0) {
-    styles["margin-bottom"] = cssBindVar(bv.paragraphSpacing, node.paragraphSpacing, "px", cssVars);
+    styles["margin-bottom"] = await cssBindVar(bv.paragraphSpacing, node.paragraphSpacing, "px", cssVars);
   }
 
   // Paragraph indent with variable binding
   if (typeof node.paragraphIndent === "number" && node.paragraphIndent > 0) {
-    styles["text-indent"] = cssBindVar(bv.paragraphIndent, node.paragraphIndent, "px", cssVars);
+    styles["text-indent"] = await cssBindVar(bv.paragraphIndent, node.paragraphIndent, "px", cssVars);
   }
 
   // Text color (fills on TEXT = foreground color)
   if (node.fills && Array.isArray(node.fills) && node.fills.length > 0 && node.fills[0].type === "SOLID") {
-    styles["color"] = cssFillColor(bv.fills && bv.fills[0], node.fills[0].color, 1, cssVars);
+    styles["color"] = await cssFillColor(bv.fills && bv.fills[0], node.fills[0].color, 1, cssVars);
   }
 }
 
 // ── Main CSS extraction — modular pipeline ──
-export function htmlExtractNodeCSS(node, cssVars) {
+export async function htmlExtractNodeCSS(node, cssVars) {
   var styles = {};
   var bv = node.boundVariables || {};
   extractPosition(node, styles, cssVars, bv);
-  extractLayout(node, styles, cssVars, bv);
-  extractSizing(node, styles, cssVars, bv);
-  extractFills(node, styles, cssVars, bv);
-  extractCorners(node, styles, cssVars, bv);
-  extractStrokes(node, styles, cssVars, bv);
-  extractEffects(node, styles, cssVars, bv);
-  extractOpacity(node, styles, cssVars, bv);
+  await extractLayout(node, styles, cssVars, bv);
+  await extractSizing(node, styles, cssVars, bv);
+  await extractFills(node, styles, cssVars, bv);
+  await extractCorners(node, styles, cssVars, bv);
+  await extractStrokes(node, styles, cssVars, bv);
+  await extractEffects(node, styles, cssVars, bv);
+  await extractOpacity(node, styles, cssVars, bv);
   extractBlendMode(node, styles, cssVars, bv);
-  if (node.type === "TEXT") extractText(node, styles, cssVars, bv);
+  if (node.type === "TEXT") await extractText(node, styles, cssVars, bv);
   return styles;
 }
 
@@ -770,7 +770,7 @@ export function htmlNodeIsExportableImage(node) {
   return isLeaf || isShape;
 }
 
-export function htmlNodeHasBgImageVar(node) {
+export async function htmlNodeHasBgImageVar(node) {
   // Check if the node (or its main component) is marked as a background image.
   // Detection priority: pluginData "role" → variable binding → component name fallback
   try {
@@ -789,13 +789,13 @@ export function htmlNodeHasBgImageVar(node) {
     // 3. Legacy: variable binding check
     var bv = node.boundVariables || {};
     if (bv.visible) {
-      var v = figma.variables.getVariableById(bv.visible.id);
+      var v = await figma.variables.getVariableByIdAsync(bv.visible.id);
       if (v && v.name === "background-image") return true;
     }
     if (node.type === "INSTANCE" && node.mainComponent) {
       var compBv = node.mainComponent.boundVariables || {};
       if (compBv.visible) {
-        var cv = figma.variables.getVariableById(compBv.visible.id);
+        var cv = await figma.variables.getVariableByIdAsync(compBv.visible.id);
         if (cv && cv.name === "background-image") return true;
       }
     }
@@ -810,9 +810,9 @@ export function htmlNodeHasBgImageVar(node) {
   return false;
 }
 
-export function htmlNodeHasImageFill(node) {
+export async function htmlNodeHasImageFill(node) {
   // Primary: detect via "background-image" boolean variable binding
-  if (htmlNodeHasBgImageVar(node)) return true;
+  if (await htmlNodeHasBgImageVar(node)) return true;
   // Fallback: container frames with exportSettings and IMAGE fill → background-image
   var hasChildren = ("children" in node) && node.children && node.children.length > 0;
   if (hasChildren && node.exportSettings && node.exportSettings.length > 0 && node.fills && Array.isArray(node.fills)) {
@@ -871,7 +871,7 @@ export async function htmlExportImage(node, progressCb) {
   }
 }
 
-export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
+export async function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   if (!node || node.visible === false) return null;
   if (depth > 20) return null; // safety limit
 
@@ -884,10 +884,10 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   var isSelect = nodeName.indexOf("dropdown") !== -1 || nodeName.indexOf("select") !== -1
     || compHint.indexOf("dropdown") !== -1 || compHint.indexOf("select") !== -1;
 
-  var styles = htmlExtractNodeCSS(node, cssVars);
+  var styles = await htmlExtractNodeCSS(node, cssVars);
   var text = null;
   var isExportableImage = htmlNodeIsExportableImage(node);
-  var hasImageFill = !isExportableImage && htmlNodeHasImageFill(node);
+  var hasImageFill = !isExportableImage && await htmlNodeHasImageFill(node);
   var imageName = null;
   var bgImageName = null;
   var bgImageNodeId = null;
@@ -897,7 +897,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
 
   // Detect if this node is a bg-image component instance (absolute-positioned)
   // that should be absorbed by its parent as CSS background-image
-  if (node.layoutPositioning === "ABSOLUTE" && htmlNodeHasBgImageVar(node)) {
+  if (node.layoutPositioning === "ABSOLUTE" && await htmlNodeHasBgImageVar(node)) {
     isBgImageChild = true;
     // Carry fills so parent can read scaleMode during absorption
     try { bgImageFills = node.fills; } catch(e) { bgImageFills = null; }
@@ -948,7 +948,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   // Walk children (skip for exportable images — they're leaf <img> tags)
   if ("children" in node && node.children && !isExportableImage) {
     for (var i = 0; i < node.children.length; i++) {
-      var child = htmlWalkNode(node.children[i], cssVars, images, depth + 1, null, pageType);
+      var child = await htmlWalkNode(node.children[i], cssVars, images, depth + 1, null, pageType);
       if (child) children.push(child);
     }
   }
@@ -1014,10 +1014,10 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   }
 
   // Helper to detect small icon nodes (close-x, chevron, etc.) in a child tree
-  var findIconInChildren = function(childList) {
+  var findIconInChildren = async function(childList) {
     for (var fi = 0; fi < childList.length; fi++) {
       var fc = childList[fi];
-      var fcNode = figma.getNodeById(fc.nodeId);
+      var fcNode = await figma.getNodeByIdAsync(fc.nodeId);
       if (!fcNode) continue;
       var hasExport = fcNode.exportSettings && fcNode.exportSettings.length > 0;
       var fcName = (fcNode.name || "").toLowerCase();
@@ -1033,7 +1033,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
         return { nodeId: fc.nodeId, nodeName: fc.nodeName, width: fcNode.width, height: fcNode.height, hasExport: hasExport };
       }
       if (fc.children && fc.children.length > 0) {
-        var found = findIconInChildren(fc.children);
+        var found = await findIconInChildren(fc.children);
         if (found) return found;
       }
     }
@@ -1045,7 +1045,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
 
   // For any select: detect chevron icon, remove from children so it renders as background-image
   if (isSelect && children.length > 0) {
-    var selIconInfo = findIconInChildren(children);
+    var selIconInfo = await findIconInChildren(children);
     if (selIconInfo) {
       iconNodeId = selIconInfo.nodeId;
       iconNodeName = selIconInfo.nodeName;
@@ -1069,7 +1069,7 @@ export function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   // For collapsed elements (button, input, a), propagate child styles upward
   // since children won't appear in the HTML output.
   if (tag === "button" || tag === "input" || tag === "a") {
-    var iconInfo = findIconInChildren(children);
+    var iconInfo = await findIconInChildren(children);
     if (iconInfo) {
       iconNodeId = iconInfo.nodeId;
       iconNodeName = iconInfo.nodeName;
@@ -1542,7 +1542,7 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
   if (!tree) return;
   // Export leaf <img> nodes
   if (tree.isImage && tree.nodeId) {
-    var node = figma.getNodeById(tree.nodeId);
+    var node = await figma.getNodeByIdAsync(tree.nodeId);
     if (node) {
       counter.done++;
       if (progressCb) progressCb(counter.done, counter.total);
@@ -1558,7 +1558,7 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
   }
   // Export icon images for collapsed elements (close button X, select chevron)
   if (tree.iconNodeId) {
-    var iconNode = figma.getNodeById(tree.iconNodeId);
+    var iconNode = await figma.getNodeByIdAsync(tree.iconNodeId);
     if (iconNode) {
       counter.done++;
       if (progressCb) progressCb(counter.done, counter.total);
@@ -1603,7 +1603,7 @@ export async function htmlCollectImages(tree, images, progressCb, counter) {
   }
   // Export container background images
   if (tree.hasBgImage && (tree.bgImageNodeId || tree.nodeId)) {
-    var bgNode = figma.getNodeById(tree.bgImageNodeId || tree.nodeId);
+    var bgNode = await figma.getNodeByIdAsync(tree.bgImageNodeId || tree.nodeId);
     if (bgNode) {
       counter.done++;
       if (progressCb) progressCb(counter.done, counter.total);
@@ -2020,7 +2020,7 @@ function resolveStylesToUtilities(styles, utilMap, spacingLookup) {
   return { utils: utils, remaining: remaining };
 }
 
-export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
+export async function htmlAssignUtilities(tree, utilMap, spacingLookup) {
   if (!tree) return;
   var result = resolveStylesToUtilities(tree.styles, utilMap, spacingLookup);
   // Preserve existing utility classes (e.g. col-span-N added during tree walk)
@@ -2039,7 +2039,7 @@ export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
       // Always read label position from Figma node's x/y in px (matches design, resolves to utility classes)
       var labelNode = htmlFindLabelNode(tree);
       if (labelNode) {
-        var lNode = figma.getNodeById(labelNode.nodeId);
+        var lNode = await figma.getNodeByIdAsync(labelNode.nodeId);
         if (lNode) {
           if (typeof lNode.x === "number") flLabelStyles["left"] = Math.round(lNode.x) + "px";
           if (typeof lNode.y === "number") flLabelStyles["top"] = Math.round(lNode.y) + "px";
@@ -2057,7 +2057,7 @@ export function htmlAssignUtilities(tree, utilMap, spacingLookup) {
 
   if (tree.children) {
     for (var ci = 0; ci < tree.children.length; ci++) {
-      htmlAssignUtilities(tree.children[ci], utilMap, spacingLookup);
+      await htmlAssignUtilities(tree.children[ci], utilMap, spacingLookup);
     }
   }
 }

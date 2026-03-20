@@ -4,7 +4,7 @@ import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, parse
 export async function generateFoundationsPage(msg) {
   var page = findPageByHint("foundations");
   if (!page) return;
-  figma.currentPage = page;
+  await figma.setCurrentPageAsync(page);
 
   // Load all Inter + user font weights using fallback-aware loader
   var stdWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
@@ -39,12 +39,20 @@ export async function generateFoundationsPage(msg) {
   var y = PAD;
 
   // ── Look up color variables for binding ──
-  var fColorCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name === "Colors"; });
+  var fColorColsAll = await figma.variables.getLocalVariableCollectionsAsync();
+  var fColorCols = [];
+  for (var fcci = 0; fcci < fColorColsAll.length; fcci++) {
+    if (fColorColsAll[fcci].name === "Colors") fColorCols.push(fColorColsAll[fcci]);
+  }
   var fColorVarMap = {};
   if (fColorCols.length > 0) {
-    var fColorVars = figma.variables.getLocalVariables().filter(function(v) {
-      return v.variableCollectionId === fColorCols[0].id && v.resolvedType === "COLOR";
-    });
+    var fColorVarsAll = await figma.variables.getLocalVariablesAsync();
+    var fColorVars = [];
+    for (var fcfi = 0; fcfi < fColorVarsAll.length; fcfi++) {
+      if (fColorVarsAll[fcfi].variableCollectionId === fColorCols[0].id && fColorVarsAll[fcfi].resolvedType === "COLOR") {
+        fColorVars.push(fColorVarsAll[fcfi]);
+      }
+    }
     for (var fcvi = 0; fcvi < fColorVars.length; fcvi++) {
       fColorVarMap[fColorVars[fcvi].name] = fColorVars[fcvi];
     }
@@ -238,7 +246,7 @@ export async function generateFoundationsPage(msg) {
       return r;
     }
     // Helper: create a styled text node from a text style entry
-    var figmaTextStyles = figma.getLocalTextStyles();
+    var figmaTextStyles = await figma.getLocalTextStylesAsync();
     var figmaTextStyleMap = {};
     for (var fts = 0; fts < figmaTextStyles.length; fts++) {
       figmaTextStyleMap[figmaTextStyles[fts].name] = figmaTextStyles[fts];
@@ -251,7 +259,7 @@ export async function generateFoundationsPage(msg) {
       await loadFontWithFallback(fam, weight);
       var node = figma.createText();
       if (figmaStyle) {
-        node.textStyleId = figmaStyle.id;
+        await node.setTextStyleIdAsync(figmaStyle.id);
       } else {
         setFontName(node, fam, weight);
         node.fontSize = parseFloat(tsEntry.fontSize) || 16;
@@ -500,7 +508,7 @@ export async function generateFoundationsPage(msg) {
   var shadowsData = msg.shadows || [];
   if (shadowsData.length > 0) {
     sectionTitle("Shadows");
-    var shEffectStyles = figma.getLocalEffectStyles();
+    var shEffectStyles = await figma.getLocalEffectStylesAsync();
     var shStyleMap = {};
     for (var sem = 0; sem < shEffectStyles.length; sem++) { shStyleMap[shEffectStyles[sem].name] = shEffectStyles[sem]; }
     var shx = PAD;
@@ -513,7 +521,7 @@ export async function generateFoundationsPage(msg) {
       shRect.cornerRadius = 8;
       shRect.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
       var shStyle = shStyleMap["shadow/" + sh.name];
-      if (shStyle) { try { shRect.effectStyleId = shStyle.id; } catch(e) {} }
+      if (shStyle) { try { await shRect.setEffectStyleIdAsync(shStyle.id); } catch(e) {} }
       else { var effect = parseCssShadow(sh.value); if (effect) shRect.effects = [effect]; }
       frame.appendChild(shRect);
 

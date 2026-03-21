@@ -12,7 +12,7 @@ import { generateFoundationsPageComplex } from './foundations-complex';
 import { generateComponentsPageComplex } from './components-complex';
 import { importTokens } from './tokens-import';
 import { generateTokenData } from './tokens-generate';
-import { detectFileType, analyzeDesign, archiveExistingContent, createTokensFromAnalysis, reorganizeFrames, bindTokensToDesign, cleanupOriginalPages, scanExistingVariables, matchTokensWithExisting } from './design-import';
+import { analyzeDesign, archiveExistingContent, createTokensFromAnalysis, reorganizeFrames, bindTokensToDesign, cleanupOriginalPages, scanExistingVariables, matchTokensWithExisting } from './design-import';
 import {
   _htmlImageNameCount, htmlWalkNode, htmlCountImages, htmlCollectImages,
   htmlRenderCSS, htmlSanitizeName, htmlRenderNodeClean,
@@ -20,6 +20,13 @@ import {
 } from './html-export';
 
 figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for Designers by wowbrands" });
+
+// Unique file identifier — stored in the document via pluginData, used to key per-file settings
+var _fileUid = figma.root.getPluginData("fileUid");
+if (!_fileUid) {
+  _fileUid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  figma.root.setPluginData("fileUid", _fileUid);
+}
 
 // Helper: scan pages for content presence
 function getPageContentFlags() {
@@ -58,22 +65,34 @@ async function refreshTokenCounts() {
 
 // Load saved settings, then load all pages and register documentchange
 (async function() {
-  // Settings first (fast, non-blocking) — per-file storage keyed by file ID
-  var _settingsKey = "wf-settings-" + figma.root.id;
+  var _settingsKey = "wf-settings-" + _fileUid;
   try {
     var saved = await figma.clientStorage.getAsync(_settingsKey);
     // Migration: if no per-file settings, check for old global key
     if (!saved) {
       var oldSaved = await figma.clientStorage.getAsync("wf-settings");
       if (oldSaved) {
+        // Strip route/workflow state — old global settings may be from a different file
+        delete oldSaved.route;
+        delete oldSaved.importMode;
+        delete oldSaved.stepStatus;
+        delete oldSaved.routeBStep;
+        delete oldSaved.routeBAnalysis;
+        delete oldSaved.routeBExistingVars;
+        delete oldSaved.routeBBindStats;
+        delete oldSaved.currentFileId;
         saved = oldSaved;
         await figma.clientStorage.setAsync(_settingsKey, saved);
         await figma.clientStorage.deleteAsync("wf-settings");
       }
+      // Also migrate from old 0:0-keyed settings
+      var old00 = await figma.clientStorage.getAsync("wf-settings-0:0");
+      if (old00 && !saved) {
+        saved = old00;
+        await figma.clientStorage.setAsync(_settingsKey, saved);
+      }
     }
-    if (saved) {
-      figma.ui.postMessage({ type: "load-settings", settings: saved });
-    }
+    figma.ui.postMessage({ type: "load-settings", settings: saved || null, fileId: _fileUid });
   } catch(e) {}
   try {
     var aiConfig = await figma.clientStorage.getAsync("ai-config") || {};
@@ -500,15 +519,6 @@ figma.ui.onmessage = async function(msg) {
   }
   if (msg.type === "request-debug") { pushDebugData(); }
   // ── Design Import (Route B) ────────────────────────────────────────────
-  if (msg.type === "detect-file-type") {
-    await figma.loadAllPagesAsync();
-    try {
-      var fileType = await detectFileType();
-      figma.ui.postMessage({ type: "file-type-detected", fileType: fileType });
-    } catch (e) {
-      figma.ui.postMessage({ type: "file-type-detected", fileType: "fresh", error: String(e) });
-    }
-  }
   // ── Route B Step 1: Full pipeline ─────────────────────────────────────────
   if (msg.type === "routeb-step1") {
     await figma.loadAllPagesAsync();
@@ -580,7 +590,6 @@ figma.ui.onmessage = async function(msg) {
         cleanupResult: cleanupResult
       });
     } catch (e) {
-      console.error("routeb-step1 error:", e);
       figma.ui.postMessage({ type: "routeb-step1-error", error: String(e) });
     }
   }
@@ -603,7 +612,6 @@ figma.ui.onmessage = async function(msg) {
         bindStats: bindStats
       });
     } catch (e) {
-      console.error("routeb-apply-tokens error:", e);
       figma.ui.postMessage({ type: "routeb-tokens-error", error: String(e) });
     }
   }
@@ -612,18 +620,22 @@ figma.ui.onmessage = async function(msg) {
     await figma.loadAllPagesAsync();
     try {
       var pages = [];
+      var totalTopLevelChildren = 0;
       for (var pi = 0; pi < figma.root.children.length; pi++) {
-        pages.push({ id: figma.root.children[pi].id, name: figma.root.children[pi].name });
+        var pg = figma.root.children[pi];
+        pages.push({ id: pg.id, name: pg.name });
+        totalTopLevelChildren += pg.children.length;
       }
       var contentFlags = getPageContentFlags();
       var fileInfo = {
-        fileId: figma.root.id,
+        fileId: _fileUid,
         fileName: figma.root.name || "Untitled",
         userName: figma.currentUser ? (figma.currentUser.name || "") : "",
         hasDesktopContent: contentFlags.hasDesktopContent,
         hasMobileContent: contentFlags.hasMobileContent,
         hasFoundationsContent: contentFlags.hasFoundationsContent,
         hasComponentsContent: contentFlags.hasComponentsContent,
+        totalTopLevelChildren: totalTopLevelChildren,
       };
       figma.ui.postMessage({ type: "pages-data", pages: pages, fileInfo: fileInfo });
     } catch(e) {
@@ -665,18 +677,22 @@ figma.ui.onmessage = async function(msg) {
     allPages.forEach(function(p) { sorted.push(p); });
     sorted.forEach(function(p, i) { figma.root.insertChild(i, p); });
     var updatedPages = [];
+    var totalChildren2 = 0;
     for (var pi = 0; pi < figma.root.children.length; pi++) {
-      updatedPages.push({ id: figma.root.children[pi].id, name: figma.root.children[pi].name });
+      var cpg = figma.root.children[pi];
+      updatedPages.push({ id: cpg.id, name: cpg.name });
+      totalChildren2 += cpg.children.length;
     }
     var contentFlags2 = getPageContentFlags();
     figma.ui.postMessage({ type: "pages-data", pages: updatedPages, fileInfo: {
-      fileId: figma.root.id,
+      fileId: _fileUid,
       fileName: figma.root.name || "Untitled",
       userName: figma.currentUser ? (figma.currentUser.name || "") : "",
       hasDesktopContent: contentFlags2.hasDesktopContent,
       hasMobileContent: contentFlags2.hasMobileContent,
       hasFoundationsContent: contentFlags2.hasFoundationsContent,
       hasComponentsContent: contentFlags2.hasComponentsContent,
+      totalTopLevelChildren: totalChildren2,
     }});
   }
   // ── Workflow: design tokens check ─────────────────────────────────────────
@@ -999,9 +1015,12 @@ figma.ui.onmessage = async function(msg) {
   // API key is session-only (not persisted) for security
 
   if (msg.type === "save-settings") {
-    try {
-      await figma.clientStorage.setAsync("wf-settings-" + figma.root.id, msg.settings);
-    } catch(e) {}
+    // Only save if fileId matches current file (prevents cross-file contamination on file switch)
+    if (!msg.fileId || msg.fileId === _fileUid) {
+      try {
+        await figma.clientStorage.setAsync("wf-settings-" + _fileUid, msg.settings);
+      } catch(e) {}
+    }
   }
 
   if (msg.type === "save-ai-config") {
@@ -1012,7 +1031,7 @@ figma.ui.onmessage = async function(msg) {
 
   if (msg.type === "reset-settings") {
     try {
-      await figma.clientStorage.deleteAsync("wf-settings-" + figma.root.id);
+      await figma.clientStorage.deleteAsync("wf-settings-" + _fileUid);
       figma.ui.postMessage({ type: "settings-reset" });
     } catch(e) {}
   }

@@ -1501,25 +1501,6 @@ function renderWorkflow(data) {
     return;
   }
 
-  // Validate Route B state against actual pages
-  if (wfRoute === WF_ROUTE_B && wfRouteBStep >= 1) {
-    var criticalHints = ["desktop", "mobile", "components", "foundations"];
-    var foundCritical = 0;
-    for (var vci = 0; vci < criticalHints.length; vci++) {
-      for (var vpj = 0; vpj < pages.length; vpj++) {
-        if (pages[vpj].name.toLowerCase().replace(/[^a-z]/g, "").indexOf(criticalHints[vci]) !== -1) { foundCritical++; break; }
-      }
-    }
-    if (foundCritical < 3) {
-      wfRoute = WF_ROUTE_NONE;
-      wfRouteBStep = 0;
-      wfRouteBAnalysis = null;
-      wfRouteBExistingVars = null;
-      wfRouteBBindStats = null;
-      saveSettings();
-    }
-  }
-
   if (wfRoute === WF_ROUTE_NONE) {
     renderDetectionBanner(container, data);
     return;
@@ -1875,7 +1856,7 @@ var _saveTimer = null;
 function saveSettings() {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(function() {
-    parent.postMessage({ pluginMessage: { type: "save-settings", settings: collectSettings() } }, "*");
+    parent.postMessage({ pluginMessage: { type: "save-settings", fileId: wfCurrentFileId, settings: collectSettings() } }, "*");
   }, 400);
 }
 
@@ -1963,7 +1944,8 @@ function applyLoadedSettings(s) {
     var _rr = document.getElementById("results"); if (_rr) { _rr.innerHTML = ""; _rr.style.display = "none"; }
     var _sb = document.getElementById("score-bar"); if (_sb) _sb.style.display = "none";
   }
-  // Restore route state (with migration from old importMode)
+  // Restore route state — only if settings include route info
+  // (migrated settings have route stripped, so this stays WF_ROUTE_NONE for migrated files)
   if (s.route) {
     wfRoute = s.route;
   } else if (s.importMode) {
@@ -4837,17 +4819,19 @@ function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].st
 window.onmessage=function(event){
   var msg=event.data.pluginMessage; if(!msg)return;
   if(msg.type==="load-settings"){
+    // If fileId changed, reset state before applying new file's settings
+    var _lsFileChanged = msg.fileId && msg.fileId !== wfCurrentFileId;
+    if (_lsFileChanged) {
+      wfCurrentFileId = msg.fileId;
+      resetWorkflowState();
+    }
     applyLoadedSettings(msg.settings);
     // Collapse completed steps by default on load
     if (wfPagesHaveContent || wfStep3Skipped) wfFormState.step3Open = false;
     if (wfAuditPassed && !wfAuditStale) wfFormState.step4Open = false;
     updateBuildHtmlTab();
-    // Re-render workflow if it's visible
-    var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
-    // Auto-rerun audit on plugin open if previous results exist (catches changes made while plugin was closed)
-    if (wfLastAuditTs > 0) {
-      parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
-    }
+    // Trigger workflow render (always on first load, or on file switch)
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
   if(msg.type==="settings-reset"){
     resetWorkflowState();
@@ -4872,7 +4856,6 @@ window.onmessage=function(event){
           _aiNamingPendingSingle = null;
         }
         _aiNamingPendingBatch = false;
-        console.error("AI naming error:", err);
         return;
       }
       if (_aiNamingPendingSingle && names.length > 0) {
@@ -4930,12 +4913,17 @@ window.onmessage=function(event){
     reRenderFromStep("audit");
   }
   if(msg.type==="pages-data"){
-    // Reset all state when file changes
-    var incomingFileId = (msg.fileInfo && msg.fileInfo.fileId) || "";
-    var isFileChange = incomingFileId && incomingFileId !== wfCurrentFileId;
-    if (isFileChange) {
-      wfCurrentFileId = incomingFileId;
-      resetWorkflowState();
+    // Always track current file ID from backend
+    if (msg.fileInfo && msg.fileInfo.fileId) {
+      wfCurrentFileId = msg.fileInfo.fileId;
+    }
+    // First time on this file — empty file → Route A, has content → banner
+    if (wfRoute === WF_ROUTE_NONE) {
+      var fileHasContent = (msg.fileInfo && msg.fileInfo.totalTopLevelChildren > 0);
+      if (!fileHasContent) {
+        wfRoute = WF_ROUTE_A;
+      }
+      saveSettings();
     }
     // Cache for partial re-renders
     _lastPagesData = { pages: msg.pages || [], fileInfo: msg.fileInfo || {} };
@@ -4948,8 +4936,6 @@ window.onmessage=function(event){
     if (wfPagesHaveContent && !hadContentBefore) wfFormState.step3Open = false;
     try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
     catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
-    // Always detect file type (re-detect on every pages-data to catch reverts)
-    parent.postMessage({ pluginMessage: { type: "detect-file-type" } }, "*");
   }
   if(msg.type==="page-content-update"){
     var hadContent = wfPagesHaveContent;
@@ -4994,48 +4980,6 @@ window.onmessage=function(event){
     var wfAuditVisible = !!wfAuditData;
     if (auditTabVisible || wfAuditVisible) {
       parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
-    }
-    // Re-detect file type to catch reverts and structural changes
-    parent.postMessage({ pluginMessage: { type: "detect-file-type" } }, "*");
-  }
-  if(msg.type==="file-type-detected"){
-    var detectedType = msg.fileType || "fresh";
-    var prevRoute = wfRoute;
-    // Set initial route if not yet chosen
-    if (wfRoute === WF_ROUTE_NONE) {
-      if (detectedType === "existing") {
-        // Stay on NONE — show banner so user can choose
-      } else if (detectedType === "managed") {
-        wfRoute = WF_ROUTE_A; // Already managed, use Route A
-      } else {
-        wfRoute = WF_ROUTE_A; // Fresh file, use Route A
-      }
-    }
-    // If Route B active but file no longer matches Route B expectations:
-    // - "fresh" = file was fully reverted
-    // - "managed" with no Route B progress = user reverted a previously-managed file
-    // NOTE: "managed" is expected AFTER Route B Step 1 (it creates standard pages + tokens)
-    if (wfRoute === WF_ROUTE_B) {
-      var shouldReset = false;
-      var newRoute = WF_ROUTE_NONE;
-      if (detectedType === "fresh") {
-        shouldReset = true;
-      } else if (detectedType === "managed" && wfRouteBStep === 0) {
-        shouldReset = true;
-        newRoute = WF_ROUTE_A;
-      }
-      if (shouldReset) {
-        wfRoute = newRoute;
-        wfRouteBStep = 0;
-        wfRouteBAnalysis = null;
-        wfRouteBExistingVars = null;
-        wfRouteBBindStats = null;
-        saveSettings();
-      }
-    }
-
-    if (prevRoute !== wfRoute) {
-      parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
     }
   }
   // ── Route B message handlers ──
@@ -5097,7 +5041,9 @@ window.onmessage=function(event){
   if(msg.type==="reset-complete"){
     wfGenerated = false;
     parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
-    reRenderFromStep("tokens");
+    if (wfRoute !== WF_ROUTE_NONE) {
+      reRenderFromStep("tokens");
+    }
   }
   if(msg.type==="cover-generated"){
     wfFormState.generated = true;

@@ -871,6 +871,22 @@ export async function htmlExportImage(node, progressCb) {
   }
 }
 
+// Infer HTML input type from node name and label text
+function inferInputType(nodeName, labelTexts) {
+  var hints = (nodeName + " " + labelTexts.join(" ")).toLowerCase();
+  if (hints.indexOf("textarea") !== -1 || hints.indexOf("message") !== -1 || hints.indexOf("comment") !== -1 || hints.indexOf("description") !== -1) return "textarea";
+  if (hints.indexOf("email") !== -1) return "email";
+  if (hints.indexOf("password") !== -1) return "password";
+  if (hints.indexOf("phone") !== -1 || hints.indexOf("tel") !== -1) return "tel";
+  if (hints.indexOf("number") !== -1 || hints.indexOf("quantity") !== -1 || hints.indexOf("amount") !== -1) return "number";
+  if (hints.indexOf("url") !== -1 || hints.indexOf("website") !== -1) return "url";
+  if (hints.indexOf("date") !== -1 || hints.indexOf("birthday") !== -1) return "date";
+  if (hints.indexOf("search") !== -1) return "search";
+  if (hints.indexOf("checkbox") !== -1) return "checkbox";
+  if (hints.indexOf("radio") !== -1) return "radio";
+  return "text";
+}
+
 export async function htmlWalkNode(node, cssVars, images, depth, _unused, pageType) {
   if (!node || node.visible === false) return null;
   if (depth > 20) return null; // safety limit
@@ -1143,6 +1159,19 @@ export async function htmlWalkNode(node, cssVars, images, depth, _unused, pageTy
       return false;
     })(),
     isSelect: isSelect,
+    inputType: (function() {
+      if (isSelect) return "text";
+      if (tag !== "form-field-floating" && tag !== "form-field" && tag !== "input") return "text";
+      var labelTexts = [];
+      try {
+        if ("children" in node && node.children) {
+          for (var iti = 0; iti < node.children.length; iti++) {
+            if (node.children[iti].type === "TEXT") labelTexts.push(node.children[iti].characters || "");
+          }
+        }
+      } catch(e) {}
+      return inferInputType(node.name || "", labelTexts);
+    })(),
     _labelStyles: null,
     _inputStyles: null,
     nodeId: node.id,
@@ -1452,8 +1481,10 @@ export function htmlRenderNodeClean(tree, indent) {
       lines.push(pad + '    <select' + flfInputAttr + '>');
       lines.push(pad + '      <option value="" disabled hidden selected></option>');
       lines.push(pad + '    </select>');
+    } else if (tree.inputType === "textarea") {
+      lines.push(pad + '    <textarea' + flfInputAttr + '></textarea>');
     } else {
-      lines.push(pad + '    <input type="text"' + flfInputAttr + ' />');
+      lines.push(pad + '    <input type="' + tree.inputType + '"' + flfInputAttr + ' />');
     }
     if (flfLabel) {
       lines.push(pad + '    <label' + flfLabelAttr + '>' + flfLabel + '</label>');
@@ -1475,11 +1506,19 @@ export function htmlRenderNodeClean(tree, indent) {
     if (ffLabel) {
       lines.push(pad + '  <label' + ffLabelAttr + '>' + ffLabel + '</label>');
     }
-    lines.push(pad + '  <input type="text"' + ffInputAttr + (ffPlaceholder ? ' placeholder="' + ffPlaceholder + '"' : '') + ' />');
+    if (tree.inputType === "textarea") {
+      lines.push(pad + '  <textarea' + ffInputAttr + (ffPlaceholder ? ' placeholder="' + ffPlaceholder + '"' : '') + '></textarea>');
+    } else {
+      lines.push(pad + '  <input type="' + tree.inputType + '"' + ffInputAttr + (ffPlaceholder ? ' placeholder="' + ffPlaceholder + '"' : '') + ' />');
+    }
     lines.push(pad + '</div>');
   } else if (tree.tag === "input") {
     var inpText = htmlExtractTextFromTree(tree);
-    lines.push(pad + '<input' + attrs + ' type="text" placeholder="' + inpText + '"' + (tree.isRequired ? ' required' : '') + ' />');
+    if (tree.inputType === "textarea") {
+      lines.push(pad + '<textarea' + attrs + ' placeholder="' + inpText + '"' + (tree.isRequired ? ' required' : '') + '></textarea>');
+    } else {
+      lines.push(pad + '<input' + attrs + ' type="' + tree.inputType + '" placeholder="' + inpText + '"' + (tree.isRequired ? ' required' : '') + ' />');
+    }
   } else if (tree.tag === "button") {
     var btnText = htmlExtractTextFromTree(tree);
     // Icon-only buttons (e.g. close button) should be empty — don't fall back to node name

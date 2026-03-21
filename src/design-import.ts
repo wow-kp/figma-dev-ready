@@ -1042,45 +1042,6 @@ export async function bindTokensToDesign(
   return stats;
 }
 
-// ── File Type Detection ──────────────────────────────────────────────────────
-
-export async function detectFileType(): Promise<"existing" | "fresh" | "managed"> {
-  await figma.loadAllPagesAsync();
-  var pages = figma.root.children;
-  var contentPages = 0;
-  var totalChildren = 0;
-
-  for (var pi = 0; pi < pages.length; pi++) {
-    if (pages[pi].children.length > 0) {
-      contentPages++;
-      totalChildren += pages[pi].children.length;
-    }
-  }
-
-  // Empty or near-empty file
-  if (contentPages === 0 || totalChildren <= 1) return "fresh";
-
-  // Check for standard pages
-  var standardHints = ["cover", "foundations", "components", "desktop", "mobile"];
-  var foundStandard = 0;
-  for (var shi2 = 0; shi2 < standardHints.length; shi2++) {
-    for (var pj = 0; pj < pages.length; pj++) {
-      var norm = pages[pj].name.toLowerCase().replace(/[^a-z]/g, "");
-      if (norm.indexOf(standardHints[shi2]) !== -1) { foundStandard++; break; }
-    }
-  }
-
-  // Check for local variables
-  var localVars = await figma.variables.getLocalVariablesAsync();
-  var colorVarCount = localVars.filter(function(v) { return v.resolvedType === "COLOR"; }).length;
-
-  // Already managed: has most standard pages AND has variables
-  if (foundStandard >= 4 && colorVarCount > 5) return "managed";
-
-  // Existing design: has content but not plugin-managed
-  return "existing";
-}
-
 // ── Cleanup Original Pages ──────────────────────────────────────────────────
 
 export async function cleanupOriginalPages(): Promise<{ removedPages: string[] }> {

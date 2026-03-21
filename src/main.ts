@@ -21,25 +21,56 @@ import {
 
 figma.showUI(__html__, { width: 920, height: 680, title: "Dev-Ready Tools for Designers by wowbrands" });
 
-// Helper: check if Desktop/Mobile pages have content and notify UI
-async function sendPageContentUpdate() {
-  try { await figma.loadAllPagesAsync(); } catch(e) {}
-  var hasDesktopContent = false;
-  var hasMobileContent = false;
+// Helper: scan pages for content presence
+function getPageContentFlags() {
+  var flags = { hasDesktopContent: false, hasMobileContent: false, hasFoundationsContent: false, hasComponentsContent: false };
   for (var pi = 0; pi < figma.root.children.length; pi++) {
     var pg = figma.root.children[pi];
     var pn = pg.name.toLowerCase();
-    if (pn.indexOf("desktop") !== -1 && pg.children.length > 0) hasDesktopContent = true;
-    if (pn.indexOf("mobile") !== -1 && pg.children.length > 0) hasMobileContent = true;
+    if (pn.indexOf("desktop") !== -1 && pg.children.length > 0) flags.hasDesktopContent = true;
+    if (pn.indexOf("mobile") !== -1 && pg.children.length > 0) flags.hasMobileContent = true;
+    if (pn.indexOf("foundations") !== -1 && pg.children.length > 0) flags.hasFoundationsContent = true;
+    if (pn.indexOf("components") !== -1 && pg.children.length > 0) flags.hasComponentsContent = true;
   }
-  figma.ui.postMessage({ type: "page-content-update", hasDesktopContent: hasDesktopContent, hasMobileContent: hasMobileContent });
+  return flags;
+}
+
+// Helper: check if Desktop/Mobile pages have content and notify UI
+async function sendPageContentUpdate() {
+  try { await figma.loadAllPagesAsync(); } catch(e) {}
+  var flags = getPageContentFlags();
+  figma.ui.postMessage({ type: "page-content-update", hasDesktopContent: flags.hasDesktopContent, hasMobileContent: flags.hasMobileContent, hasFoundationsContent: flags.hasFoundationsContent, hasComponentsContent: flags.hasComponentsContent });
+}
+
+// Helper: gather token counts and send tokens-data message
+async function refreshTokenCounts() {
+  var allVars = await figma.variables.getLocalVariablesAsync();
+  var cols = await figma.variables.getLocalVariableCollectionsAsync();
+  var ts = await figma.getLocalTextStylesAsync();
+  var es = await figma.getLocalEffectStylesAsync();
+  var counts = countTokensByCategory(allVars, cols);
+  for (var i = 0; i < es.length; i++) { if (es[i].name.toLowerCase().indexOf("shadow") !== -1) counts.shadows++; }
+  counts.textStyles = ts.length;
+  counts.effectStyles = es.length;
+  counts.collections = cols.map(function(c) { return { name: c.name, count: allVars.filter(function(v) { return v.variableCollectionId === c.id; }).length }; });
+  figma.ui.postMessage({ type: "tokens-data", tokens: counts });
 }
 
 // Load saved settings, then load all pages and register documentchange
 (async function() {
-  // Settings first (fast, non-blocking)
+  // Settings first (fast, non-blocking) — per-file storage keyed by file ID
+  var _settingsKey = "wf-settings-" + figma.root.id;
   try {
-    var saved = await figma.clientStorage.getAsync("wf-settings");
+    var saved = await figma.clientStorage.getAsync(_settingsKey);
+    // Migration: if no per-file settings, check for old global key
+    if (!saved) {
+      var oldSaved = await figma.clientStorage.getAsync("wf-settings");
+      if (oldSaved) {
+        saved = oldSaved;
+        await figma.clientStorage.setAsync(_settingsKey, saved);
+        await figma.clientStorage.deleteAsync("wf-settings");
+      }
+    }
     if (saved) {
       figma.ui.postMessage({ type: "load-settings", settings: saved });
     }
@@ -463,22 +494,9 @@ figma.ui.onmessage = async function(msg) {
       await generateComponentsPageComplex();
       figma.ui.postMessage({ type: "specimens-generated", success: true });
     } catch(e) {
-      console.log("[Complex specimens] Error: " + e + " stack: " + (e.stack || ""));
       figma.ui.postMessage({ type: "specimens-generated", success: false, message: String(e) });
     }
-    // Refresh token counts
-    try {
-      var allVars2 = await figma.variables.getLocalVariablesAsync();
-      var cols2 = await figma.variables.getLocalVariableCollectionsAsync();
-      var ts2 = await figma.getLocalTextStylesAsync();
-      var es2 = await figma.getLocalEffectStylesAsync();
-      var counts2 = countTokensByCategory(allVars2, cols2);
-      for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)counts2.shadows++;}
-      counts2.textStyles = ts2.length;
-      counts2.effectStyles = es2.length;
-      counts2.collections = cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};});
-      figma.ui.postMessage({type:"tokens-data",tokens:counts2});
-    } catch(e){}
+    try { await refreshTokenCounts(); } catch(e) {}
   }
   if (msg.type === "request-debug") { pushDebugData(); }
   // ── Design Import (Route B) ────────────────────────────────────────────
@@ -594,21 +612,18 @@ figma.ui.onmessage = async function(msg) {
     await figma.loadAllPagesAsync();
     try {
       var pages = [];
-      var hasDesktopContent = false;
-      var hasMobileContent = false;
       for (var pi = 0; pi < figma.root.children.length; pi++) {
-        var pg = figma.root.children[pi];
-        pages.push({ id: pg.id, name: pg.name });
-        var pn = pg.name.toLowerCase();
-        if (pn.indexOf("desktop") !== -1 && pg.children.length > 0) hasDesktopContent = true;
-        if (pn.indexOf("mobile") !== -1 && pg.children.length > 0) hasMobileContent = true;
+        pages.push({ id: figma.root.children[pi].id, name: figma.root.children[pi].name });
       }
+      var contentFlags = getPageContentFlags();
       var fileInfo = {
         fileId: figma.root.id,
         fileName: figma.root.name || "Untitled",
         userName: figma.currentUser ? (figma.currentUser.name || "") : "",
-        hasDesktopContent: hasDesktopContent,
-        hasMobileContent: hasMobileContent,
+        hasDesktopContent: contentFlags.hasDesktopContent,
+        hasMobileContent: contentFlags.hasMobileContent,
+        hasFoundationsContent: contentFlags.hasFoundationsContent,
+        hasComponentsContent: contentFlags.hasComponentsContent,
       };
       figma.ui.postMessage({ type: "pages-data", pages: pages, fileInfo: fileInfo });
     } catch(e) {
@@ -650,41 +665,23 @@ figma.ui.onmessage = async function(msg) {
     allPages.forEach(function(p) { sorted.push(p); });
     sorted.forEach(function(p, i) { figma.root.insertChild(i, p); });
     var updatedPages = [];
-    var hasDesktopContent2 = false;
-    var hasMobileContent2 = false;
     for (var pi = 0; pi < figma.root.children.length; pi++) {
-      var cpg = figma.root.children[pi];
-      updatedPages.push({ id: cpg.id, name: cpg.name });
-      var cpn = cpg.name.toLowerCase();
-      if (cpn.indexOf("desktop") !== -1 && cpg.children.length > 0) hasDesktopContent2 = true;
-      if (cpn.indexOf("mobile") !== -1 && cpg.children.length > 0) hasMobileContent2 = true;
+      updatedPages.push({ id: figma.root.children[pi].id, name: figma.root.children[pi].name });
     }
+    var contentFlags2 = getPageContentFlags();
     figma.ui.postMessage({ type: "pages-data", pages: updatedPages, fileInfo: {
       fileId: figma.root.id,
       fileName: figma.root.name || "Untitled",
       userName: figma.currentUser ? (figma.currentUser.name || "") : "",
-      hasDesktopContent: hasDesktopContent2,
-      hasMobileContent: hasMobileContent2,
+      hasDesktopContent: contentFlags2.hasDesktopContent,
+      hasMobileContent: contentFlags2.hasMobileContent,
+      hasFoundationsContent: contentFlags2.hasFoundationsContent,
+      hasComponentsContent: contentFlags2.hasComponentsContent,
     }});
   }
   // ── Workflow: design tokens check ─────────────────────────────────────────
   if (msg.type === "check-tokens") {
-    try {
-      var allVars = await figma.variables.getLocalVariablesAsync();
-      var collections = await figma.variables.getLocalVariableCollectionsAsync();
-      var textStyles = await figma.getLocalTextStylesAsync();
-      var effectStyles = await figma.getLocalEffectStylesAsync();
-
-      var counts = countTokensByCategory(allVars, collections);
-      for (var esi = 0; esi < effectStyles.length; esi++) {
-        if (effectStyles[esi].name.toLowerCase().indexOf("shadow") !== -1) counts.shadows++;
-      }
-
-      counts.textStyles = textStyles.length;
-      counts.effectStyles = effectStyles.length;
-      counts.collections = collections.map(function(c) { return { name: c.name, count: allVars.filter(function(v) { return v.variableCollectionId === c.id; }).length }; });
-      figma.ui.postMessage({ type: "tokens-data", tokens: counts });
-    } catch(e) {
+    try { await refreshTokenCounts(); } catch(e) {
       figma.ui.postMessage({ type: "tokens-data", tokens: null, error: String(e) });
     }
   }
@@ -746,19 +743,7 @@ figma.ui.onmessage = async function(msg) {
     }
 
     figma.ui.postMessage({ type:"generate-complete" });
-    // Refresh token counts for workflow step 2
-    try {
-      var allVars2 = await figma.variables.getLocalVariablesAsync();
-      var cols2 = await figma.variables.getLocalVariableCollectionsAsync();
-      var ts2 = await figma.getLocalTextStylesAsync();
-      var es2 = await figma.getLocalEffectStylesAsync();
-      var counts2 = countTokensByCategory(allVars2, cols2);
-      for(var esi2=0;esi2<es2.length;esi2++){if(es2[esi2].name.toLowerCase().indexOf("shadow")!==-1)counts2.shadows++;}
-      counts2.textStyles = ts2.length;
-      counts2.effectStyles = es2.length;
-      counts2.collections = cols2.map(function(c){return{name:c.name,count:allVars2.filter(function(v){return v.variableCollectionId===c.id;}).length};});
-      figma.ui.postMessage({type:"tokens-data",tokens:counts2});
-    } catch(e){}
+    try { await refreshTokenCounts(); } catch(e) {}
   }
 
   if (msg.type === "generate-promo-pages") {
@@ -767,7 +752,6 @@ figma.ui.onmessage = async function(msg) {
       await generatePromoStructure(msg);
       figma.ui.postMessage({ type: "promo-generated", success: true });
     } catch(e) {
-      console.log("[Promo] Error: " + e);
       figma.ui.postMessage({ type: "promo-generated", success: false, message: String(e) });
     }
   }
@@ -1016,7 +1000,7 @@ figma.ui.onmessage = async function(msg) {
 
   if (msg.type === "save-settings") {
     try {
-      await figma.clientStorage.setAsync("wf-settings", msg.settings);
+      await figma.clientStorage.setAsync("wf-settings-" + figma.root.id, msg.settings);
     } catch(e) {}
   }
 
@@ -1028,7 +1012,7 @@ figma.ui.onmessage = async function(msg) {
 
   if (msg.type === "reset-settings") {
     try {
-      await figma.clientStorage.deleteAsync("wf-settings");
+      await figma.clientStorage.deleteAsync("wf-settings-" + figma.root.id);
       figma.ui.postMessage({ type: "settings-reset" });
     } catch(e) {}
   }

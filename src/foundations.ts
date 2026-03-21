@@ -223,7 +223,7 @@ export async function generateFoundationsPage(msg) {
       var ffRows = Math.ceil(ffEntries.length / ffCols);
       y += ffRows * (FF_CARD_H + FF_GAP) + SECTION_GAP;
     }
-  } catch(ffErr) { console.log("[Foundations] Font Families error: " + ffErr); }
+  } catch(ffErr) { /* font families section failed */ }
 
   // ══════════════════════════════════════════════════════════════════════════
   // TEXT STYLES
@@ -383,7 +383,7 @@ export async function generateFoundationsPage(msg) {
       }
       y += SECTION_GAP;
     }
-    } catch(tsErr) { console.log("[Foundations] Text Styles section error: " + tsErr); }
+    } catch(tsErr) { /* text styles section failed */ }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -396,8 +396,6 @@ export async function generateFoundationsPage(msg) {
 
   if (hasSizes || hasWeights || hasLH) {
     sectionTitle("Typography Scale");
-    console.log("[Foundations] Typography Scale: sizes=" + (typo.sizes ? typo.sizes.length : 0) + " weights=" + (typo.weights ? typo.weights.length : 0) + " lh=" + (typo.lineHeights ? typo.lineHeights.length : 0));
-
     // ── Font Sizes ──
     if (hasSizes) {
       try {
@@ -416,7 +414,7 @@ export async function generateFoundationsPage(msg) {
           y += Math.max(sizeText.height, 20) + 8;
         }
         y += 24;
-      } catch(e) { console.log("[Foundations] Font Sizes error: " + e); }
+      } catch(e) { /* font sizes failed */ }
     }
 
     // ── Font Weights ──
@@ -439,7 +437,7 @@ export async function generateFoundationsPage(msg) {
           if (wx + 140 > W - PAD) { wx = PAD; y += 32; }
         }
         y += 40;
-      } catch(e) { console.log("[Foundations] Font Weights error: " + e); }
+      } catch(e) { /* font weights failed */ }
     }
 
     // ── Line Heights ──
@@ -469,7 +467,7 @@ export async function generateFoundationsPage(msg) {
           lhX += lhColW + 24;
         }
         y += lhMaxH + 24;
-      } catch(e) { console.log("[Foundations] Line Heights error: " + e); }
+      } catch(e) { /* line heights failed */ }
     }
     y += SECTION_GAP;
   }
@@ -803,5 +801,4 @@ export async function generateFoundationsPage(msg) {
   var finalH = maxBottom + PAD;
   frame.resize(W, Math.max(finalH, 400));
   frame.clipsContent = true;
-  console.log("[Foundations] frame resized to " + W + "x" + Math.max(finalH, 400) + ", children: " + frame.children.length + ", y=" + y);
 }

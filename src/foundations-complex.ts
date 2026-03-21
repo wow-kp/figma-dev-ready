@@ -384,7 +384,7 @@ export async function generateFoundationsPageComplex() {
       }
       y += SECTION_GAP;
     }
-    } catch(tsErr) { console.log("[Complex Foundations] Text Styles error: " + tsErr); }
+    } catch(tsErr) { /* text styles section failed */ }
   }
 
   // ══════════════════════════════════════════════════════════════════════════

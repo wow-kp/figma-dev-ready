@@ -570,7 +570,12 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
         <div id="settings-proxy-status" style="font-size:10px;min-height:14px;color:#6c7086;"></div>
       </div>
     </details>
-    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #313244;text-align:center;">
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #313244;">
+      <div style="font-size:11px;font-weight:600;color:#a6adc8;margin-bottom:8px;">Workflow Data</div>
+      <div style="font-size:10px;color:#6c7086;margin-bottom:8px;line-height:1.5;">Reset all workflow progress and saved state for this file. Token configurations, audit results, and route selection will be cleared.</div>
+      <button id="settings-reset-workflow" style="width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#f38ba8;border-radius:6px;cursor:pointer;transition:all .15s;">Reset Workflow Data</button>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #313244;text-align:center;">
       <a href="#" id="settings-show-welcome" style="font-size:10px;color:#6c7086;text-decoration:underline;cursor:pointer;">Show welcome screen</a>
     </div>
   </div>
@@ -788,6 +793,14 @@ document.getElementById("settings-show-welcome").addEventListener("click", funct
   e.preventDefault();
   document.getElementById("welcome-overlay").style.display = "";
   if (bhHasBuiltinProxy && bhHasBuiltinProxy()) bhCheckProxyHealth();
+});
+
+document.getElementById("settings-reset-workflow").addEventListener("click", function() {
+  if (!confirm("Reset all workflow data for this file? Route selection, token config, audit results, and step progress will be cleared. AI settings (API key, proxy) will be kept.")) return;
+  var btn = document.getElementById("settings-reset-workflow");
+  btn.disabled = true; btn.textContent = "Resetting\u2026";
+  parent.postMessage({ pluginMessage: { type: "reset-settings" } }, "*");
+  setTimeout(function() { btn.disabled = false; btn.textContent = "Reset Workflow Data"; }, 1000);
 });
 
 // ── Audit ──────────────────────────────────────────────────────────────────────
@@ -1173,17 +1186,27 @@ function renderAudit(data){
 // Persists cover form values across re-renders
 var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true, step2Toggled:false, step2BasicOpen:false, step2ComplexOpen:false, step3Open:true, step4Open:true, step5Open:true };
 var wfTokensData = null;
-var wfStep1Color = "red"; // track step 1 status for step 2 gating
+// ── Route constants ──
+var WF_ROUTE_NONE = "none";    // detection banner — no route chosen yet
+var WF_ROUTE_A    = "fresh";   // 5 steps: structure → tokens → wireframes → audit → handoff
+var WF_ROUTE_B    = "import";  // 4 steps: structure → tokens → audit → handoff
 
-// ── Import Mode (Route B) state ──
+// ── Route state ──
+var wfRoute = WF_ROUTE_NONE;
+var wfStepStatus = {};          // { structure: "green", tokens: "red", ... }
+var _lastPagesData = null;      // cached pages-data for partial re-renders
+
+// ── File & content state ──
 var wfCurrentFileId = null; // tracks which Figma file we're looking at
-var wfImportMode = false;
+var wfPagesHaveContent = false; // true if Desktop/Mobile pages have children
+var wfFoundationsHaveContent = false; // true if Foundations page has children
+var wfComponentsHaveContent = false; // true if Components page has children
+
+// ── Route B specific state ──
 var wfRouteBStep = 0; // 0=not started, 1=step1 done, 2=tokens applied
 var wfRouteBAnalysis = null; // AnalysisResult from backend (with matched names)
 var wfRouteBExistingVars = null; // scanned existing variables
 var wfRouteBBindStats = null; // token binding stats
-var wfFileType = null; // "existing" | "fresh" | "managed"
-var wfPagesHaveContent = false; // true if Desktop/Mobile pages have children
 
 var REQUIRED_PAGES = [
   { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover",       critical:false },
@@ -1196,72 +1219,108 @@ var REQUIRED_PAGES = [
 
 // Insert a step element into the container at the correct position.
 // Uses a known ordering of step IDs so steps never end up at the wrong place.
-var STEP_ORDER = ["wf-step-1", "wf-step-2", "wf-step-routeb2", "wf-step-3", "wf-step-audit", "wf-step-handoff"];
-function insertStepInOrder(container, step) {
-  var myIdx = STEP_ORDER.indexOf(step.id);
-  // Find the first existing sibling that should come after this step
-  for (var i = myIdx + 1; i < STEP_ORDER.length; i++) {
-    var ref = document.getElementById(STEP_ORDER[i]);
-    if (ref && ref.parentNode === container) {
-      container.insertBefore(step, ref);
-      return;
-    }
-  }
-  container.appendChild(step);
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP REGISTRY ARCHITECTURE
+// ══════════════════════════════════════════════════════════════════════════════
+// ctx object passed to every step render function:
+//   { container, data, route, stepStatus: {}, steps: [] }
+// Each render function: fn(ctx, stepDef) — sets ctx.stepStatus[stepDef.id]
+
+// Step registries — each route defines its steps, render functions, and DOM IDs
+var ROUTE_A_STEPS = [
+  { id: "structure",  num: 1, domId: "wf-step-1",       render: renderStepStructure },
+  { id: "tokens",     num: 2, domId: "wf-step-2",       render: renderRouteATokens },
+  { id: "wireframes", num: 3, domId: "wf-step-3",       render: renderRouteAWireframes },
+  { id: "audit",      num: 4, domId: "wf-step-audit",   render: renderStepAudit },
+  { id: "handoff",    num: 5, domId: "wf-step-handoff", render: renderStepHandoff }
+];
+var ROUTE_B_STEPS = [
+  { id: "structure",  num: 1, domId: "wf-step-1",        render: renderStepStructure },
+  { id: "tokens",     num: 2, domId: "wf-step-routeb2",  render: renderRouteBTokens },
+  { id: "audit",      num: 3, domId: "wf-step-audit",    render: renderStepAudit },
+  { id: "handoff",    num: 4, domId: "wf-step-handoff",  render: renderStepHandoff }
+];
+
+function getActiveSteps() {
+  return wfRoute === WF_ROUTE_B ? ROUTE_B_STEPS : ROUTE_A_STEPS;
 }
 
-function renderWorkflow(data) {
-  var pages    = data.pages ? Array.prototype.slice.call(data.pages) : [];
-  var fileInfo = data.fileInfo || {};
+function renderAllSteps(container, data, steps) {
+  var ctx = { container: container, data: data, route: wfRoute, stepStatus: {}, steps: steps };
+  for (var i = 0; i < steps.length; i++) {
+    steps[i].render(ctx, steps[i]);
+  }
+  wfStepStatus = ctx.stepStatus;
+}
+
+function reRenderFromStep(stepId) {
   var container = document.getElementById("wf-container");
-
-  container.innerHTML = "";
-
-  // Show error if code.js reported one
-  if (data.error) {
-    container.innerHTML = "<div style='padding:20px;font-size:11px;color:#f38ba8;margin:12px;border:1px solid #f38ba830;border-radius:8px;background:#f38ba810'>Plugin error: "+esc(data.error)+"</div>";
-    return;
+  if (!container || wfRoute === WF_ROUTE_NONE || !_lastPagesData) return;
+  var steps = getActiveSteps();
+  var startIdx = -1;
+  for (var i = 0; i < steps.length; i++) {
+    if (steps[i].id === stepId) { startIdx = i; break; }
   }
-
-  // ── Banner-only detection screen ──
-  // When an existing design is detected but user hasn't chosen a route yet,
-  // show ONLY the banner — no steps at all
-  if (wfFileType === "existing" && !wfImportMode) {
-    var banner = document.createElement("div");
-    banner.style.cssText = "margin:16px 12px;padding:20px;background:linear-gradient(135deg,#1e1e2e 0%,#181825 100%);border:1px solid #45475a;border-radius:12px;text-align:center;";
-    banner.innerHTML =
-      "<div style='font-size:28px;margin-bottom:8px;'>📐</div>" +
-      "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:6px;'>Existing Design Detected</div>" +
-      "<div style='font-size:11px;color:#a6adc8;line-height:1.5;margin-bottom:16px;'>This file contains an existing design. You can import it into the dev-ready workflow or start fresh with a new file structure.</div>";
-    var btnRow = document.createElement("div");
-    btnRow.style.cssText = "display:flex;gap:10px;justify-content:center;";
-    var importBtn = document.createElement("button");
-    importBtn.className = "wf-gen-btn";
-    importBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:700;flex:1;max-width:200px;";
-    importBtn.textContent = "Import Existing Design";
-    importBtn.addEventListener("click", function() {
-      wfImportMode = true;
-      saveSettings();
-      renderWorkflow(data);
-    });
-    var freshBtn = document.createElement("button");
-    freshBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:600;flex:1;max-width:200px;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:8px;cursor:pointer;transition:all .15s;";
-    freshBtn.textContent = "Start Fresh";
-    freshBtn.addEventListener("mouseenter", function() { freshBtn.style.borderColor = "#89b4fa"; freshBtn.style.color = "#89b4fa"; });
-    freshBtn.addEventListener("mouseleave", function() { freshBtn.style.borderColor = "#45475a"; freshBtn.style.color = "#cdd6f4"; });
-    freshBtn.addEventListener("click", function() {
-      wfFileType = "fresh";
-      saveSettings();
-      renderWorkflow(data);
-    });
-    btnRow.appendChild(importBtn);
-    btnRow.appendChild(freshBtn);
-    banner.appendChild(btnRow);
-    container.appendChild(banner);
-    return;
+  if (startIdx < 0) return;
+  var ctx = { container: container, data: _lastPagesData, route: wfRoute, stepStatus: {}, steps: steps };
+  // Copy earlier step statuses
+  for (var j = 0; j < startIdx; j++) {
+    ctx.stepStatus[steps[j].id] = wfStepStatus[steps[j].id] || "red";
   }
+  // Remove DOM elements from startIdx onward, then re-render
+  for (var k = startIdx; k < steps.length; k++) {
+    var el = document.getElementById(steps[k].domId);
+    if (el) el.remove();
+  }
+  for (var k2 = startIdx; k2 < steps.length; k2++) {
+    steps[k2].render(ctx, steps[k2]);
+  }
+  wfStepStatus = ctx.stepStatus;
+}
 
-  // Match each required page against the actual pages list
+// ── Detection Banner ────────────────────────────────────────────────────────
+function renderDetectionBanner(container, data) {
+  var banner = document.createElement("div");
+  banner.style.cssText = "margin:16px 12px;padding:20px;background:linear-gradient(135deg,#1e1e2e 0%,#181825 100%);border:1px solid #45475a;border-radius:12px;text-align:center;";
+  banner.innerHTML =
+    "<div style='font-size:28px;margin-bottom:8px;'>📐</div>" +
+    "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:6px;'>Existing Design Detected</div>" +
+    "<div style='font-size:11px;color:#a6adc8;line-height:1.5;margin-bottom:16px;'>This file contains an existing design. You can import it into the dev-ready workflow or start fresh with a new file structure.</div>";
+  var btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:10px;justify-content:center;";
+  var importBtn = document.createElement("button");
+  importBtn.className = "wf-gen-btn";
+  importBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:700;flex:1;max-width:200px;";
+  importBtn.textContent = "Import Existing Design";
+  importBtn.addEventListener("click", function() {
+    wfRoute = WF_ROUTE_B;
+    saveSettings();
+    renderWorkflow(data);
+  });
+  var freshBtn = document.createElement("button");
+  freshBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:600;flex:1;max-width:200px;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:8px;cursor:pointer;transition:all .15s;";
+  freshBtn.textContent = "Start Fresh";
+  freshBtn.addEventListener("mouseenter", function() { freshBtn.style.borderColor = "#89b4fa"; freshBtn.style.color = "#89b4fa"; });
+  freshBtn.addEventListener("mouseleave", function() { freshBtn.style.borderColor = "#45475a"; freshBtn.style.color = "#cdd6f4"; });
+  freshBtn.addEventListener("click", function() {
+    wfRoute = WF_ROUTE_A;
+    saveSettings();
+    renderWorkflow(data);
+  });
+  btnRow.appendChild(importBtn);
+  btnRow.appendChild(freshBtn);
+  banner.appendChild(btnRow);
+  container.appendChild(banner);
+}
+
+// ── Step 1: File Structure (shared) ─────────────────────────────────────────
+function renderStepStructure(ctx, stepDef) {
+  var prev = document.getElementById(stepDef.domId);
+  if (prev) prev.remove();
+
+  var pages = ctx.data.pages ? Array.prototype.slice.call(ctx.data.pages) : [];
+  var fileInfo = ctx.data.fileInfo || {};
+
   var results = REQUIRED_PAGES.map(function(req) {
     var match = pages.find(function(p) {
       var stripped = p.name.toLowerCase().replace(/[^a-z]/g, "");
@@ -1271,18 +1330,15 @@ function renderWorkflow(data) {
   });
 
   var missing = results.filter(function(r) { return !r.found; });
-  var allGood  = missing.length === 0;
-
-  // ── Step 1: File Structure ────────────────────────────────────────────────
-  // Determine indicator color: green = all found, red = critical missing, yellow = only non-critical missing
+  var allGood = missing.length === 0;
   var hasCriticalMissing = missing.some(function(r) { return r.req.critical; });
   var indicatorColor = allGood ? "green" : (hasCriticalMissing ? "red" : "yellow");
 
-  // Auto-collapse when all good
   if (allGood) wfFormState.stepOpen = false;
 
   var stepOpen = wfFormState.stepOpen;
   var step = document.createElement("div");
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (allGood ? " complete" : "");
 
   var header = document.createElement("div");
@@ -1290,7 +1346,7 @@ function renderWorkflow(data) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 1</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>File Structure" + (allGood ? " — All set" : "") + "</div>" +
       "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>" +
     "</div>" +
@@ -1304,18 +1360,14 @@ function renderWorkflow(data) {
   var body = document.createElement("div");
   body.className = "wf-step-body";
 
-  // Page rows
   var list = document.createElement("div");
   list.className = "wf-page-list";
 
   results.forEach(function(r) {
-    // ── Cover page gets a special collapsible card ──────────────────────────
     if (r.req.key === "cover") {
-      var coverOpen = wfFormState.coverOpen !== false; // default open
-
+      var coverOpen = wfFormState.coverOpen !== false;
       var card = document.createElement("div");
       card.className = "wf-cover-card";
-
       var actualName = r.found ? esc(r.match.name) : esc(r.req.name);
       var row = document.createElement("div");
       row.className = "wf-cover-row " + (r.found ? "found" : "missing") + (coverOpen ? " open" : " closed");
@@ -1326,8 +1378,6 @@ function renderWorkflow(data) {
           "<div class='wf-page-desc'>" + esc(r.req.desc) + "</div>" +
         "</div>" +
         "<span class='wf-page-status'>" + (r.found ? "✓ Found" : "Missing") + "</span>";
-
-      // Create button — only shown when form is collapsed and page is missing
       var createBtn = null;
       if (!r.found) {
         createBtn = document.createElement("button");
@@ -1341,21 +1391,14 @@ function renderWorkflow(data) {
         });
         row.appendChild(createBtn);
       }
-
-      // Chevron
       var chev = document.createElement("span");
       chev.className = "wf-chevron";
       chev.textContent = "▼";
       row.appendChild(chev);
-
       card.appendChild(row);
-
-      // Form panel
       var form = buildCoverForm(fileInfo);
       form.style.display = coverOpen ? "block" : "none";
       card.appendChild(form);
-
-      // Toggle on row click
       row.addEventListener("click", function() {
         coverOpen = !coverOpen;
         wfFormState.coverOpen = coverOpen;
@@ -1364,15 +1407,11 @@ function renderWorkflow(data) {
         row.classList.toggle("closed", !coverOpen);
         if (createBtn) createBtn.style.display = coverOpen ? "none" : "";
       });
-
       list.appendChild(card);
       return;
     }
-
-    // ── All other pages ─────────────────────────────────────────────────────
     var row = document.createElement("div");
     row.className = "wf-page-row " + (r.found ? "found" : "missing");
-
     var actualName = r.found ? esc(r.match.name) : esc(r.req.name);
     row.innerHTML =
       "<span class='wf-page-icon'>" + r.req.icon + "</span>" +
@@ -1381,7 +1420,6 @@ function renderWorkflow(data) {
         "<div class='wf-page-desc'>" + esc(r.req.desc) + "</div>" +
       "</div>" +
       "<span class='wf-page-status'>" + (r.found ? "✓ Found" : "Missing") + "</span>";
-
     if (!r.found) {
       var btn = document.createElement("button");
       btn.className = "wf-create-btn";
@@ -1397,17 +1435,14 @@ function renderWorkflow(data) {
 
   body.appendChild(list);
 
-  // Footer
-  if (wfImportMode) {
-    // Route B footer
+  // Footer — route-specific
+  if (ctx.route === WF_ROUTE_B) {
     if (wfRouteBStep >= 1) {
-      // Step 1 completed — show archive note
       var archNote = document.createElement("div");
       archNote.style.cssText = "margin-top:8px;padding:8px 10px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;color:#a6adc8;line-height:1.5;";
       archNote.innerHTML = "📥 <b>Imported via design import.</b> Original content is safely archived in the 🗄️ Archive page.";
       body.appendChild(archNote);
     } else {
-      // Step 1 not done — show "Set Up File Structure" button
       var footer = document.createElement("div");
       footer.className = "wf-footer";
       var setupBtn = document.createElement("button");
@@ -1417,7 +1452,6 @@ function renderWorkflow(data) {
       setupBtn.addEventListener("click", function() {
         setupBtn.disabled = true;
         setupBtn.textContent = "Setting up…";
-        // Show progress area
         var progressArea = document.createElement("div");
         progressArea.id = "routeb-step1-progress";
         progressArea.style.cssText = "padding:8px 12px;font-size:10px;color:#a6adc8;";
@@ -1429,7 +1463,6 @@ function renderWorkflow(data) {
       body.appendChild(footer);
     }
   } else if (!allGood) {
-    // Route A footer — only show when there are missing pages
     var footer = document.createElement("div");
     footer.className = "wf-footer";
     var summary = document.createElement("span");
@@ -1449,21 +1482,55 @@ function renderWorkflow(data) {
   }
 
   step.appendChild(body);
-  insertStepInOrder(container, step);
+  ctx.container.appendChild(step);
 
-  // Track step 1 status for gating step 2
-  wfStep1Color = indicatorColor;
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
+}
 
-  if (wfImportMode) {
-    // Route B: 4 steps — Step 1 (file structure), Step 2 (tokens), Step 3 (audit), Step 4 (handoff)
-    renderRouteBStep2(container);
-    renderAuditStep(container, 3);
-    renderHandoffStep(container, 4);
-  } else {
-    // Route A: 5 steps — Step 1 (file structure), Step 2 (tokens), Step 3 (wireframes), Step 4 (audit), Step 5 (handoff)
-    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
-    renderStep2(container);
+// ══════════════════════════════════════════════════════════════════════════════
+// WORKFLOW DISPATCHER
+// ══════════════════════════════════════════════════════════════════════════════
+function renderWorkflow(data) {
+  var pages = data.pages ? Array.prototype.slice.call(data.pages) : [];
+  var container = document.getElementById("wf-container");
+  container.innerHTML = "";
+
+  if (data.error) {
+    container.innerHTML = "<div style='padding:20px;font-size:11px;color:#f38ba8;margin:12px;border:1px solid #f38ba830;border-radius:8px;background:#f38ba810'>Plugin error: "+esc(data.error)+"</div>";
+    return;
   }
+
+  // Validate Route B state against actual pages
+  if (wfRoute === WF_ROUTE_B && wfRouteBStep >= 1) {
+    var criticalHints = ["desktop", "mobile", "components", "foundations"];
+    var foundCritical = 0;
+    for (var vci = 0; vci < criticalHints.length; vci++) {
+      for (var vpj = 0; vpj < pages.length; vpj++) {
+        if (pages[vpj].name.toLowerCase().replace(/[^a-z]/g, "").indexOf(criticalHints[vci]) !== -1) { foundCritical++; break; }
+      }
+    }
+    if (foundCritical < 3) {
+      wfRoute = WF_ROUTE_NONE;
+      wfRouteBStep = 0;
+      wfRouteBAnalysis = null;
+      wfRouteBExistingVars = null;
+      wfRouteBBindStats = null;
+      saveSettings();
+    }
+  }
+
+  if (wfRoute === WF_ROUTE_NONE) {
+    renderDetectionBanner(container, data);
+    return;
+  }
+
+  // Request token data for Route A (needed by Step 2)
+  if (wfRoute === WF_ROUTE_A) {
+    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+  }
+
+  renderAllSteps(container, data, getActiveSteps());
 }
 
 // Accordion token definitions: key matches generator category, countKey maps to tokens-data counts
@@ -1490,9 +1557,6 @@ var wfCustomColors = []; // { name: "Success", hex: "#22C55E" }
 var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
 var wfGenerating = false;
 var wfGenerated = false;
-var wfStep2Color = "red";
-var wfStep3Color = "red";
-var wfStep4Color = "red";
 var wfAuditData = null; // last audit results for Step 4 (persisted via clientStorage)
 var wfAuditPassed = false; // persisted: crit+high all passed
 var wfAuditScore = -1; // persisted: last audit score
@@ -1620,14 +1684,17 @@ var wfZiNextId = 8;
 
 // ── Reset all workflow state to defaults (used on file switch + settings reset) ──
 function resetWorkflowState() {
-  // Import state
-  wfImportMode = false;
+  // Route state
+  wfRoute = WF_ROUTE_NONE;
+  wfStepStatus = {};
+  _lastPagesData = null;
   wfRouteBStep = 0;
   wfRouteBAnalysis = null;
   wfRouteBExistingVars = null;
   wfRouteBBindStats = null;
-  wfFileType = null;
   wfPagesHaveContent = false;
+  wfFoundationsHaveContent = false;
+  wfComponentsHaveContent = false;
   // Token config
   wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
   wfCustomColors = [];
@@ -1704,12 +1771,7 @@ function resetWorkflowState() {
   ];
   wfZiNextId = 8;
   TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
-  // Step status
   wfTokensData = null;
-  wfStep1Color = "red";
-  wfStep2Color = "red";
-  wfStep3Color = "red";
-  wfStep4Color = "red";
   wfGenerating = false;
   wfGenerated = false;
   // Step 3 — Page structures
@@ -1798,7 +1860,9 @@ function collectSettings() {
     auditData: wfAuditData,
     lastAuditTs: wfLastAuditTs,
     lastDocChangeTs: wfLastDocChangeTs,
-    importMode: wfImportMode,
+    route: wfRoute,
+    stepStatus: JSON.parse(JSON.stringify(wfStepStatus)),
+    importMode: wfRoute === WF_ROUTE_B,  // backward compat
     routeBStep: wfRouteBStep,
     routeBAnalysis: wfRouteBAnalysis ? JSON.parse(JSON.stringify(wfRouteBAnalysis)) : null,
     routeBExistingVars: wfRouteBExistingVars ? JSON.parse(JSON.stringify(wfRouteBExistingVars)) : null,
@@ -1899,8 +1963,13 @@ function applyLoadedSettings(s) {
     var _rr = document.getElementById("results"); if (_rr) { _rr.innerHTML = ""; _rr.style.display = "none"; }
     var _sb = document.getElementById("score-bar"); if (_sb) _sb.style.display = "none";
   }
-  // Restore import state
-  if (s.importMode !== undefined) wfImportMode = s.importMode;
+  // Restore route state (with migration from old importMode)
+  if (s.route) {
+    wfRoute = s.route;
+  } else if (s.importMode) {
+    wfRoute = WF_ROUTE_B;
+  }
+  if (s.stepStatus) wfStepStatus = s.stepStatus;
   if (s.routeBStep !== undefined) wfRouteBStep = s.routeBStep;
   if (s.routeBAnalysis) wfRouteBAnalysis = s.routeBAnalysis;
   if (s.routeBExistingVars) wfRouteBExistingVars = s.routeBExistingVars;
@@ -2750,32 +2819,39 @@ function buildBreakpointsPanel(panel) {
   panel.appendChild(info);
 }
 
-function renderStep2(container) {
-  var prev = document.getElementById("wf-step-2");
+function renderRouteATokens(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var locked = wfStep1Color === "red";
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
   var tokens = wfTokensData;
 
   // Check if enabled tokens have been generated
   var enabledWithCounts = TOKEN_DEFS.filter(function(d) { return wfTokenEnabled[d.key] && d.countKey; });
   var allHaveTokens = enabledWithCounts.every(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
   var someHaveTokens = enabledWithCounts.some(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
-  var indicatorColor = locked ? "red" : (allHaveTokens ? "green" : (someHaveTokens ? "yellow" : "red"));
+  // Step 2 is only "all set" when tokens exist AND foundations/components pages have content
+  var pagesReady = wfFoundationsHaveContent && wfComponentsHaveContent;
+  var allDone = allHaveTokens && pagesReady;
+  var someProgress = someHaveTokens || wfFoundationsHaveContent || wfComponentsHaveContent;
+  var indicatorColor = locked ? "red" : (allDone ? "green" : (someProgress ? "yellow" : "red"));
 
-  var stepOpen = locked ? false : (allHaveTokens && !wfFormState.step2Toggled ? false : wfFormState.step2Open);
+  var stepOpen = locked ? false : (allDone && !wfFormState.step2Toggled ? false : wfFormState.step2Open);
 
   var step = document.createElement("div");
-  step.id = "wf-step-2";
-  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allHaveTokens && !locked ? " complete" : "");
+  step.id = stepDef.domId;
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allDone && !locked ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 2</div>" +
-      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allHaveTokens ? " — All set" : "")) + "</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
+      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allDone ? " — All set" : (allHaveTokens && !pagesReady ? " — Pages need content" : ""))) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete file structure first</div>" :
        "<div class='wf-step-desc'>Pick your brand colors, then generate or import tokens.</div>") +
     "</div>" +
@@ -2792,29 +2868,6 @@ function renderStep2(container) {
 
   var body = document.createElement("div");
   body.className = "wf-step-body";
-
-  // Import mode completed: show read-only summary instead of edit form
-  if (wfImportMode && wfRouteBStep >= 2 && wfRouteBBindStats) {
-    var ibs = wfRouteBBindStats || {};
-    var summaryHtml = "<div class='wf-token-list' style='padding:10px;'>" +
-      "<div style='font-size:11px;color:#a6adc8;line-height:1.8;'>" +
-        "<div style='margin-bottom:6px;font-weight:600;color:#cdd6f4;'>📥 Tokens created via design import</div>" +
-        "<div>🎨 <b>" + (ibs.colors || 0) + "</b> colors bound to variables</div>" +
-        "<div>📏 <b>" + (ibs.spacing || 0) + "</b> spacing values bound</div>" +
-        "<div>🔘 <b>" + (ibs.radius || 0) + "</b> radius values bound</div>" +
-        "<div>📝 <b>" + (ibs.textStyles || 0) + "</b> text styles applied</div>" +
-        (ibs.borders ? "<div>🔲 <b>" + ibs.borders + "</b> border widths bound</div>" : "") +
-        (ibs.effects ? "<div>💫 <b>" + ibs.effects + "</b> effect styles applied</div>" : "") +
-      "</div>" +
-      "<div style='margin-top:8px;font-size:10px;color:#6c7086;'>Tokens are now variables on the 🎨 Foundations page. You can edit them in Step 2 or in Figma&rsquo;s Variables panel.</div>" +
-    "</div>";
-    body.innerHTML = summaryHtml;
-    step.appendChild(body);
-    insertStepInOrder(container, step);
-    wfStep2Color = indicatorColor;
-    renderStep3(container);
-    return;
-  }
 
   if (!tokens) {
     body.innerHTML = "<div class='wf-token-list'><div style='padding:8px;font-size:11px;color:#585b70;text-align:center'>Loading…</div></div>";
@@ -3167,28 +3220,30 @@ function renderStep2(container) {
   body.addEventListener("change", function() { saveSettings(); });
 
   step.appendChild(body);
-  insertStepInOrder(container, step);
+  ctx.container.appendChild(step);
 
-  // Track step 2 status for gating step 3
-  wfStep2Color = indicatorColor;
-  renderStep3(container);
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTE B STEP 2 — Design Tokens (Import)
 // ══════════════════════════════════════════════════════════════════════════════
-function renderRouteBStep2(container) {
-  var prev = document.getElementById("wf-step-routeb2");
+function renderRouteBTokens(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var locked = wfStep1Color === "red";
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
   var tokensApplied = wfRouteBStep >= 2;
   var hasAnalysis = !!wfRouteBAnalysis;
   var indicatorColor = locked ? "red" : (tokensApplied ? "green" : (hasAnalysis ? "yellow" : "red"));
   var stepOpen = locked ? false : wfFormState.step2Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-routeb2";
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (tokensApplied ? " complete" : "");
 
   var header = document.createElement("div");
@@ -3196,7 +3251,7 @@ function renderRouteBStep2(container) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 2</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (tokensApplied ? " — Applied" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Set up file structure first</div>" :
        "<div class='wf-step-desc'>Review extracted design tokens, refine names, and apply variables to your design.</div>") +
@@ -3253,10 +3308,10 @@ function renderRouteBStep2(container) {
   }
 
   step.appendChild(body);
-  insertStepInOrder(container, step);
+  ctx.container.appendChild(step);
 
-  // Track Route B Step 2 status for gating audit
-  wfStep2Color = indicatorColor;
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 // Renders token review UI inside Route B Step 2 body
@@ -3467,8 +3522,9 @@ function renderRouteBTokenReview(body, analysis, wfContainer) {
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 3 — Page Structures
 // ══════════════════════════════════════════════════════════════════════════════
-function renderStep3(container) {
-  var prev = document.getElementById("wf-step-3");
+function renderRouteAWireframes(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
   // Compute wireframe existence from wfWireframeData
@@ -3483,7 +3539,10 @@ function renderStep3(container) {
 
   // Step 3 done = all wireframes exist on both pages OR user skipped OR pages have custom content
   var step3Done = wfAllExist || wfStep3Skipped || (wfPagesHaveContent && wfNoneExist);
-  var locked = wfStep2Color === "red" && !step3Done;
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var prevStepRed = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
+  var locked = prevStepRed && !step3Done;
   var indicatorColor;
   if (wfStep3Skipped) indicatorColor = "green";
   else if (locked) indicatorColor = "red";
@@ -3494,17 +3553,17 @@ function renderStep3(container) {
   var stepOpen = locked ? false : wfFormState.step3Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-3";
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (indicatorColor === "green" ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
-  var step3Status = (wfImportMode && wfStep3Skipped) ? " — Using imported designs" : (wfStep3Skipped ? " — Skipped" : (wfAllExist ? " — All set" : (wfSomeExist ? " — Partial" : (wfPagesHaveContent ? " — Custom content" : ""))));
-  var step3Desc = (wfImportMode && wfStep3Skipped) ? "Your existing designs are organized on Desktop and Mobile pages. The wireframe generator is available if you want to add more sections." : "Choose a page type, configure sections, then generate desktop & mobile wireframes.";
+  var step3Status = wfStep3Skipped ? " — Skipped" : (wfAllExist ? " — All set" : (wfSomeExist ? " — Partial" : (wfPagesHaveContent ? " — Custom content" : "")));
+  var step3Desc = "Choose a page type, configure sections, then generate desktop & mobile wireframes.";
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 3</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Page Structures" + (locked ? "" : step3Status) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
        "<div class='wf-step-desc'>" + step3Desc + "</div>") +
@@ -3560,16 +3619,6 @@ function renderStep3(container) {
   }
 
   if (!locked) {
-    // Import mode note when step was auto-skipped
-    if (wfImportMode && wfStep3Skipped) {
-      var importNote = document.createElement("div");
-      importNote.style.cssText = "padding:10px;margin-bottom:4px;";
-      importNote.innerHTML = "<div style='padding:8px 10px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;color:#a6adc8;line-height:1.5;'>" +
-        "📥 <b>Skipped — using imported designs.</b> Your existing frames were organized onto Desktop and Mobile pages during import. " +
-        "You can still use the wireframe generator below to add additional sections." +
-      "</div>";
-      body.appendChild(importNote);
-    }
 
     var list = document.createElement("div");
     list.className = "wf-token-list";
@@ -3588,9 +3637,7 @@ function renderStep3(container) {
         if (wfPageType === pt.key) return;
         wfPageType = pt.key;
         saveSettings();
-        var prev3 = document.getElementById("wf-step-3");
-        if (prev3) prev3.remove();
-        renderStep3(container);
+        reRenderFromStep("wireframes");
       });
       typeBar.appendChild(tb);
     });
@@ -3624,9 +3671,7 @@ function renderStep3(container) {
         row.classList.toggle("disabled", !chk.checked);
         saveSettings();
         // Re-render to update context-sensitive buttons
-        var prev3 = document.getElementById("wf-step-3");
-        if (prev3) prev3.remove();
-        renderStep3(container);
+        reRenderFromStep("wireframes");
       });
       hdr.appendChild(chk);
 
@@ -4242,22 +4287,28 @@ function renderStep3(container) {
   body.addEventListener("change", function() { saveSettings(); });
 
   step.appendChild(body);
-  insertStepInOrder(container, step);
+  ctx.container.appendChild(step);
 
-  // Track step 3 status for gating step 4
-  wfStep3Color = indicatorColor;
-  renderAuditStep(container, 4);
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 4 — Audit & Validation
 // ══════════════════════════════════════════════════════════════════════════════
-function renderAuditStep(container, stepNum) {
-  var prev = document.getElementById("wf-step-audit");
+function renderStepAudit(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var lockMsg = wfImportMode ? "Complete design tokens first" : "Generate wireframes first";
-  var locked = wfImportMode ? (wfStep2Color === "red") : (wfStep3Color === "red");
+  // Lock based on previous step in this route
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
+  var lockMsg = "Complete the previous step first";
+  if (prevStepId === "wireframes") lockMsg = "Generate wireframes first";
+  else if (prevStepId === "tokens") lockMsg = "Complete design tokens first";
+
   var hasResults = wfAuditData && !wfAuditData.noPages;
   var hasPersistedResults = !hasResults && wfAuditScore >= 0;
   var score = hasResults ? wfAuditData.score : wfAuditScore;
@@ -4267,7 +4318,7 @@ function renderAuditStep(container, stepNum) {
   var stepOpen = locked ? false : wfFormState.step4Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-audit";
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (critHighOk ? " complete" : "");
 
   var header = document.createElement("div");
@@ -4275,7 +4326,7 @@ function renderAuditStep(container, stepNum) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step " + stepNum + "</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : ((hasResults || hasPersistedResults) ? " — " + score + "/100" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>" + lockMsg + "</div>" :
        "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>") +
@@ -4462,28 +4513,28 @@ function renderAuditStep(container, stepNum) {
   }
 
   step.appendChild(body);
-  insertStepInOrder(container, step);
+  ctx.container.appendChild(step);
 
-  // No auto-run — user must click "Run Audit" or re-run manually
-
-  // Track audit status for gating handoff step
-  wfStep4Color = indicatorColor;
-  renderHandoffStep(container, stepNum + 1);
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 5 — Ready for Dev
 // ══════════════════════════════════════════════════════════════════════════════
-function renderHandoffStep(container, stepNum) {
-  var prev = document.getElementById("wf-step-handoff");
+function renderStepHandoff(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var locked = wfStep4Color === "red";
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
   var indicatorColor = locked ? "red" : (wfDevReady ? "green" : "yellow");
   var stepOpen = locked ? false : wfFormState.step5Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-handoff";
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (wfDevReady ? " complete" : "");
 
   var header = document.createElement("div");
@@ -4491,7 +4542,7 @@ function renderHandoffStep(container, stepNum) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step " + stepNum + "</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Ready for Dev" + (locked ? "" : (wfDevReady ? " — Handed Off" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Run the audit first</div>" :
        "<div class='wf-step-desc'>Review the summary and mark this file as ready for development handoff.</div>") +
@@ -4517,15 +4568,15 @@ function renderHandoffStep(container, stepNum) {
     var summary = document.createElement("div");
     summary.style.cssText = "padding:10px 12px 6px;";
 
-    var checks = wfImportMode ? [
-      { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile, Archive" },
-      { label: "Design tokens applied", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
+    var checks = ctx.route === WF_ROUTE_B ? [
+      { label: "Pages created", done: ctx.stepStatus.structure === "green", detail: "Cover, Foundations, Components, Desktop, Mobile, Archive" },
+      { label: "Design tokens applied", done: ctx.stepStatus.tokens === "green", detail: "Variables, text styles & effect styles" },
       { label: "Design organized", done: wfPagesHaveContent, detail: "Frames classified into Desktop & Mobile pages" },
       { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
     ] : [
-      { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
-      { label: "Design tokens generated", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
-      { label: "Wireframes built", done: wfPagesHaveContent || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
+      { label: "Pages created", done: ctx.stepStatus.structure === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
+      { label: "Design tokens generated", done: ctx.stepStatus.tokens === "green", detail: "Variables, text styles & effect styles" },
+      { label: "Wireframes built", done: (ctx.stepStatus.wireframes === "green") || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
       { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
     ];
 
@@ -4609,7 +4660,10 @@ function renderHandoffStep(container, stepNum) {
   }
 
   step.appendChild(body);
-  insertStepInOrder(container, step);
+  ctx.container.appendChild(step);
+
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 function sendPromoGenerate() {
@@ -4873,8 +4927,7 @@ window.onmessage=function(event){
       wfDevReadyDate = null;
     }
     saveSettings();
-    var sc = document.getElementById("wf-container");
-    if (sc) { var _auditNum = wfImportMode ? 3 : 4; renderAuditStep(sc, _auditNum); renderHandoffStep(sc, _auditNum + 1); }
+    reRenderFromStep("audit");
   }
   if(msg.type==="pages-data"){
     // Reset all state when file changes
@@ -4884,29 +4937,38 @@ window.onmessage=function(event){
       wfCurrentFileId = incomingFileId;
       resetWorkflowState();
     }
+    // Cache for partial re-renders
+    _lastPagesData = { pages: msg.pages || [], fileInfo: msg.fileInfo || {} };
     // Update content detection from live page data
     var hadContentBefore = wfPagesHaveContent;
     wfPagesHaveContent = !!(msg.fileInfo && (msg.fileInfo.hasDesktopContent || msg.fileInfo.hasMobileContent));
+    wfFoundationsHaveContent = !!(msg.fileInfo && msg.fileInfo.hasFoundationsContent);
+    wfComponentsHaveContent = !!(msg.fileInfo && msg.fileInfo.hasComponentsContent);
     // Only auto-collapse on first detection (not when user explicitly toggled)
     if (wfPagesHaveContent && !hadContentBefore) wfFormState.step3Open = false;
     try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
     catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
-    // Detect if this is an existing unmanaged design
-    if (!wfImportMode && !wfFileType) {
-      parent.postMessage({ pluginMessage: { type: "detect-file-type" } }, "*");
-    }
+    // Always detect file type (re-detect on every pages-data to catch reverts)
+    parent.postMessage({ pluginMessage: { type: "detect-file-type" } }, "*");
   }
   if(msg.type==="page-content-update"){
     var hadContent = wfPagesHaveContent;
+    var hadFoundations = wfFoundationsHaveContent;
+    var hadComponents = wfComponentsHaveContent;
     wfPagesHaveContent = !!(msg.hasDesktopContent || msg.hasMobileContent);
-    if (hadContent !== wfPagesHaveContent) {
-      // Content status changed — re-render Step 3 and Step 5
-      // Only auto-collapse on first detection of content (transition from no content to content)
+    wfFoundationsHaveContent = !!msg.hasFoundationsContent;
+    wfComponentsHaveContent = !!msg.hasComponentsContent;
+    var contentChanged = (hadContent !== wfPagesHaveContent) || (hadFoundations !== wfFoundationsHaveContent) || (hadComponents !== wfComponentsHaveContent);
+    if (contentChanged) {
+      // Content status changed — re-render affected steps
       if (wfPagesHaveContent && !hadContent) wfFormState.step3Open = false;
-      var sc3 = document.getElementById("wf-container");
-      if (sc3) {
-        if (!wfImportMode) renderStep3(sc3);
-        renderHandoffStep(sc3, wfImportMode ? 4 : 5);
+      // Re-render from tokens if foundations/components changed, otherwise from wireframes/handoff
+      if (hadFoundations !== wfFoundationsHaveContent || hadComponents !== wfComponentsHaveContent) {
+        reRenderFromStep("tokens");
+      } else if (wfRoute === WF_ROUTE_A) {
+        reRenderFromStep("wireframes");
+      } else {
+        reRenderFromStep("handoff");
       }
     }
     // Refresh wireframe data too
@@ -4922,7 +4984,7 @@ window.onmessage=function(event){
         wfDevReady = false;
         wfDevReadyDate = null;
         var sc5 = document.getElementById("wf-container");
-        if (sc5) renderHandoffStep(sc5, wfImportMode ? 4 : 5);
+        reRenderFromStep("handoff");
       }
       saveSettings();
     }
@@ -4933,11 +4995,46 @@ window.onmessage=function(event){
     if (auditTabVisible || wfAuditVisible) {
       parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
     }
+    // Re-detect file type to catch reverts and structural changes
+    parent.postMessage({ pluginMessage: { type: "detect-file-type" } }, "*");
   }
   if(msg.type==="file-type-detected"){
-    wfFileType = msg.fileType || "fresh";
-    // Banner is rendered by renderWorkflow's early return — just trigger re-render
-    if (wfFileType === "existing" && !wfImportMode) {
+    var detectedType = msg.fileType || "fresh";
+    var prevRoute = wfRoute;
+    // Set initial route if not yet chosen
+    if (wfRoute === WF_ROUTE_NONE) {
+      if (detectedType === "existing") {
+        // Stay on NONE — show banner so user can choose
+      } else if (detectedType === "managed") {
+        wfRoute = WF_ROUTE_A; // Already managed, use Route A
+      } else {
+        wfRoute = WF_ROUTE_A; // Fresh file, use Route A
+      }
+    }
+    // If Route B active but file no longer matches Route B expectations:
+    // - "fresh" = file was fully reverted
+    // - "managed" with no Route B progress = user reverted a previously-managed file
+    // NOTE: "managed" is expected AFTER Route B Step 1 (it creates standard pages + tokens)
+    if (wfRoute === WF_ROUTE_B) {
+      var shouldReset = false;
+      var newRoute = WF_ROUTE_NONE;
+      if (detectedType === "fresh") {
+        shouldReset = true;
+      } else if (detectedType === "managed" && wfRouteBStep === 0) {
+        shouldReset = true;
+        newRoute = WF_ROUTE_A;
+      }
+      if (shouldReset) {
+        wfRoute = newRoute;
+        wfRouteBStep = 0;
+        wfRouteBAnalysis = null;
+        wfRouteBExistingVars = null;
+        wfRouteBBindStats = null;
+        saveSettings();
+      }
+    }
+
+    if (prevRoute !== wfRoute) {
       parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
     }
   }
@@ -4979,19 +5076,11 @@ window.onmessage=function(event){
     wfRouteBStep = 2;
     wfRouteBBindStats = msg.bindStats || {};
     saveSettings();
-    var rbC = document.getElementById("wf-container");
-    if (rbC) {
-      renderRouteBStep2(rbC);
-      renderAuditStep(rbC, 3);
-      renderHandoffStep(rbC, 4);
-    }
+    reRenderFromStep("tokens");
   }
   if(msg.type==="tokens-data"){
     wfTokensData = msg.tokens || null;
-    if (!wfImportMode) {
-      var c = document.getElementById("wf-container");
-      if (c) renderStep2(c);
-    }
+    reRenderFromStep("tokens");
   }
   if(msg.type==="generate-result"){
     // Individual category done — nothing to do here, wait for generate-complete
@@ -5008,8 +5097,7 @@ window.onmessage=function(event){
   if(msg.type==="reset-complete"){
     wfGenerated = false;
     parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
-    var rc = document.getElementById("wf-container");
-    if (rc) renderStep2(rc);
+    reRenderFromStep("tokens");
   }
   if(msg.type==="cover-generated"){
     wfFormState.generated = true;
@@ -5059,16 +5147,14 @@ window.onmessage=function(event){
       wfPromoGenerated = false;
     }
     saveSettings();
-    var _sc3 = document.getElementById("wf-container");
-    if (_sc3) renderStep3(_sc3);
+    reRenderFromStep("wireframes");
   }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
   if(msg.type==="cover-status-updated"){
     if (wfDevReady) wfFormState.step5Open = false;
     updateBuildHtmlTab();
-    var sc5 = document.getElementById("wf-container");
-    if (sc5) renderHandoffStep(sc5, wfImportMode ? 4 : 5);
+    reRenderFromStep("handoff");
   }
   // ── Image export pre-check ──
   if (msg.type === "check-images-export-result") {

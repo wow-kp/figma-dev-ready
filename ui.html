@@ -738,7 +738,7 @@ document.getElementById("settings-test-btn").addEventListener("click", function(
     if (_bhApiKey) headers["x-api-key"] = _bhApiKey;
   } else {
     headers["x-api-key"] = _bhApiKey;
-    headers["anthropic-version"] = "2025-04-15";
+    headers["anthropic-version"] = "2023-06-01";
     headers["anthropic-dangerous-direct-browser-access"] = "true";
   }
 
@@ -1207,6 +1207,12 @@ var wfRouteBStep = 0; // 0=not started, 1=step1 done, 2=tokens applied
 var wfRouteBAnalysis = null; // AnalysisResult from backend (with matched names)
 var wfRouteBExistingVars = null; // scanned existing variables
 var wfRouteBBindStats = null; // token binding stats
+var wfRouteBComponentStep = 0; // 0=not started, 1=scanning/AI, 2=review, 3=created (review), 4=swapped (done)
+var wfRouteBChunkData = null; // serialized tree chunks from backend
+var wfRouteBComponentDetections = null; // AI-classified components (round 2 result)
+var wfRouteBComponentStats = null; // creation results
+var wfRouteBComponentSwapMap = null; // swap map [{originalId, variantNodeId}] for persistence
+var wfRouteBComponentError = null; // last error message
 
 var REQUIRED_PAGES = [
   { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover",       critical:false },
@@ -1673,6 +1679,12 @@ function resetWorkflowState() {
   wfRouteBAnalysis = null;
   wfRouteBExistingVars = null;
   wfRouteBBindStats = null;
+  wfRouteBComponentStep = 0;
+  wfRouteBChunkData = null;
+  wfRouteBComponentDetections = null;
+  wfRouteBComponentStats = null;
+  wfRouteBComponentError = null;
+  wfRouteBComponentSwapMap = null;
   wfPagesHaveContent = false;
   wfFoundationsHaveContent = false;
   wfComponentsHaveContent = false;
@@ -1848,6 +1860,10 @@ function collectSettings() {
     routeBAnalysis: wfRouteBAnalysis ? JSON.parse(JSON.stringify(wfRouteBAnalysis)) : null,
     routeBExistingVars: wfRouteBExistingVars ? JSON.parse(JSON.stringify(wfRouteBExistingVars)) : null,
     routeBBindStats: wfRouteBBindStats ? JSON.parse(JSON.stringify(wfRouteBBindStats)) : null,
+    routeBComponentStep: wfRouteBComponentStep,
+    routeBComponentDetections: wfRouteBComponentDetections ? JSON.parse(JSON.stringify(wfRouteBComponentDetections)) : null,
+    routeBComponentStats: wfRouteBComponentStats ? JSON.parse(JSON.stringify(wfRouteBComponentStats)) : null,
+    routeBComponentSwapMap: wfRouteBComponentSwapMap ? JSON.parse(JSON.stringify(wfRouteBComponentSwapMap)) : null,
     currentFileId: wfCurrentFileId
   };
 }
@@ -1956,6 +1972,12 @@ function applyLoadedSettings(s) {
   if (s.routeBAnalysis) wfRouteBAnalysis = s.routeBAnalysis;
   if (s.routeBExistingVars) wfRouteBExistingVars = s.routeBExistingVars;
   if (s.routeBBindStats) wfRouteBBindStats = s.routeBBindStats;
+  if (s.routeBComponentStep !== undefined) wfRouteBComponentStep = s.routeBComponentStep;
+  if (s.routeBComponentDetections) wfRouteBComponentDetections = s.routeBComponentDetections;
+  if (s.routeBComponentStats) wfRouteBComponentStats = s.routeBComponentStats;
+  if (s.routeBComponentSwapMap) wfRouteBComponentSwapMap = s.routeBComponentSwapMap;
+  // If component step was in-progress (scanning), reset to 0 since AI state is lost on reload
+  if (wfRouteBComponentStep === 1) wfRouteBComponentStep = 0;
   if (s.currentFileId) wfCurrentFileId = s.currentFileId;
 }
 
@@ -3270,13 +3292,235 @@ function renderRouteBTokens(ctx, stepDef) {
         "</div>";
       body.appendChild(summaryDiv);
 
-      // ── Components placeholder (PR 2) ──
-      var compPlaceholder = document.createElement("div");
-      compPlaceholder.style.cssText = "margin:8px 12px 10px;padding:12px;background:#1e1e2e;border:1px solid #313244;border-radius:8px;";
-      compPlaceholder.innerHTML =
-        "<div style='font-size:11px;font-weight:600;color:#6c7086;margin-bottom:4px;'>🧩 Components</div>" +
-        "<div style='font-size:10px;color:#585b70;'>AI-powered component detection — coming soon</div>";
-      body.appendChild(compPlaceholder);
+      // ── Component Detection Section ──
+      var compSection = document.createElement("div");
+      compSection.style.cssText = "margin:8px 12px 10px;padding:12px;background:#1e1e2e;border:1px solid #313244;border-radius:8px;";
+      compSection.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:8px;'>🧩 Components</div>";
+
+      if (wfRouteBComponentStep === 0) {
+        // Show error from previous attempt if any
+        if (wfRouteBComponentError) {
+          var errDiv = document.createElement("div");
+          errDiv.style.cssText = "font-size:10px;color:#f38ba8;margin-bottom:8px;padding:6px 8px;background:#f38ba810;border:1px solid #f38ba830;border-radius:4px;";
+          errDiv.textContent = "⚠ " + wfRouteBComponentError;
+          compSection.appendChild(errDiv);
+        }
+        // Not started — show detect button
+        var detectBtn = document.createElement("button");
+        detectBtn.style.cssText = "width:100%;padding:8px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;transition:all .15s;";
+        detectBtn.textContent = wfRouteBComponentError ? "✦ Retry Detection" : "✦ Detect Components with AI";
+        detectBtn.addEventListener("mouseenter", function() { detectBtn.style.borderColor = "#cba6f7"; detectBtn.style.color = "#cba6f7"; });
+        detectBtn.addEventListener("mouseleave", function() { detectBtn.style.borderColor = "#45475a"; detectBtn.style.color = "#cdd6f4"; });
+        detectBtn.addEventListener("click", function() {
+          wfRouteBComponentError = null;
+          wfRouteBComponentStep = 1;
+          parent.postMessage({ pluginMessage: { type: "routeb-detect-components" } }, "*");
+          reRenderFromStep("tokens");
+        });
+        compSection.appendChild(detectBtn);
+        var skipLink = document.createElement("div");
+        skipLink.style.cssText = "text-align:center;margin-top:6px;font-size:10px;color:#585b70;cursor:pointer;";
+        skipLink.textContent = "Skip — continue without components";
+        skipLink.addEventListener("click", function() {
+          wfRouteBComponentStep = 3;
+          wfRouteBComponentStats = { componentsCreated: 0, instancesSwapped: 0, skipped: true };
+          saveSettings();
+          reRenderFromStep("tokens");
+        });
+        compSection.appendChild(skipLink);
+      } else if (wfRouteBComponentStep === 1) {
+        // Scanning / AI in progress
+        var progressDiv = document.createElement("div");
+        progressDiv.id = "routeb-comp-progress";
+        progressDiv.style.cssText = "font-size:11px;color:#a6adc8;";
+        progressDiv.textContent = wfRouteBComponentDetections ? "Creating components…" : "Scanning design structure…";
+        compSection.appendChild(progressDiv);
+        var progressBar = document.createElement("div");
+        progressBar.style.cssText = "margin-top:6px;height:3px;background:#313244;border-radius:2px;overflow:hidden;";
+        progressBar.innerHTML = "<div id='routeb-comp-bar' style='height:100%;width:10%;background:#cba6f7;border-radius:2px;transition:width .3s;'></div>";
+        compSection.appendChild(progressBar);
+      } else if (wfRouteBComponentStep === 2 && wfRouteBComponentDetections) {
+        // Review detected components
+        var detections = wfRouteBComponentDetections.components || [];
+        if (detections.length === 0) {
+          compSection.innerHTML += "<div style='font-size:11px;color:#6c7086;margin-bottom:8px;'>No repeating component patterns detected in your design.</div>";
+          var retryBtn0 = document.createElement("button");
+          retryBtn0.textContent = "↻ Retry Detection";
+          retryBtn0.style.cssText = "padding:6px 12px;font-size:10px;color:#cdd6f4;background:#313244;border:1px solid #45475a;border-radius:6px;cursor:pointer;";
+          retryBtn0.onclick = function() {
+            wfRouteBComponentStep = 0;
+            wfRouteBComponentDetections = null;
+            wfRouteBComponentStats = null;
+            wfRouteBComponentError = null;
+            wfRouteBChunkData = null;
+            wfRouteBComponentSwapMap = null;
+            saveSettings();
+            reRenderFromStep("tokens");
+          };
+          compSection.appendChild(retryBtn0);
+        } else {
+          var typeIcons = { button: "🔘", input: "📝", dropdown: "📋", card: "🃏", badge: "🏷️", "nav-item": "🧭", tag: "🏷️", avatar: "👤", "list-item": "📋", image: "🖼️", custom: "🧩" };
+          for (var di = 0; di < detections.length; di++) {
+            (function(det, idx) {
+              var row = document.createElement("div");
+              row.style.cssText = "display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #31324440;";
+              var cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.checked = true;
+              cb.style.cssText = "margin-top:2px;accent-color:#cba6f7;";
+              cb.dataset.idx = String(idx);
+              cb.addEventListener("change", function() { det._enabled = cb.checked; });
+              det._enabled = true;
+              var info = document.createElement("div");
+              info.style.cssText = "flex:1;";
+              var icon = typeIcons[det.type] || "🧩";
+              var totalInstances = 0;
+              for (var vi = 0; vi < det.variants.length; vi++) totalInstances += (det.variants[vi].nodeIds || []).length;
+              info.innerHTML =
+                "<div style='font-size:11px;font-weight:600;color:#cdd6f4;'>" + icon + " " + esc(det.name) + " — " + totalInstances + " instances (" + det.variants.length + " variant" + (det.variants.length > 1 ? "s" : "") + ")</div>" +
+                "<div style='font-size:10px;color:#a6adc8;margin-top:2px;'>" + det.variants.map(function(v) { return v.name + " (" + (v.nodeIds || []).length + ")"; }).join(" · ") + "</div>";
+              // Editable name
+              var nameInput = document.createElement("input");
+              nameInput.type = "text";
+              nameInput.value = det.name;
+              nameInput.style.cssText = "margin-top:4px;width:100%;padding:3px 6px;font-size:10px;background:#11111b;border:1px solid #313244;border-radius:4px;color:#cdd6f4;";
+              nameInput.addEventListener("change", function() { det.name = nameInput.value; });
+              info.appendChild(nameInput);
+              row.appendChild(cb);
+              row.appendChild(info);
+              compSection.appendChild(row);
+            })(detections[di], di);
+          }
+          // Action buttons
+          var btnRow = document.createElement("div");
+          btnRow.style.cssText = "display:flex;gap:8px;margin-top:10px;";
+          var createBtn = document.createElement("button");
+          createBtn.className = "wf-gen-btn";
+          createBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:700;";
+          createBtn.textContent = "Create Components";
+          createBtn.addEventListener("click", function() {
+            var enabled = [];
+            for (var ei = 0; ei < detections.length; ei++) {
+              if (detections[ei]._enabled !== false) {
+                var clean = { name: detections[ei].name, type: detections[ei].type, description: detections[ei].description || "", variants: detections[ei].variants };
+                enabled.push(clean);
+              }
+            }
+            if (enabled.length === 0) return;
+            wfRouteBComponentStep = 1;
+            saveSettings();
+            parent.postMessage({ pluginMessage: { type: "routeb-create-components", components: enabled } }, "*");
+            reRenderFromStep("tokens");
+          });
+          var skipBtn2 = document.createElement("button");
+          skipBtn2.style.cssText = "padding:8px 16px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;";
+          skipBtn2.textContent = "Skip";
+          skipBtn2.addEventListener("click", function() {
+            wfRouteBComponentStep = 3;
+            wfRouteBComponentStats = { componentsCreated: 0, instancesSwapped: 0, skipped: true };
+            saveSettings();
+            reRenderFromStep("tokens");
+          });
+          btnRow.appendChild(createBtn);
+          btnRow.appendChild(skipBtn2);
+          compSection.appendChild(btnRow);
+        }
+      } else if (wfRouteBComponentStep === 3) {
+        // Components created — review on Components page, then swap
+        var cStats = wfRouteBComponentStats || {};
+        if (cStats.skipped) {
+          compSection.innerHTML += "<div style='font-size:10px;color:#585b70;'>Skipped — no components created</div>";
+        } else {
+          compSection.innerHTML +=
+            "<div style='display:flex;align-items:center;gap:6px;'>" +
+              "<span style='color:#a6e3a1;font-weight:600;font-size:11px;'>✅ " + (cStats.componentsCreated || 0) + " component set" + ((cStats.componentsCreated || 0) !== 1 ? "s" : "") + " created</span>" +
+            "</div>" +
+            "<div style='font-size:10px;color:#a6adc8;margin-top:4px;'>" +
+              (cStats.variantsCreated || 0) + " variants" +
+            "</div>" +
+            "<div style='font-size:10px;color:#cba6f7;margin-top:4px;'>Review the components on the Components page, then swap the originals.</div>";
+          if (cStats.errors && cStats.errors.length > 0) {
+            compSection.innerHTML += "<div style='font-size:10px;color:#f38ba8;margin-top:4px;'>" + cStats.errors.length + " error(s):</div>";
+            for (var ei = 0; ei < cStats.errors.length; ei++) {
+              compSection.innerHTML += "<div style='font-size:9px;color:#f38ba8;padding-left:8px;'>" + cStats.errors[ei] + "</div>";
+            }
+          }
+          // Swap + Re-detect buttons
+          var swapBtnRow = document.createElement("div");
+          swapBtnRow.style.cssText = "display:flex;gap:8px;margin-top:8px;";
+          var swapBtn = document.createElement("button");
+          swapBtn.className = "wf-gen-btn";
+          swapBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:700;";
+          swapBtn.textContent = "Swap Instances";
+          swapBtn.addEventListener("click", function() {
+            wfRouteBComponentStep = 1;
+            saveSettings();
+            parent.postMessage({ pluginMessage: { type: "routeb-swap-instances", swapMap: wfRouteBComponentSwapMap || [] } }, "*");
+            reRenderFromStep("tokens");
+          });
+          swapBtnRow.appendChild(swapBtn);
+          var skipSwapBtn = document.createElement("button");
+          skipSwapBtn.style.cssText = "padding:8px 16px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;";
+          skipSwapBtn.textContent = "Skip";
+          skipSwapBtn.addEventListener("click", function() {
+            wfRouteBComponentStep = 4;
+            wfRouteBComponentStats.instancesSwapped = 0;
+            wfRouteBComponentStats.swapSkipped = true;
+            saveSettings();
+            reRenderFromStep("tokens");
+          });
+          swapBtnRow.appendChild(skipSwapBtn);
+          compSection.appendChild(swapBtnRow);
+        }
+        // Re-detect button
+        var redoBtn = document.createElement("button");
+        redoBtn.textContent = "↻ Re-detect Components";
+        redoBtn.style.cssText = "margin-top:8px;padding:4px 10px;font-size:10px;color:#cdd6f4;background:#313244;border:1px solid #45475a;border-radius:6px;cursor:pointer;";
+        redoBtn.onclick = function() {
+          wfRouteBComponentStep = 0;
+          wfRouteBComponentDetections = null;
+          wfRouteBComponentStats = null;
+          wfRouteBComponentError = null;
+          wfRouteBChunkData = null;
+          wfRouteBComponentSwapMap = null;
+          saveSettings();
+          reRenderFromStep("tokens");
+        };
+        compSection.appendChild(redoBtn);
+      } else if (wfRouteBComponentStep === 4) {
+        // Fully completed (created + swapped)
+        var fStats = wfRouteBComponentStats || {};
+        compSection.innerHTML +=
+          "<div style='display:flex;align-items:center;gap:6px;'>" +
+            "<span style='color:#a6e3a1;font-weight:600;font-size:11px;'>✅ " + (fStats.componentsCreated || 0) + " component set" + ((fStats.componentsCreated || 0) !== 1 ? "s" : "") + " created</span>" +
+          "</div>" +
+          "<div style='font-size:10px;color:#a6adc8;margin-top:4px;'>" +
+            (fStats.variantsCreated || 0) + " variants · " + (fStats.instancesSwapped || 0) + " instances swapped" +
+            (fStats.swapSkipped ? " (swap skipped)" : "") +
+          "</div>";
+        if (fStats.errors && fStats.errors.length > 0) {
+          compSection.innerHTML += "<div style='font-size:10px;color:#f38ba8;margin-top:4px;'>" + fStats.errors.length + " error(s):</div>";
+          for (var ei = 0; ei < fStats.errors.length; ei++) {
+            compSection.innerHTML += "<div style='font-size:9px;color:#f38ba8;padding-left:8px;'>" + fStats.errors[ei] + "</div>";
+          }
+        }
+        var redoBtn2 = document.createElement("button");
+        redoBtn2.textContent = "↻ Re-detect Components";
+        redoBtn2.style.cssText = "margin-top:8px;padding:4px 10px;font-size:10px;color:#cdd6f4;background:#313244;border:1px solid #45475a;border-radius:6px;cursor:pointer;";
+        redoBtn2.onclick = function() {
+          wfRouteBComponentStep = 0;
+          wfRouteBComponentDetections = null;
+          wfRouteBComponentStats = null;
+          wfRouteBComponentError = null;
+          wfRouteBChunkData = null;
+          wfRouteBComponentSwapMap = null;
+          saveSettings();
+          reRenderFromStep("tokens");
+        };
+        compSection.appendChild(redoBtn2);
+      }
+
+      body.appendChild(compSection);
     } else if (hasAnalysis) {
       // ── Active state: token review UI ──
       renderRouteBTokenReview(body, wfRouteBAnalysis, container);
@@ -5022,6 +5266,79 @@ window.onmessage=function(event){
     saveSettings();
     reRenderFromStep("tokens");
   }
+  // ── Route B Component Detection ──
+  if(msg.type==="routeb-serialize-next"){
+    // Bounce back to backend — this message round-trip yields the Figma UI thread
+    parent.postMessage({ pluginMessage: { type: "routeb-serialize-next" } }, "*");
+  }
+  if(msg.type==="routeb-create-load-vars"){
+    // Bounce back to backend — yields UI thread before variable loading
+    parent.postMessage({ pluginMessage: { type: "routeb-create-load-vars" } }, "*");
+  }
+  if(msg.type==="routeb-create-next"){
+    // Bounce back to backend — processes one component per round-trip to avoid freezing
+    parent.postMessage({ pluginMessage: { type: "routeb-create-next" } }, "*");
+  }
+  if(msg.type==="routeb-swap-next"){
+    // Bounce back to backend — processes one swap per round-trip
+    parent.postMessage({ pluginMessage: { type: "routeb-swap-next" } }, "*");
+  }
+  if(msg.type==="routeb-tree-chunks"){
+    wfRouteBChunkData = msg.chunks;
+    wfRouteBComponentStep = 1;
+    saveSettings();
+    // Update progress text
+    var progEl = document.getElementById("routeb-comp-progress");
+    if (progEl) progEl.textContent = "AI analyzing design patterns…";
+    var barEl = document.getElementById("routeb-comp-bar");
+    if (barEl) barEl.style.width = "30%";
+    // Start 2-round AI detection
+    runComponentDetectionAI(msg.chunks, function(err, result) {
+      if (err) {
+        wfRouteBComponentError = err;
+        wfRouteBComponentStep = 0;
+        saveSettings();
+        reRenderFromStep("tokens");
+        return;
+      }
+      wfRouteBComponentError = null;
+      wfRouteBComponentDetections = result;
+      wfRouteBComponentStep = 2;
+      saveSettings();
+      reRenderFromStep("tokens");
+    });
+  }
+  if(msg.type==="routeb-components-created"){
+    if (window._compCreateTimeout) { clearTimeout(window._compCreateTimeout); window._compCreateTimeout = null; }
+    wfRouteBComponentStats = msg.stats;
+    wfRouteBComponentSwapMap = msg.swapMap || [];
+    wfRouteBComponentStep = 3;
+    saveSettings();
+    reRenderFromStep("tokens");
+  }
+  if(msg.type==="routeb-components-error"){
+    if (window._compCreateTimeout) { clearTimeout(window._compCreateTimeout); window._compCreateTimeout = null; }
+    wfRouteBComponentError = msg.error || "Component creation failed.";
+    wfRouteBComponentStep = 0;
+    saveSettings();
+    reRenderFromStep("tokens");
+  }
+  if(msg.type==="routeb-swap-completed"){
+    var swapStats = msg.stats || {};
+    wfRouteBComponentStats.instancesSwapped = swapStats.instancesSwapped || 0;
+    if (swapStats.errors) {
+      wfRouteBComponentStats.errors = (wfRouteBComponentStats.errors || []).concat(swapStats.errors);
+    }
+    wfRouteBComponentStep = 4;
+    saveSettings();
+    reRenderFromStep("tokens");
+  }
+  if(msg.type==="routeb-components-progress"){
+    var progEl2 = document.getElementById("routeb-comp-progress");
+    if (progEl2) progEl2.textContent = msg.phase || "Processing…";
+    var barEl2 = document.getElementById("routeb-comp-bar");
+    if (barEl2) barEl2.style.width = (msg.percent || 10) + "%";
+  }
   if(msg.type==="tokens-data"){
     wfTokensData = msg.tokens || null;
     reRenderFromStep("tokens");
@@ -5299,7 +5616,7 @@ function bhCallTokenNamingAI(analysis, callback) {
     xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
     xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
   } else {
-    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
     xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
   }
   xhr.onload = function() {
@@ -5324,6 +5641,198 @@ function bhCallTokenNamingAI(analysis, callback) {
   xhr.timeout = 30000;
   xhr.ontimeout = function() { callback("AI request timed out.", null); };
   xhr.send(body);
+}
+
+// ── AI Component Detection (Route B) ──
+function callComponentDetectionAI(systemPrompt, userContent, callback) {
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key or proxy configured. Set up AI in Settings tab.", null); return; }
+
+  var body = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [
+      { role: "user", content: userContent + "\n\nRespond with ONLY the JSON object, no markdown fences or explanation." }
+    ]
+  });
+
+  var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
+  if (useProxy) {
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        text = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+        var result = JSON.parse(text);
+        callback(null, result);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else if (xhr.status === 429) {
+      var retryMsg = "Rate limited (429).";
+      try {
+        var errBody = JSON.parse(xhr.responseText);
+        if (errBody.retryAfterSeconds) {
+          var mins = Math.ceil(errBody.retryAfterSeconds / 60);
+          retryMsg = "Rate limited — retry in " + mins + " min (" + (errBody.remaining || 0) + "/" + (errBody.limit || "?") + " remaining).";
+        }
+      } catch(e) {}
+      callback(retryMsg, null);
+    } else {
+      var errDetail = "";
+      try { var eb = JSON.parse(xhr.responseText); errDetail = (eb.error && eb.error.message) || xhr.responseText.substring(0, 200); } catch(e) { errDetail = xhr.responseText ? xhr.responseText.substring(0, 200) : ""; }
+      callback("API error (" + xhr.status + "): " + errDetail, null);
+    }
+  };
+  xhr.onerror = function() { callback("Network error.", null); };
+  xhr.timeout = 60000;
+  xhr.ontimeout = function() { callback("AI request timed out (60s).", null); };
+  xhr.send(body);
+}
+
+function runComponentDetectionAI(chunks, callback) {
+  var round1SystemPrompt =
+    "You are a Figma design system expert. Analyze this UI frame's node tree and identify all repeating UI component patterns.\n\n" +
+    "Node format: id (unique ID), t (type: F=Frame, T=Text, R=Rect, V=Vector, I=Instance, G=Group), n (name), " +
+    "x/y (position relative to parent), w/h (dimensions), " +
+    "f (fill color), s (stroke color), sw (stroke weight), r (corner radius), o (opacity), l (layout: H/V/W), p (padding [t,r,b,l]), " +
+    "g (gap), ax/cx (alignment), txt (text content), fs (font size), fw (font weight), ta (text align), ff (font family), " +
+    "img (has image), clip (clips content), abs (absolute positioned), exp (has export/icon), shadow (has shadow), c (children), cc (child count if truncated).\n\n" +
+    "Find nodes that share similar structure and could be component instances. Look for:\n" +
+    "- Buttons (small frames with centered text, fills, radius)\n" +
+    "- Inputs/fields (frames with strokes, text, consistent height)\n" +
+    "- Cards (larger frames with image + text children)\n" +
+    "- Navigation items, tags, badges, avatars, list items\n" +
+    "- ANY repeating pattern — even uncommon/custom ones\n\n" +
+    "Guidelines:\n" +
+    "- Report the outermost frame that represents the full component (e.g., the button frame, not the text inside it).\n" +
+    "- Don't report a component's inner children as a separate pattern (e.g., don't create \"Button Label\" separately from \"Button\").\n" +
+    "- Each nodeId should appear in only one pattern. A pattern needs at least 2 instances.\n" +
+    "- Skip section layout wrappers and one-off unique elements.\n" +
+    "- Designs are often messy/unorganized: a button or input frame may NOT have its text as a child node. " +
+    "The text could be anywhere in the tree — a sibling, a cousin, or in a completely different branch. " +
+    "Use x/y position and w/h dimensions to find text nodes that visually overlap or sit adjacent to a component frame. " +
+    "For example, a text node at x:100,y:200 with a frame at x:95,y:195 are likely the same component. " +
+    "Also look for naming patterns (\"Button Label\", \"CTA\", \"Input Label\", etc.). " +
+    "Report ONLY the FRAME nodeId as the instance \"nodeId\". " +
+    "If there are associated text/icon nodes that visually belong to this component but are NOT children of the frame, " +
+    "list their nodeIds in the \"associatedNodeIds\" array.\n\n" +
+    "For each pattern, list ALL matching nodeIds and note what differs between instances.\n" +
+    "IMPORTANT: The \"nodeId\" field must be a FRAME node only. Non-child text/vector/rect nodes go in \"associatedNodeIds\".\n\n" +
+    "Return ONLY valid JSON:\n" +
+    '{"patterns":[{"type":"button|input|dropdown|card|badge|nav-item|tag|list-item|custom","description":"Short description","instances":[{"nodeId":"1:234","associatedNodeIds":["1:235"],"notes":"blue fill, text Submit"}],"differentiators":["fill color","text content"]}]}';
+
+  var round2SystemPrompt =
+    "You are a Figma design system expert. You've analyzed individual sections of a design and found component patterns in each. Now unify these into a final component library.\n\n" +
+    "Tasks:\n" +
+    "1. Merge patterns that appear across multiple sections (e.g., 'Button' found in hero AND in form)\n" +
+    "2. Identify variants: what property differentiates instances (Variant for style, Size for dimensions, State for border/color changes)\n" +
+    "3. Name each component and its variants using design system conventions\n" +
+    "4. Match Desktop and Mobile versions of the same component when applicable\n" +
+    "5. Remove false positives (layout containers, unique one-off elements)\n\n" +
+    "Guidelines:\n" +
+    "- nodeIds arrays must contain ONLY frame nodeIds — never text, vector, or rect nodeIds.\n" +
+    "- Carry forward associatedNodeIds from Round 1: for each nodeId in a variant, include its associated nodes " +
+    "in an \"associatedNodeIds\" map so they can be grouped into the component during creation.\n" +
+    "- Each nodeId should appear in exactly one variant of one component. Only use frame nodeIds from Round 1 results.\n" +
+    "- Each component must have at least 2 total instances across all variants.\n" +
+    "- If Round 1 found separate label/text patterns (e.g., 'Button Label'), merge them into the parent component rather than keeping them separate.\n" +
+    "- Prefer fewer, well-defined components over many small fragments.\n\n" +
+    "Return ONLY valid JSON:\n" +
+    '{"components":[{"name":"Button","type":"button","description":"Primary action button","variants":[{"name":"Primary","properties":{"Variant":"Primary"},"nodeIds":["1:234","5:678"],"associatedNodeIds":{"1:234":["1:235"],"5:678":["5:679"]}}]}]}';
+
+  var round1Results = [];
+  var completed = 0;
+  var totalChunks = chunks.length;
+  var hadError = false;
+
+  function updateProgress(text, pct) {
+    var progEl = document.getElementById("routeb-comp-progress");
+    if (progEl) progEl.textContent = text;
+    var barEl = document.getElementById("routeb-comp-bar");
+    if (barEl) barEl.style.width = pct + "%";
+  }
+
+  function processChunk(i) {
+    if (hadError) return;
+    updateProgress("Analyzing " + chunks[i].frameName + "… (" + (i + 1) + "/" + totalChunks + ")", 10 + Math.round(60 * i / totalChunks));
+
+    callComponentDetectionAI(round1SystemPrompt, JSON.stringify(chunks[i].tree), function(err, result) {
+      if (hadError) return;
+      if (err) {
+        hadError = true;
+        callback("Round 1 failed on " + chunks[i].frameName + ": " + err, null);
+        return;
+      }
+      console.log("Round 1 result for " + chunks[i].frameName + ":", JSON.stringify(result.patterns || []).substring(0, 500));
+      round1Results.push({ page: chunks[i].page, frameName: chunks[i].frameName, patterns: result.patterns || [] });
+      completed++;
+
+      if (completed < totalChunks) {
+        processChunk(completed);
+      } else {
+        updateProgress("Unifying patterns across all frames…", 75);
+        callComponentDetectionAI(round2SystemPrompt, JSON.stringify(round1Results), function(err2, finalResult) {
+          if (err2) {
+            callback("Round 2 aggregation failed: " + err2, null);
+            return;
+          }
+          console.log("Round 2 raw result:", JSON.stringify(finalResult).substring(0, 1000));
+          // Post-process: deduplicate nodeIds across all variants/components
+          if (finalResult && finalResult.components) {
+            var seen = {};
+            for (var ci2 = 0; ci2 < finalResult.components.length; ci2++) {
+              var comp2 = finalResult.components[ci2];
+              if (!comp2.variants) continue;
+              for (var vi2 = 0; vi2 < comp2.variants.length; vi2++) {
+                var variant = comp2.variants[vi2];
+                if (!variant.nodeIds) { variant.nodeIds = []; continue; }
+                var filtered = [];
+                for (var ni2 = 0; ni2 < variant.nodeIds.length; ni2++) {
+                  var nid = variant.nodeIds[ni2];
+                  if (seen[nid]) continue;
+                  seen[nid] = true;
+                  filtered.push(nid);
+                }
+                variant.nodeIds = filtered;
+              }
+              comp2.variants = comp2.variants.filter(function(v) { return v.nodeIds && v.nodeIds.length > 0; });
+            }
+            finalResult.components = finalResult.components.filter(function(c) {
+              var total = 0;
+              if (c.variants) c.variants.forEach(function(v) { total += v.nodeIds.length; });
+              return total >= 2;
+            });
+          }
+          console.log("After post-processing:", JSON.stringify(finalResult).substring(0, 1000));
+          updateProgress("Detection complete!", 100);
+          callback(null, finalResult);
+        });
+      }
+    });
+  }
+
+  if (totalChunks === 0) {
+    callback("No design frames found to analyze.", null);
+    return;
+  }
+
+  processChunk(0);
 }
 
 // ── Build HTML button handlers ──
@@ -5747,7 +6256,7 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
     reqHeaders["X-Figma-User-Id"] = _figmaUserId;
     reqHeaders["X-Figma-User-Name"] = _figmaUserName;
   } else {
-    reqHeaders["anthropic-version"] = "2025-04-15";
+    reqHeaders["anthropic-version"] = "2023-06-01";
     reqHeaders["anthropic-dangerous-direct-browser-access"] = "true";
   }
 
@@ -6009,7 +6518,7 @@ function bhCallNamingAI(serializedNodes, callback) {
     xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
     xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
   } else {
-    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
     xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
   }
   xhr.onload = function() {
@@ -6080,7 +6589,7 @@ function bhCallAuditAI(data, callback) {
     xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
     xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
   } else {
-    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
     xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
   }
   xhr.onload = function() {

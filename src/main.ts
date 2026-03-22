@@ -13,6 +13,7 @@ import { generateComponentsPageComplex } from './components-complex';
 import { importTokens } from './tokens-import';
 import { generateTokenData } from './tokens-generate';
 import { analyzeDesign, archiveExistingContent, createTokensFromAnalysis, reorganizeFrames, bindTokensToDesign, cleanupOriginalPages, scanExistingVariables, matchTokensWithExisting } from './design-import';
+import { startChunkedSerialization, serializeNextFrame, startComponentCreation, loadVarsAndStartCreation, createNextComponent, startSwapInstances, swapNextInstance } from './component-detection';
 import {
   _htmlImageNameCount, htmlWalkNode, htmlCountImages, htmlCollectImages,
   htmlRenderCSS, htmlSanitizeName, htmlRenderNodeClean,
@@ -613,6 +614,57 @@ figma.ui.onmessage = async function(msg) {
       });
     } catch (e) {
       figma.ui.postMessage({ type: "routeb-tokens-error", error: String(e) });
+    }
+  }
+  // ── Route B Component Detection ─────────────────────────────────────────
+  if (msg.type === "routeb-detect-components") {
+    try {
+      figma.ui.postMessage({ type: "routeb-components-progress", phase: "Scanning design structure…", percent: 5 });
+      await startChunkedSerialization();
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-components-error", error: String(e) });
+    }
+  }
+  if (msg.type === "routeb-serialize-next") {
+    try {
+      await serializeNextFrame();
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-components-error", error: String(e) });
+    }
+  }
+  if (msg.type === "routeb-create-components") {
+    try {
+      await startComponentCreation(msg.components);
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-components-error", error: String(e) });
+    }
+  }
+  if (msg.type === "routeb-create-load-vars") {
+    try {
+      await loadVarsAndStartCreation();
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-components-error", error: String(e) });
+    }
+  }
+  if (msg.type === "routeb-create-next") {
+    try {
+      await createNextComponent();
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-components-error", error: String(e) });
+    }
+  }
+  if (msg.type === "routeb-swap-instances") {
+    try {
+      await startSwapInstances(msg.swapMap);
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-components-error", error: String(e) });
+    }
+  }
+  if (msg.type === "routeb-swap-next") {
+    try {
+      await swapNextInstance();
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-components-error", error: String(e) });
     }
   }
   // ── Workflow: page structure ──────────────────────────────────────────────

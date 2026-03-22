@@ -20,7 +20,14 @@ function errorResponse(status: number, message: string): Response {
   return corsResponse(status, JSON.stringify({ error: { type: "proxy_error", message } }));
 }
 
-async function checkRateLimit(kv: KVNamespace, userId: string, maxRequests: number): Promise<boolean> {
+interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+  resetAt: number; // unix timestamp (seconds) when the window resets
+}
+
+async function checkRateLimit(kv: KVNamespace, userId: string, maxRequests: number): Promise<RateLimitResult> {
   const key = `rl:${userId}`;
   const now = Date.now();
   const windowMs = 60 * 60 * 1000; // 1 hour
@@ -31,21 +38,24 @@ async function checkRateLimit(kv: KVNamespace, userId: string, maxRequests: numb
     if (!stored || (now - stored.windowStart) >= windowMs) {
       // New window
       await kv.put(key, JSON.stringify({ count: 1, windowStart: now }), { expirationTtl: 3600 });
-      return true;
+      return { allowed: true, remaining: maxRequests - 1, limit: maxRequests, resetAt: Math.ceil((now + windowMs) / 1000) };
     }
 
+    const resetAt = Math.ceil((stored.windowStart + windowMs) / 1000);
+
     if (stored.count >= maxRequests) {
-      return false;
+      return { allowed: false, remaining: 0, limit: maxRequests, resetAt };
     }
 
     // Increment
-    await kv.put(key, JSON.stringify({ count: stored.count + 1, windowStart: stored.windowStart }), {
+    const newCount = stored.count + 1;
+    await kv.put(key, JSON.stringify({ count: newCount, windowStart: stored.windowStart }), {
       expirationTtl: Math.ceil((stored.windowStart + windowMs - now) / 1000),
     });
-    return true;
+    return { allowed: true, remaining: maxRequests - newCount, limit: maxRequests, resetAt };
   } catch {
     // If KV fails, allow the request (fail open)
-    return true;
+    return { allowed: true, remaining: maxRequests, limit: maxRequests, resetAt: Math.ceil((now + windowMs) / 1000) };
   }
 }
 
@@ -84,9 +94,18 @@ export default {
 
     // Rate limiting
     const maxRequests = parseInt(env.RATE_LIMIT_MAX || "30", 10);
-    const withinLimit = await checkRateLimit(env.RATE_LIMIT_KV, userId, maxRequests);
-    if (!withinLimit) {
-      return errorResponse(429, "Rate limit exceeded. Max " + maxRequests + " requests per hour.");
+    const rl = await checkRateLimit(env.RATE_LIMIT_KV, userId, maxRequests);
+    const rlHeaders: Record<string, string> = {
+      "X-RateLimit-Limit": String(rl.limit),
+      "X-RateLimit-Remaining": String(rl.remaining),
+      "X-RateLimit-Reset": String(rl.resetAt),
+    };
+    if (!rl.allowed) {
+      const resetSec = Math.max(0, rl.resetAt - Math.floor(Date.now() / 1000));
+      return new Response(JSON.stringify({
+        error: { type: "rate_limit_error", message: "Rate limit exceeded. Max " + maxRequests + " requests per hour." },
+        remaining: 0, limit: rl.limit, resetAt: rl.resetAt, retryAfterSeconds: resetSec
+      }), { status: 429, headers: { ...CORS_HEADERS, ...rlHeaders, "Content-Type": "application/json", "Retry-After": String(resetSec) } });
     }
 
     // Forward to Anthropic
@@ -108,31 +127,30 @@ export default {
         headers: {
           "Content-Type": "application/json",
           "x-api-key": apiKey,
-          "anthropic-version": "2025-04-15",
+          "anthropic-version": "2023-06-01",
         },
         body,
         redirect: "follow",
       });
 
       if (isStream && anthropicResponse.ok && anthropicResponse.body) {
-        // Stream SSE response directly through with CORS headers
         return new Response(anthropicResponse.body, {
           status: anthropicResponse.status,
           headers: {
             ...CORS_HEADERS,
+            ...rlHeaders,
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
           },
         });
       }
 
-      // Non-streaming or error: buffer and return with CORS headers
-      // This also handles streaming requests that got error responses (4xx, 5xx, 3xx)
       const responseBody = await anthropicResponse.text();
       return new Response(responseBody, {
         status: anthropicResponse.status,
         headers: {
           ...CORS_HEADERS,
+          ...rlHeaders,
           "Content-Type": "application/json",
         },
       });

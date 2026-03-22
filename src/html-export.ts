@@ -670,7 +670,7 @@ export async function htmlExtractNodeCSS(node, cssVars) {
   return styles;
 }
 
-export function htmlGetSemanticTag(node, depth, pageType) {
+export async function htmlGetSemanticTag(node, depth, pageType) {
   var name = (node.name || "").toLowerCase();
   var type = node.type;
 
@@ -695,7 +695,7 @@ export function htmlGetSemanticTag(node, depth, pageType) {
   var componentHint = "";
   if (type === "INSTANCE") {
     try {
-      var mainComp = node.mainComponent;
+      var mainComp = typeof node.getMainComponentAsync === "function" ? await node.getMainComponentAsync() : node.mainComponent;
       if (mainComp) {
         componentHint = (mainComp.parent && mainComp.parent.type === "COMPONENT_SET" ? mainComp.parent.name : mainComp.name).toLowerCase();
       }
@@ -725,8 +725,8 @@ export function htmlGetSemanticTag(node, depth, pageType) {
     if (name.indexOf("dropdown") !== -1 || name.indexOf("select") !== -1
         || componentHint.indexOf("dropdown") !== -1 || componentHint.indexOf("select") !== -1) return "form-field-floating";
 
-    // Floating label input detection
-    if (componentHint.indexOf("floating label") !== -1) return "form-field-floating";
+    // Floating label input detection — check both componentHint and name so it works even if mainComponent is null
+    if (componentHint.indexOf("floating label") !== -1 || name.indexOf("floatinglabel") !== -1 || name.indexOf("floating-label") !== -1) return "form-field-floating";
     if (componentHint.indexOf("input") !== -1 || componentHint.indexOf("field") !== -1 || componentHint.indexOf("text-field") !== -1) return "form-field";
     if (name.indexOf("input") !== -1 || name.indexOf("field") !== -1 || name.indexOf("textarea") !== -1) return "input";
 
@@ -891,12 +891,12 @@ export async function htmlWalkNode(node, cssVars, images, depth, _unused, pageTy
   if (!node || node.visible === false) return null;
   if (depth > 20) return null; // safety limit
 
-  var tag = htmlGetSemanticTag(node, depth, pageType);
+  var tag = await htmlGetSemanticTag(node, depth, pageType);
   var className = htmlGetSemanticClass(node, tag);
 
   var nodeName = (node.name || "").toLowerCase();
   var compHint = "";
-  try { if (node.type === "INSTANCE" || node.type === "COMPONENT") { var mp = node.mainComponent || node; compHint = ((mp.parent && mp.parent.name) || "").toLowerCase(); } } catch(e) {}
+  try { if (node.type === "INSTANCE" || node.type === "COMPONENT") { var mp = (typeof node.getMainComponentAsync === "function" ? await node.getMainComponentAsync() : node.mainComponent) || node; compHint = ((mp.parent && mp.parent.name) || "").toLowerCase(); } } catch(e) {}
   var isSelect = nodeName.indexOf("dropdown") !== -1 || nodeName.indexOf("select") !== -1
     || compHint.indexOf("dropdown") !== -1 || compHint.indexOf("select") !== -1;
 

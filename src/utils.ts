@@ -4,14 +4,14 @@ export function rgb01ToHex(r,g,b) {
   return "#"+[r,g,b].map(function(v){ return Math.round(Math.min(255,Math.max(0,v*255))).toString(16).padStart(2,"0"); }).join("").toUpperCase();
 }
 
-export function resolveChain(variableId) {
+export async function resolveChain(variableId) {
   var chain=[],currentId=variableId,maxSteps=12,seen={};
   while (currentId && maxSteps-->0) {
     if (seen[currentId]){chain.push({name:"⚠ Circular reference",broken:true});break;}
     seen[currentId]=true;
-    var v=figma.variables.getVariableById(currentId);
+    var v=await figma.variables.getVariableByIdAsync(currentId);
     if(!v){chain.push({name:"Broken reference — variable deleted or renamed",broken:true});break;}
-    var col=figma.variables.getVariableCollectionById(v.variableCollectionId);
+    var col=await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
     var colName=col?col.name:"?";
     var modeId=col&&col.modes&&col.modes.length>0?col.modes[0].modeId:null;
     var val=modeId&&v.valuesByMode?v.valuesByMode[modeId]:null;
@@ -116,6 +116,7 @@ export function findPageByHint(hint) {
   var pageName = hint.charAt(0).toUpperCase() + hint.slice(1);
   var newPage = figma.createPage();
   newPage.name = pageName;
+  try { (newPage as any).devStatus = null; } catch(e) {}
   return newPage;
 }
 
@@ -174,13 +175,13 @@ export function parseCssShadow(str) {
   };
 }
 
-export function cxResolveVar(v, modeId, allCols) {
+export async function cxResolveVar(v, modeId, allCols) {
   var val = v.valuesByMode[modeId];
   var seen = {};
   while (val && typeof val === "object" && val.type === "VARIABLE_ALIAS" && val.id && !seen[val.id]) {
     seen[val.id] = true;
     try {
-      var aliased = figma.variables.getVariableById(val.id);
+      var aliased = await figma.variables.getVariableByIdAsync(val.id);
       if (!aliased) break;
       var ac = null;
       for (var i = 0; i < allCols.length; i++) { if (allCols[i].id === aliased.variableCollectionId) { ac = allCols[i]; break; } }
@@ -202,14 +203,14 @@ export function cxFindCol(allCols, pattern) {
   return null;
 }
 
-export function cxGetFloats(col, allVars, allCols) {
+export async function cxGetFloats(col, allVars, allCols) {
   if (!col || !col.modes || !col.modes.length) return [];
   var mid = col.modes[0].modeId;
   var out = [];
   for (var i = 0; i < allVars.length; i++) {
     var v = allVars[i];
     if (v.variableCollectionId !== col.id || v.resolvedType !== "FLOAT") continue;
-    var val = cxResolveVar(v, mid, allCols);
+    var val = await cxResolveVar(v, mid, allCols);
     var num = typeof val === "number" ? val : parseFloat(val) || 0;
     var parts = v.name.split("/");
     out.push({ name: parts[parts.length - 1], fullName: v.name, value: num, variable: v });
@@ -219,14 +220,18 @@ export function cxGetFloats(col, allVars, allCols) {
 
 export function cxStripPrefix(name) { var i = name.indexOf("/"); return i !== -1 ? name.substring(i + 1) : name; }
 
-export function ensureBackgroundImageVar() {
-  var cols = figma.variables.getLocalVariableCollections();
+export async function ensureBackgroundImageVar() {
+  var cols = await figma.variables.getLocalVariableCollectionsAsync();
   var flagsCol = null;
   for (var i = 0; i < cols.length; i++) { if (cols[i].name === "Flags") { flagsCol = cols[i]; break; } }
   if (!flagsCol) flagsCol = figma.variables.createVariableCollection("Flags");
-  var existing = figma.variables.getLocalVariables().filter(function(v) {
-    return v.variableCollectionId === flagsCol.id && v.resolvedType === "BOOLEAN";
-  });
+  var allVars = await figma.variables.getLocalVariablesAsync();
+  var existing = [];
+  for (var ei = 0; ei < allVars.length; ei++) {
+    if (allVars[ei].variableCollectionId === flagsCol.id && allVars[ei].resolvedType === "BOOLEAN") {
+      existing.push(allVars[ei]);
+    }
+  }
   for (var j = 0; j < existing.length; j++) {
     if (existing[j].name === "background-image") return existing[j];
   }
@@ -235,14 +240,18 @@ export function ensureBackgroundImageVar() {
   return v;
 }
 
-export function ensureEssentialColors() {
-  var cols = figma.variables.getLocalVariableCollections();
+export async function ensureEssentialColors() {
+  var cols = await figma.variables.getLocalVariableCollectionsAsync();
   var colorCol = null;
   for (var i = 0; i < cols.length; i++) { if (cols[i].name === "Colors") { colorCol = cols[i]; break; } }
   if (!colorCol) colorCol = figma.variables.createVariableCollection("Colors");
-  var existing = figma.variables.getLocalVariables().filter(function(v) {
-    return v.variableCollectionId === colorCol.id && v.resolvedType === "COLOR";
-  });
+  var allVars = await figma.variables.getLocalVariablesAsync();
+  var existing = [];
+  for (var ei = 0; ei < allVars.length; ei++) {
+    if (allVars[ei].variableCollectionId === colorCol.id && allVars[ei].resolvedType === "COLOR") {
+      existing.push(allVars[ei]);
+    }
+  }
   var nameMap = {};
   for (var ei = 0; ei < existing.length; ei++) nameMap[existing[ei].name] = true;
   var modeId = colorCol.modes[0].modeId;
@@ -266,7 +275,7 @@ export function ensureEssentialColors() {
 }
 
 export async function ensureComponentTextStyles() {
-  var existing = figma.getLocalTextStyles();
+  var existing = await figma.getLocalTextStylesAsync();
   var nameMap = {};
   for (var i = 0; i < existing.length; i++) nameMap[existing[i].name] = true;
 
@@ -277,14 +286,14 @@ export async function ensureComponentTextStyles() {
     if (fam && fam !== "Inter") { primaryFam = fam; break; }
   }
   if (primaryFam === "Inter") {
-    var allCols = figma.variables.getLocalVariableCollections();
+    var allCols = await figma.variables.getLocalVariableCollectionsAsync();
     var typCol = cxFindCol(allCols, "typography");
     if (typCol) {
-      var allVars = figma.variables.getLocalVariables();
+      var allVars = await figma.variables.getLocalVariablesAsync();
       var typMid = typCol.modes[0].modeId;
       for (var vi = 0; vi < allVars.length; vi++) {
         if (allVars[vi].variableCollectionId === typCol.id && allVars[vi].resolvedType === "STRING" && allVars[vi].name.toLowerCase().indexOf("family") !== -1) {
-          var fv = String(cxResolveVar(allVars[vi], typMid, allCols) || "").split(",")[0].trim().replace(/['"]/g, "");
+          var fv = String(await cxResolveVar(allVars[vi], typMid, allCols) || "").split(",")[0].trim().replace(/['"]/g, "");
           if (fv && fv !== "Inter") { primaryFam = fv; break; }
         }
       }

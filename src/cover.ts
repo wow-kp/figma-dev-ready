@@ -12,6 +12,7 @@ export async function generateCover(info) {
   if (!coverPage) {
     coverPage = figma.createPage();
     coverPage.name = "_Cover";
+    try { (coverPage as any).devStatus = null; } catch(e) {}
     figma.root.insertChild(0, coverPage);
   }
 
@@ -138,7 +139,7 @@ export async function generateCover(info) {
   frame.appendChild(badgeText);
 
   // Navigate to cover page and zoom to frame
-  figma.currentPage = coverPage;
+  await figma.setCurrentPageAsync(coverPage);
   figma.viewport.scrollAndZoomIntoView([frame]);
 }
 

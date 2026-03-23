@@ -4,7 +4,7 @@ import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, parse
 export async function generateFoundationsPage(msg) {
   var page = findPageByHint("foundations");
   if (!page) return;
-  figma.currentPage = page;
+  await figma.setCurrentPageAsync(page);
 
   // Load all Inter + user font weights using fallback-aware loader
   var stdWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
@@ -13,7 +13,7 @@ export async function generateFoundationsPage(msg) {
   }
 
   var fontFamilies = msg.fontFamilies || {};
-  var userFonts = [fontFamilies.primary, fontFamilies.secondary, fontFamilies.tertiary].filter(Boolean);
+  var userFonts = Object.keys(fontFamilies).map(function(k) { return fontFamilies[k]; }).filter(Boolean);
   var loadedFamilies = {};
   for (var fi = 0; fi < userFonts.length; fi++) {
     var fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
@@ -39,12 +39,20 @@ export async function generateFoundationsPage(msg) {
   var y = PAD;
 
   // ── Look up color variables for binding ──
-  var fColorCols = figma.variables.getLocalVariableCollections().filter(function(c) { return c.name === "Colors"; });
+  var fColorColsAll = await figma.variables.getLocalVariableCollectionsAsync();
+  var fColorCols = [];
+  for (var fcci = 0; fcci < fColorColsAll.length; fcci++) {
+    if (fColorColsAll[fcci].name === "Colors") fColorCols.push(fColorColsAll[fcci]);
+  }
   var fColorVarMap = {};
   if (fColorCols.length > 0) {
-    var fColorVars = figma.variables.getLocalVariables().filter(function(v) {
-      return v.variableCollectionId === fColorCols[0].id && v.resolvedType === "COLOR";
-    });
+    var fColorVarsAll = await figma.variables.getLocalVariablesAsync();
+    var fColorVars = [];
+    for (var fcfi = 0; fcfi < fColorVarsAll.length; fcfi++) {
+      if (fColorVarsAll[fcfi].variableCollectionId === fColorCols[0].id && fColorVarsAll[fcfi].resolvedType === "COLOR") {
+        fColorVars.push(fColorVarsAll[fcfi]);
+      }
+    }
     for (var fcvi = 0; fcvi < fColorVars.length; fcvi++) {
       fColorVarMap[fColorVars[fcvi].name] = fColorVars[fcvi];
     }
@@ -122,9 +130,15 @@ export async function generateFoundationsPage(msg) {
   try {
     var ff = msg.fontFamilies || {};
     var ffEntries = [];
-    if (ff.primary) ffEntries.push({ role: "Primary", family: ff.primary });
-    if (ff.secondary && ff.secondary !== ff.primary) ffEntries.push({ role: "Secondary", family: ff.secondary });
-    if (ff.tertiary && ff.tertiary !== ff.primary) ffEntries.push({ role: "Tertiary", family: ff.tertiary });
+    var ffKeys = Object.keys(ff);
+    var ffSeen = {};
+    for (var ffki = 0; ffki < ffKeys.length; ffki++) {
+      var ffVal = ff[ffKeys[ffki]];
+      if (!ffVal || ffSeen[ffVal]) continue;
+      ffSeen[ffVal] = true;
+      var ffRole = ffKeys[ffki].charAt(0).toUpperCase() + ffKeys[ffki].slice(1);
+      ffEntries.push({ role: ffRole, family: ffVal });
+    }
 
     if (ffEntries.length > 0) {
       sectionTitle("Font Families");
@@ -161,22 +175,27 @@ export async function generateFoundationsPage(msg) {
         ffRoleLabel.x = 24; ffRoleLabel.y = 20;
         ffCard.appendChild(ffRoleLabel);
 
-        // Font family name in its own font
-        var ffNameStyle = await loadFontWithFallback(ffFam, 700);
+        // Detect if font is installed
+        var ffInstalled = true;
+        try { await figma.loadFontAsync({ family: ffFam, style: "Regular" }); } catch(e) { ffInstalled = false; }
+        var ffDisplayFam = ffInstalled ? ffFam : "Inter";
+
+        // Font family name in its own font (or Inter fallback)
+        var ffNameStyle = await loadFontWithFallback(ffDisplayFam, 700);
         var ffNameNode = figma.createText();
-        ffNameNode.fontName = { family: ffFam, style: ffNameStyle };
+        ffNameNode.fontName = { family: ffDisplayFam, style: ffNameStyle };
         ffNameNode.fontSize = 28;
-        ffNameNode.characters = ffFam;
-        ffNameNode.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+        ffNameNode.characters = ffFam + (ffInstalled ? "" : " (not installed)");
+        ffNameNode.fills = [{ type: "SOLID", color: ffInstalled ? { r: 0.1, g: 0.1, b: 0.1 } : { r: 0.6, g: 0.3, b: 0.3 } }];
         ffNameNode.x = 24; ffNameNode.y = 42;
         ffCard.appendChild(ffNameNode);
 
-        // Sample alphabet in Regular
-        var ffSampleStyle = await loadFontWithFallback(ffFam, 400);
+        // Sample alphabet in Regular (or fallback message)
+        var ffSampleStyle = await loadFontWithFallback(ffDisplayFam, 400);
         var ffSampleNode = figma.createText();
-        ffSampleNode.fontName = { family: ffFam, style: ffSampleStyle };
+        ffSampleNode.fontName = { family: ffDisplayFam, style: ffSampleStyle };
         ffSampleNode.fontSize = 14;
-        ffSampleNode.characters = "AaBbCcDdEeFfGgHhIiJjKkLl";
+        ffSampleNode.characters = ffInstalled ? "AaBbCcDdEeFfGgHhIiJjKkLl" : "Font not available — install to preview";
         ffSampleNode.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
         ffSampleNode.x = 24; ffSampleNode.y = 86;
         ffCard.appendChild(ffSampleNode);
@@ -200,9 +219,9 @@ export async function generateFoundationsPage(msg) {
         var ffwX = 24;
         for (var ffwi = 0; ffwi < ffWeightSamples.length; ffwi++) {
           var ffw = ffWeightSamples[ffwi];
-          var ffwStyle = await loadFontWithFallback(ffFam, ffw.w);
+          var ffwStyle = await loadFontWithFallback(ffDisplayFam, ffw.w);
           var ffwNode = figma.createText();
-          ffwNode.fontName = { family: ffFam, style: ffwStyle };
+          ffwNode.fontName = { family: ffDisplayFam, style: ffwStyle };
           ffwNode.fontSize = 11;
           ffwNode.characters = ffw.label;
           ffwNode.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
@@ -215,7 +234,7 @@ export async function generateFoundationsPage(msg) {
       var ffRows = Math.ceil(ffEntries.length / ffCols);
       y += ffRows * (FF_CARD_H + FF_GAP) + SECTION_GAP;
     }
-  } catch(ffErr) { console.log("[Foundations] Font Families error: " + ffErr); }
+  } catch(ffErr) { /* font families section failed */ }
 
   // ══════════════════════════════════════════════════════════════════════════
   // TEXT STYLES
@@ -238,7 +257,7 @@ export async function generateFoundationsPage(msg) {
       return r;
     }
     // Helper: create a styled text node from a text style entry
-    var figmaTextStyles = figma.getLocalTextStyles();
+    var figmaTextStyles = await figma.getLocalTextStylesAsync();
     var figmaTextStyleMap = {};
     for (var fts = 0; fts < figmaTextStyles.length; fts++) {
       figmaTextStyleMap[figmaTextStyles[fts].name] = figmaTextStyles[fts];
@@ -251,7 +270,7 @@ export async function generateFoundationsPage(msg) {
       await loadFontWithFallback(fam, weight);
       var node = figma.createText();
       if (figmaStyle) {
-        node.textStyleId = figmaStyle.id;
+        await node.setTextStyleIdAsync(figmaStyle.id);
       } else {
         setFontName(node, fam, weight);
         node.fontSize = parseFloat(tsEntry.fontSize) || 16;
@@ -375,7 +394,7 @@ export async function generateFoundationsPage(msg) {
       }
       y += SECTION_GAP;
     }
-    } catch(tsErr) { console.log("[Foundations] Text Styles section error: " + tsErr); }
+    } catch(tsErr) { /* text styles section failed */ }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -388,8 +407,6 @@ export async function generateFoundationsPage(msg) {
 
   if (hasSizes || hasWeights || hasLH) {
     sectionTitle("Typography Scale");
-    console.log("[Foundations] Typography Scale: sizes=" + (typo.sizes ? typo.sizes.length : 0) + " weights=" + (typo.weights ? typo.weights.length : 0) + " lh=" + (typo.lineHeights ? typo.lineHeights.length : 0));
-
     // ── Font Sizes ──
     if (hasSizes) {
       try {
@@ -408,7 +425,7 @@ export async function generateFoundationsPage(msg) {
           y += Math.max(sizeText.height, 20) + 8;
         }
         y += 24;
-      } catch(e) { console.log("[Foundations] Font Sizes error: " + e); }
+      } catch(e) { /* font sizes failed */ }
     }
 
     // ── Font Weights ──
@@ -431,7 +448,7 @@ export async function generateFoundationsPage(msg) {
           if (wx + 140 > W - PAD) { wx = PAD; y += 32; }
         }
         y += 40;
-      } catch(e) { console.log("[Foundations] Font Weights error: " + e); }
+      } catch(e) { /* font weights failed */ }
     }
 
     // ── Line Heights ──
@@ -461,7 +478,7 @@ export async function generateFoundationsPage(msg) {
           lhX += lhColW + 24;
         }
         y += lhMaxH + 24;
-      } catch(e) { console.log("[Foundations] Line Heights error: " + e); }
+      } catch(e) { /* line heights failed */ }
     }
     y += SECTION_GAP;
   }
@@ -500,7 +517,7 @@ export async function generateFoundationsPage(msg) {
   var shadowsData = msg.shadows || [];
   if (shadowsData.length > 0) {
     sectionTitle("Shadows");
-    var shEffectStyles = figma.getLocalEffectStyles();
+    var shEffectStyles = await figma.getLocalEffectStylesAsync();
     var shStyleMap = {};
     for (var sem = 0; sem < shEffectStyles.length; sem++) { shStyleMap[shEffectStyles[sem].name] = shEffectStyles[sem]; }
     var shx = PAD;
@@ -513,7 +530,7 @@ export async function generateFoundationsPage(msg) {
       shRect.cornerRadius = 8;
       shRect.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
       var shStyle = shStyleMap["shadow/" + sh.name];
-      if (shStyle) { try { shRect.effectStyleId = shStyle.id; } catch(e) {} }
+      if (shStyle) { try { await shRect.setEffectStyleIdAsync(shStyle.id); } catch(e) {} }
       else { var effect = parseCssShadow(sh.value); if (effect) shRect.effects = [effect]; }
       frame.appendChild(shRect);
 
@@ -795,5 +812,4 @@ export async function generateFoundationsPage(msg) {
   var finalH = maxBottom + PAD;
   frame.resize(W, Math.max(finalH, 400));
   frame.clipsContent = true;
-  console.log("[Foundations] frame resized to " + W + "x" + Math.max(finalH, 400) + ", children: " + frame.children.length + ", y=" + y);
 }

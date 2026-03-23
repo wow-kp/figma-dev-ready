@@ -1,28 +1,28 @@
 // Audit & debug system
 import { rgb01ToHex, resolveChain, hexToFigma, getAuditPages } from './utils';
 
-export function pushDebugData() {
+export async function pushDebugData() {
   var sel = figma.currentPage.selection;
-  if (sel.length === 1) figma.ui.postMessage({ type:"debug-data", data:buildDebugData(sel[0]) });
+  if (sel.length === 1) figma.ui.postMessage({ type:"debug-data", data:await buildDebugData(sel[0]) });
   else figma.ui.postMessage({ type:"debug-data", data:null, selCount:sel.length });
 }
 
-export function buildDebugData(node) {
+export async function buildDebugData(node) {
   var bv=node.boundVariables||{},groups=[];
   function getGroup(name,icon){for(var i=0;i<groups.length;i++){if(groups[i].name===name)return groups[i];}var g={name:name,icon:icon,props:[]};groups.push(g);return g;}
-  function addBound(gn,icon,label,varId){getGroup(gn,icon).props.push({label:label,chain:resolveChain(varId),unbound:false,isStyle:false});}
+  async function addBound(gn,icon,label,varId){getGroup(gn,icon).props.push({label:label,chain:await resolveChain(varId),unbound:false,isStyle:false});}
   function addUnbound(gn,icon,label,rawVal){getGroup(gn,icon).props.push({label:label,chain:null,unbound:true,rawValue:rawVal,isStyle:false});}
   function addStyle(gn,icon,label,styleName){getGroup(gn,icon).props.push({label:label,chain:null,unbound:false,isStyle:true,styleName:styleName});}
-  if("fills" in node&&Array.isArray(node.fills)){node.fills.forEach(function(fill,i){if(fill.visible===false)return;var lbl=node.fills.length>1?"Fill "+(i+1):"Fill";var fbv=bv.fills&&bv.fills[i];if(fbv&&fbv.id)addBound("Color","🎨",lbl,fbv.id);else if(fill.type==="SOLID")addUnbound("Color","🎨",lbl,rgb01ToHex(fill.color.r,fill.color.g,fill.color.b));else if(fill.type.indexOf("GRADIENT")!==-1)addUnbound("Color","🎨",lbl,"Gradient");else if(fill.type==="IMAGE")addUnbound("Color","🎨",lbl,"Image fill");});}
-  if("strokes" in node&&Array.isArray(node.strokes)&&(node.strokeWeight||0)>0){node.strokes.forEach(function(stroke,i){if(stroke.visible===false)return;var lbl=node.strokes.length>1?"Stroke "+(i+1):"Stroke";var sbv=bv.strokes&&bv.strokes[i];if(sbv&&sbv.id)addBound("Color","🎨",lbl,sbv.id);else if(stroke.type==="SOLID")addUnbound("Color","🎨",lbl,rgb01ToHex(stroke.color.r,stroke.color.g,stroke.color.b));});}
-  if("opacity" in node&&node.opacity<1&&node.opacity>=0){if(bv.opacity&&bv.opacity.id)addBound("Color","🎨","Opacity",bv.opacity.id);else addUnbound("Color","🎨","Opacity",Math.round(node.opacity*100)+"%");}
-  if("cornerRadius" in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){if(bv.cornerRadius&&bv.cornerRadius.id)addBound("Shape","⬜","Corner Radius",bv.cornerRadius.id);else addUnbound("Shape","⬜","Corner Radius",node.cornerRadius+"px");}
-  else{var corners=[["topLeftRadius","↖ TL"],["topRightRadius","↗ TR"],["bottomRightRadius","↘ BR"],["bottomLeftRadius","↙ BL"]];corners.forEach(function(c){if(!(c[0] in node)||!node[c[0]]||node[c[0]]===figma.mixed)return;if(bv[c[0]]&&bv[c[0]].id)addBound("Shape","⬜","Radius "+c[1],bv[c[0]].id);else if(node[c[0]]>0)addUnbound("Shape","⬜","Radius "+c[1],node[c[0]]+"px");});}
-  if(bv.width&&bv.width.id)addBound("Size","📏","Width",bv.width.id);
-  if(bv.height&&bv.height.id)addBound("Size","📏","Height",bv.height.id);
-  if("layoutMode" in node&&node.layoutMode!=="NONE"){var sps=[["paddingLeft","Pad Left"],["paddingRight","Pad Right"],["paddingTop","Pad Top"],["paddingBottom","Pad Bottom"],["itemSpacing","Gap"]];sps.forEach(function(sp){if(!(sp[0] in node)||node[sp[0]]===figma.mixed)return;if(bv[sp[0]]&&bv[sp[0]].id)addBound("Spacing","📐",sp[1],bv[sp[0]].id);else if(node[sp[0]]>0)addUnbound("Spacing","📐",sp[1],node[sp[0]]+"px");});}
-  if(node.type==="TEXT"){if(node.textStyleId&&node.textStyleId!==figma.mixed){var ts=figma.getStyleById(node.textStyleId);if(ts)addStyle("Typography","✏️","Text Style",ts.name);}else addUnbound("Typography","✏️","Text Style","None — raw values");var tps=[["fontSize","Font Size"],["fontFamily","Font Family"],["fontWeight","Font Weight"],["lineHeight","Line Height"],["letterSpacing","Letter Spacing"]];tps.forEach(function(tp){if(bv[tp[0]]&&bv[tp[0]].id)addBound("Typography","✏️",tp[1],bv[tp[0]].id);});}
-  if("effectStyleId" in node&&node.effectStyleId){var es=figma.getStyleById(node.effectStyleId);if(es)addStyle("Effects","✨","Effect Style",es.name);}
+  if("fills" in node&&Array.isArray(node.fills)){for(var _fi=0;_fi<node.fills.length;_fi++){var fill=node.fills[_fi];if(fill.visible===false)continue;var lbl=node.fills.length>1?"Fill "+(_fi+1):"Fill";var fbv=bv.fills&&bv.fills[_fi];if(fbv&&fbv.id)await addBound("Color","🎨",lbl,fbv.id);else if(fill.type==="SOLID")addUnbound("Color","🎨",lbl,rgb01ToHex(fill.color.r,fill.color.g,fill.color.b));else if(fill.type.indexOf("GRADIENT")!==-1)addUnbound("Color","🎨",lbl,"Gradient");else if(fill.type==="IMAGE")addUnbound("Color","🎨",lbl,"Image fill");}}
+  if("strokes" in node&&Array.isArray(node.strokes)&&(node.strokeWeight||0)>0){for(var _si=0;_si<node.strokes.length;_si++){var stroke=node.strokes[_si];if(stroke.visible===false)continue;var slbl=node.strokes.length>1?"Stroke "+(_si+1):"Stroke";var sbv=bv.strokes&&bv.strokes[_si];if(sbv&&sbv.id)await addBound("Color","🎨",slbl,sbv.id);else if(stroke.type==="SOLID")addUnbound("Color","🎨",slbl,rgb01ToHex(stroke.color.r,stroke.color.g,stroke.color.b));}}
+  if("opacity" in node&&node.opacity<1&&node.opacity>=0){if(bv.opacity&&bv.opacity.id)await addBound("Color","🎨","Opacity",bv.opacity.id);else addUnbound("Color","🎨","Opacity",Math.round(node.opacity*100)+"%");}
+  if("cornerRadius" in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){if(bv.cornerRadius&&bv.cornerRadius.id)await addBound("Shape","⬜","Corner Radius",bv.cornerRadius.id);else addUnbound("Shape","⬜","Corner Radius",node.cornerRadius+"px");}
+  else{var corners=[["topLeftRadius","↖ TL"],["topRightRadius","↗ TR"],["bottomRightRadius","↘ BR"],["bottomLeftRadius","↙ BL"]];for(var _ci=0;_ci<corners.length;_ci++){var c=corners[_ci];if(!(c[0] in node)||!node[c[0]]||node[c[0]]===figma.mixed)continue;if(bv[c[0]]&&bv[c[0]].id)await addBound("Shape","⬜","Radius "+c[1],bv[c[0]].id);else if(node[c[0]]>0)addUnbound("Shape","⬜","Radius "+c[1],node[c[0]]+"px");}}
+  if(bv.width&&bv.width.id)await addBound("Size","📏","Width",bv.width.id);
+  if(bv.height&&bv.height.id)await addBound("Size","📏","Height",bv.height.id);
+  if("layoutMode" in node&&node.layoutMode!=="NONE"){var sps=[["paddingLeft","Pad Left"],["paddingRight","Pad Right"],["paddingTop","Pad Top"],["paddingBottom","Pad Bottom"],["itemSpacing","Gap"]];for(var _spi=0;_spi<sps.length;_spi++){var sp=sps[_spi];if(!(sp[0] in node)||node[sp[0]]===figma.mixed)continue;if(bv[sp[0]]&&bv[sp[0]].id)await addBound("Spacing","📐",sp[1],bv[sp[0]].id);else if(node[sp[0]]>0)addUnbound("Spacing","📐",sp[1],node[sp[0]]+"px");}}
+  if(node.type==="TEXT"){if(node.textStyleId&&node.textStyleId!==figma.mixed){var ts=await figma.getStyleByIdAsync(node.textStyleId);if(ts)addStyle("Typography","✏️","Text Style",ts.name);}else addUnbound("Typography","✏️","Text Style","None — raw values");var tps=[["fontSize","Font Size"],["fontFamily","Font Family"],["fontWeight","Font Weight"],["lineHeight","Line Height"],["letterSpacing","Letter Spacing"]];for(var _tpi=0;_tpi<tps.length;_tpi++){var tp=tps[_tpi];if(bv[tp[0]]&&bv[tp[0]].id)await addBound("Typography","✏️",tp[1],bv[tp[0]].id);}}
+  if("effectStyleId" in node&&node.effectStyleId){var es=await figma.getStyleByIdAsync(node.effectStyleId);if(es)addStyle("Effects","✨","Effect Style",es.name);}
   else if("effects" in node&&node.effects&&node.effects.length>0)addUnbound("Effects","✨",node.effects.length+" effect"+(node.effects.length>1?"s":""),"No style bound");
   var totalBound=0,totalUnbound=0,totalBroken=0;
   groups.forEach(function(g){g.props.forEach(function(p){if(p.isStyle)return;if(!p.chain){totalUnbound++;return;}if(p.chain.some(function(s){return s.broken;}))totalBroken++;else totalBound++;});});
@@ -345,21 +345,21 @@ export function generateName(node) {
   return typeMap[node.type] || node.type.toLowerCase();
 }
 
-export function getVarColor(v){var col=figma.variables.getVariableCollectionById(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(!val||typeof val!=="object"||val.type==="VARIABLE_ALIAS")return null;return val;}
+export async function getVarColor(v){var col=await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(!val||typeof val!=="object"||val.type==="VARIABLE_ALIAS")return null;return val;}
 
 export function colorDist(a,b){var dr=a.r-b.r,dg=a.g-b.g,db=a.b-b.b;return Math.sqrt(dr*dr+dg*dg+db*db);}
 
-export function findNearestColorVar(color,vars){var best=null,bestDist=0.04;for(var i=0;i<vars.length;i++){var vc=getVarColor(vars[i]);if(!vc)continue;var d=colorDist(color,vc);if(d<bestDist){bestDist=d;best=vars[i];}}return best;}
+export async function findNearestColorVar(color,vars){var best=null,bestDist=0.04;for(var i=0;i<vars.length;i++){var vc=await getVarColor(vars[i]);if(!vc)continue;var d=colorDist(color,vc);if(d<bestDist){bestDist=d;best=vars[i];}}return best;}
 
 // Get the first-mode float value from a FLOAT variable
-export function getVarFloat(v){var col=figma.variables.getVariableCollectionById(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(typeof val==="number")return val;return null;}
+export async function getVarFloat(v){var col=await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(typeof val==="number")return val;return null;}
 
 // Find nearest FLOAT variable to a given value (within 10% tolerance)
-export function findNearestFloatVar(value,vars){
+export async function findNearestFloatVar(value,vars){
   if(!value||value<=0)return null;
   var best=null,bestDist=Infinity;
   for(var i=0;i<vars.length;i++){
-    var fv=getVarFloat(vars[i]);
+    var fv=await getVarFloat(vars[i]);
     if(fv===null||fv<=0)continue;
     var d=Math.abs(fv-value);
     // Must be within 10% or 1px, whichever is larger
@@ -373,7 +373,7 @@ function mk(label,desc,icon,group){return{label:label,description:desc,icon:icon
 
 // getAuditPages imported from utils
 
-export function runAudit(){
+export async function runAudit(){
   var auditPages=getAuditPages();
   if(!auditPages.length) return{checks:{},totalNodes:0,totalIssues:0,score:100,fixable:{},noPages:true};
   var checks={
@@ -396,27 +396,34 @@ export function runAudit(){
   };
   // Pre-load all variables for suggestions and binding checks
   var allLocalVars = [];
-  try { allLocalVars = figma.variables.getLocalVariables(); } catch(e) {}
+  try { allLocalVars = await figma.variables.getLocalVariablesAsync(); } catch(e) {}
   var colorVars = allLocalVars.filter(function(v){ return v.resolvedType === "COLOR"; });
   var floatVars = allLocalVars.filter(function(v){ return v.resolvedType === "FLOAT"; });
+  // Separate opacity vars (store percentage values) from other float vars
+  var allCols = [];
+  try { allCols = await figma.variables.getLocalVariableCollectionsAsync(); } catch(e) {}
+  var _colNameMap = {};
+  for (var _ci = 0; _ci < allCols.length; _ci++) { _colNameMap[allCols[_ci].id] = allCols[_ci].name.toLowerCase(); }
+  var opacityVars = floatVars.filter(function(v){ return (_colNameMap[v.variableCollectionId] || "").indexOf("opacity") !== -1; });
+  var nonOpacityFloatVars = floatVars.filter(function(v){ return (_colNameMap[v.variableCollectionId] || "").indexOf("opacity") === -1; });
   // Build serializable var info for UI suggestions
-  function varInfo(v) {
+  async function varInfo(v) {
     if (!v) return null;
-    var col = figma.variables.getVariableCollectionById(v.variableCollectionId);
+    var col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
     return { id: v.id, name: v.name, collection: col ? col.name : "" };
   }
   // Pre-load spacing variable values for inconsistent spacing check
   var spacingVarValues = [];
   for (var svi = 0; svi < floatVars.length; svi++) {
-    var svCol = figma.variables.getVariableCollectionById(floatVars[svi].variableCollectionId);
+    var svCol = await figma.variables.getVariableCollectionByIdAsync(floatVars[svi].variableCollectionId);
     if (svCol && svCol.name === "Spacing") {
-      var svVal = getVarFloat(floatVars[svi]);
+      var svVal = await getVarFloat(floatVars[svi]);
       if (svVal !== null && svVal > 0) spacingVarValues.push(svVal);
     }
   }
   // Pre-load text styles for suggestions
   var localTextStyles = [];
-  try { localTextStyles = figma.getLocalTextStyles(); } catch(e) {}
+  try { localTextStyles = await figma.getLocalTextStylesAsync(); } catch(e) {}
   function findNearestTextStyle(node) {
     if (!localTextStyles.length) return null;
     var fs = node.fontSize !== figma.mixed ? node.fontSize : null;
@@ -504,7 +511,7 @@ export function runAudit(){
     return compNode ? compNode.effectStyleId : esId;
   }
 
-  function walk(node, depth, insideInst) {
+  async function walk(node, depth, insideInst) {
     // Skip component definitions on audit pages — they belong to the component system, not page content
     if(node.type==="COMPONENT_SET"||(!insideInst && node.type==="COMPONENT"))return;
     totalNodes++;
@@ -533,22 +540,22 @@ export function runAudit(){
     }
     // ── Variables & styles (resolve from component when inside instance) ──
     var bv=getBV(node, insideInst);
-    if("fills"in node&&Array.isArray(node.fills)){node.fills.forEach(function(fill,i){if(fill.type==="SOLID"&&fill.visible!==false){var b=bv.fills&&bv.fills[i];if(!b){var nv=findNearestColorVar(fill.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" fill: '+rgbToHex(fill.color),path:path,suggestedVar:varInfo(nv),rawValue:rgbToHex(fill.color),bindType:"fill",bindIndex:i});}}});}
-    if("strokes"in node&&Array.isArray(node.strokes)){node.strokes.forEach(function(stroke,i){if(stroke.type==="SOLID"&&stroke.visible!==false&&(node.strokeWeight||0)>0){var b=bv.strokes&&bv.strokes[i];if(!b){var nv=findNearestColorVar(stroke.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" stroke: '+rgbToHex(stroke.color),path:path,suggestedVar:varInfo(nv),rawValue:rgbToHex(stroke.color),bindType:"stroke",bindIndex:i});}}});}
-    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode!=="NONE"){var unboundProps=[];var firstSpVal=0;["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"].forEach(function(prop){if(!(prop in node))return;var val=node[prop];if(val===figma.mixed||!val||val<=0)return;var b=bv[prop];if(!b){unboundProps.push(prop.replace(/([A-Z])/g," $1").toLowerCase());if(!firstSpVal)firstSpVal=val;}});if(unboundProps.length){var nv=findNearestFloatVar(firstSpVal,floatVars);checks.spacingVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+unboundProps.join(", "),path:path,suggestedVar:varInfo(nv),rawValue:firstSpVal,bindType:"spacing"});}}
-    if("cornerRadius"in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){var b=bv.cornerRadius||bv.topLeftRadius||bv.topRightRadius||bv.bottomLeftRadius||bv.bottomRightRadius;if(!b){var nv=findNearestFloatVar(node.cornerRadius,floatVars);checks.radiusVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.cornerRadius+'px',path:path,suggestedVar:varInfo(nv),rawValue:node.cornerRadius,bindType:"radius"});}}
-    if("opacity"in node&&node.opacity<1&&node.opacity>0){var b=bv.opacity;if(!b){var nv=findNearestFloatVar(node.opacity,floatVars);checks.opacityVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+Math.round(node.opacity*100)+'%',path:path,suggestedVar:varInfo(nv),rawValue:node.opacity,bindType:"opacity"});}}
+    if("fills"in node&&Array.isArray(node.fills)){for(var _fi2=0;_fi2<node.fills.length;_fi2++){var fill=node.fills[_fi2];if(fill.type==="SOLID"&&fill.visible!==false){var b=bv.fills&&bv.fills[_fi2];if(!b){var nv=await findNearestColorVar(fill.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" fill: '+rgbToHex(fill.color),path:path,suggestedVar:await varInfo(nv),rawValue:rgbToHex(fill.color),bindType:"fill",bindIndex:_fi2});}}}}
+    if("strokes"in node&&Array.isArray(node.strokes)){for(var _si2=0;_si2<node.strokes.length;_si2++){var stroke=node.strokes[_si2];if(stroke.type==="SOLID"&&stroke.visible!==false&&(node.strokeWeight||0)>0){var b=bv.strokes&&bv.strokes[_si2];if(!b){var nv=await findNearestColorVar(stroke.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" stroke: '+rgbToHex(stroke.color),path:path,suggestedVar:await varInfo(nv),rawValue:rgbToHex(stroke.color),bindType:"stroke",bindIndex:_si2});}}}}
+    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode!=="NONE"){var unboundProps=[];var firstSpVal=0;var _spProps=["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];for(var _spi2=0;_spi2<_spProps.length;_spi2++){var prop=_spProps[_spi2];if(!(prop in node))continue;var val=node[prop];if(val===figma.mixed||!val||val<=0)continue;var b=bv[prop];if(!b){unboundProps.push(prop.replace(/([A-Z])/g," $1").toLowerCase());if(!firstSpVal)firstSpVal=val;}}if(unboundProps.length){var nv=await findNearestFloatVar(firstSpVal,nonOpacityFloatVars);checks.spacingVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+unboundProps.join(", "),path:path,suggestedVar:await varInfo(nv),rawValue:firstSpVal,bindType:"spacing"});}}
+    if("cornerRadius"in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){var b=bv.cornerRadius||bv.topLeftRadius||bv.topRightRadius||bv.bottomLeftRadius||bv.bottomRightRadius;if(!b){var nv=await findNearestFloatVar(node.cornerRadius,nonOpacityFloatVars);checks.radiusVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.cornerRadius+'px',path:path,suggestedVar:await varInfo(nv),rawValue:node.cornerRadius,bindType:"radius"});}}
+    if("opacity"in node&&node.opacity<1&&node.opacity>0){var b=bv.opacity;if(!b){var opaPct=Math.round(node.opacity*100);var nv=await findNearestFloatVar(opaPct,opacityVars);checks.opacityVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+opaPct+'%',path:path,suggestedVar:await varInfo(nv),rawValue:opaPct,bindType:"opacity"});}}
     if(node.type==="TEXT"){var tsId=getTsId(node, insideInst);if(tsId===figma.mixed)checks.mixedText.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"',path:path});else if(!tsId){var nts=findNearestTextStyle(node);var fSize=node.fontSize!==figma.mixed?node.fontSize:null;var fName=node.fontName!==figma.mixed?node.fontName:null;var fontDesc=(fName?fName.family+" "+fName.style:"")+(fSize?" / "+fSize+"px":"");checks.textStyles.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"'+(fontDesc?" — "+fontDesc:""),path:path,suggestedStyle:tsInfo(nts),fontDesc:fontDesc,bindType:"textStyle"});}}
     if("effects"in node&&node.effects&&node.effects.length>0){var esId=getEffectStyleId(node,insideInst);if(!esId)checks.unsavedStyles.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.effects.length+' effect(s)',path:path});}
     // ── Border width variable check (only when node has visible strokes) ──
-    if("strokes"in node&&Array.isArray(node.strokes)&&node.strokes.some(function(s){return s.visible!==false;})&&"strokeWeight"in node&&node.strokeWeight!==figma.mixed&&node.strokeWeight>0){var rawBV=node.boundVariables||{};var bwBound=rawBV.strokeWeight||rawBV.strokeTopWeight||rawBV.strokeBottomWeight||rawBV.strokeLeftWeight||rawBV.strokeRightWeight||bv.strokeWeight||bv.strokeTopWeight||bv.strokeBottomWeight||bv.strokeLeftWeight||bv.strokeRightWeight;if(!bwBound){var nv=findNearestFloatVar(node.strokeWeight,floatVars);checks.borderVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.strokeWeight+'px',path:path,suggestedVar:varInfo(nv),rawValue:node.strokeWeight,bindType:"borderWidth"});}}
+    if("strokes"in node&&Array.isArray(node.strokes)&&node.strokes.some(function(s){return s.visible!==false;})&&"strokeWeight"in node&&node.strokeWeight!==figma.mixed&&node.strokeWeight>0){var rawBV=node.boundVariables||{};var bwBound=rawBV.strokeWeight||rawBV.strokeTopWeight||rawBV.strokeBottomWeight||rawBV.strokeLeftWeight||rawBV.strokeRightWeight||bv.strokeWeight||bv.strokeTopWeight||bv.strokeBottomWeight||bv.strokeLeftWeight||bv.strokeRightWeight;if(!bwBound){var nv=await findNearestFloatVar(node.strokeWeight,nonOpacityFloatVars);checks.borderVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.strokeWeight+'px',path:path,suggestedVar:await varInfo(nv),rawValue:node.strokeWeight,bindType:"borderWidth"});}}
     // ── Inconsistent spacing check (raw values not in spacing scale) ──
     if(!insideInst&&spacingVarValues.length>0&&"layoutMode"in node&&node.layoutMode!=="NONE"){var spacingProps=["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];for(var spi2=0;spi2<spacingProps.length;spi2++){var sp2=spacingProps[spi2];if(!(sp2 in node))continue;var sv2=node[sp2];if(sv2===figma.mixed||!sv2||sv2<=0)continue;var spBound=bv[sp2];if(spBound)continue;var matchesScale=false;for(var sci2=0;sci2<spacingVarValues.length;sci2++){if(Math.abs(spacingVarValues[sci2]-sv2)<0.5){matchesScale=true;break;}}if(!matchesScale)checks.inconsistentSpacing.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+sp2.replace(/([A-Z])/g," $1").toLowerCase()+': '+sv2+'px',path:path});}}
     if(node.visible===false)checks.hidden.issues.push({id:node.id,label:node.type+': "'+trunc(node.name)+'"',path:path});
     if((node.type==="FRAME"||node.type==="GROUP")&&"children"in node&&node.children.length===0)checks.empty.issues.push({id:node.id,label:node.type+': "'+trunc(node.name)+'"',path:path});
-    if("children"in node&&node.children)node.children.forEach(function(child){walk(child,depth+1,isInst);});
+    if("children"in node&&node.children){for(var _wci=0;_wci<node.children.length;_wci++){await walk(node.children[_wci],depth+1,isInst);}}
   }
-  auditPages.forEach(function(pg){pg.children.forEach(function(n){walk(n,0,false);});});
+  for(var _api=0;_api<auditPages.length;_api++){var pg=auditPages[_api];for(var _apci=0;_apci<pg.children.length;_apci++){await walk(pg.children[_apci],0,false);}}
   var WEIGHTS={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,borderVars:3,inconsistentSpacing:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
   function issuePenalty(count,weight){if(!count)return 0;var s=count<=2?.12:count<=5?.30:count<=10?.52:count<=20?.72:.95;return s*weight;}
   var keys=Object.keys(checks);
@@ -565,7 +572,7 @@ export function runAudit(){
 }
 
 // ── Fixes (bulk, kept for compat) ─────────────────────────────────────────────
-export function runFixes(fixes){
+export async function runFixes(fixes){
   var auditPages=getAuditPages();
   var stats={naming:0,empty:0,hidden:0,colors:0};
   var allNodes=[];
@@ -579,6 +586,6 @@ export function runFixes(fixes){
     if(isDefaultName(node.name)){try{node.name=generateName(node);stats.naming++;}catch(e){}}
     else{var v=getKebabViolation(node);if(v){try{node.name=toKebab(node.name);stats.naming++;}catch(e){}}}
   });}
-  if(fixes.indexOf("colors")!==-1){var colorVars=figma.variables.getLocalVariables().filter(function(v){return v.resolvedType==="COLOR";});if(colorVars.length>0){allNodes.forEach(function(node){if(!("fills"in node)||!Array.isArray(node.fills))return;var changed=false;var newFills=node.fills.map(function(fill,i){if(fill.type!=="SOLID"||fill.visible===false)return fill;var bv=node.boundVariables&&node.boundVariables.fills&&node.boundVariables.fills[i];if(bv)return fill;var nearest=findNearestColorVar(fill.color,colorVars);if(nearest){try{var f=figma.variables.setBoundVariableForPaint(fill,"color",nearest);stats.colors++;changed=true;return f;}catch(e){return fill;}}return fill;});if(changed){try{node.fills=newFills;}catch(e){}}});}}
+  if(fixes.indexOf("colors")!==-1){var allVarsForColors=await figma.variables.getLocalVariablesAsync();var colorVars=allVarsForColors.filter(function(v){return v.resolvedType==="COLOR";});if(colorVars.length>0){for(var _fni=0;_fni<allNodes.length;_fni++){var node=allNodes[_fni];if(!("fills"in node)||!Array.isArray(node.fills))continue;var changed=false;var newFills=[];for(var _ffi=0;_ffi<node.fills.length;_ffi++){var fill=node.fills[_ffi];if(fill.type!=="SOLID"||fill.visible===false){newFills.push(fill);continue;}var bv=node.boundVariables&&node.boundVariables.fills&&node.boundVariables.fills[_ffi];if(bv){newFills.push(fill);continue;}var nearest=await findNearestColorVar(fill.color,colorVars);if(nearest){try{var f=figma.variables.setBoundVariableForPaint(fill,"color",nearest);stats.colors++;changed=true;newFills.push(f);}catch(e){newFills.push(fill);}}else{newFills.push(fill);}}if(changed){try{node.fills=newFills;}catch(e){}}}}}
   return stats;
 }

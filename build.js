@@ -1,5 +1,5 @@
-// Build script: reads proxy-config.json (if it exists) and injects the proxy
-// URL into manifest.json and ui.html, then runs esbuild.
+// Build script: reads proxy-config.json (if it exists), updates manifest.json
+// allowedDomains, and injects the proxy URL into code.js via esbuild --define.
 var fs = require("fs");
 var child = require("child_process");
 
@@ -17,6 +17,7 @@ if (fs.existsSync("proxy-config.json")) {
 
 var proxyDomain = proxyUrl.replace(/^https?:\/\//, "");
 var hasValidProxy = proxyUrl && proxyUrl.indexOf("YOUR_SUBDOMAIN") === -1;
+var effectiveProxy = hasValidProxy ? proxyUrl : "";
 
 // 1. Update manifest.json — allowedDomains
 var manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
@@ -29,14 +30,10 @@ manifest.networkAccess.allowedDomains = domains;
 fs.writeFileSync("manifest.json", JSON.stringify(manifest, null, 4) + "\n");
 console.log("manifest.json → allowedDomains set to " + JSON.stringify(domains));
 
-// 2. Update ui.html — _bhProxyUrl variable
-var ui = fs.readFileSync("ui.html", "utf8");
-ui = ui.replace(
-  /var _bhProxyUrl = ".*?";/,
-  'var _bhProxyUrl = "' + (hasValidProxy ? proxyUrl : "") + '";'
+// 2. Run esbuild — inject proxy URL as compile-time constant
+console.log("code.js → BUILTIN_PROXY_URL set to " + (effectiveProxy || "(disabled)"));
+child.execSync(
+  'npx esbuild src/main.ts --bundle --outfile=code.js --format=iife --target=es2020' +
+  ' --define:BUILTIN_PROXY_URL=\'"' + effectiveProxy + '"\'',
+  { stdio: "inherit" }
 );
-fs.writeFileSync("ui.html", ui);
-console.log("ui.html → _bhProxyUrl set to " + (hasValidProxy ? proxyUrl : "(disabled)"));
-
-// 3. Run esbuild
-child.execSync("npx esbuild src/main.ts --bundle --outfile=code.js --format=iife --target=es2020", { stdio: "inherit" });

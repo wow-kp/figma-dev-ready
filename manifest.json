@@ -8,12 +8,12 @@
         "figma",
         "dev"
     ],
+    "documentAccess": "dynamic-page",
     "permissions": [
         "currentuser"
     ],
     "networkAccess": {
         "allowedDomains": [
-            "https://figma-dev-ready-proxy.wow-kp.workers.dev",
             "https://api.anthropic.com"
         ]
     }

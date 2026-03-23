@@ -277,10 +277,11 @@ export function generateGridData() {
 export function generateTypographyData(typo, fontFamilies) {
   var t = { family: {}, size: {}, weight: {}, "line-height": {} };
 
-  // Font families from the text styles config
-  if (fontFamilies.primary)   t.family.primary   = { "$type": "fontFamily", "$value": fontFamilies.primary };
-  if (fontFamilies.secondary) t.family.secondary = { "$type": "fontFamily", "$value": fontFamilies.secondary };
-  if (fontFamilies.tertiary)  t.family.tertiary  = { "$type": "fontFamily", "$value": fontFamilies.tertiary };
+  // Font families from the text styles config (dynamic — supports any number)
+  var famKeys = Object.keys(fontFamilies || {});
+  for (var fki = 0; fki < famKeys.length; fki++) {
+    if (fontFamilies[famKeys[fki]]) t.family[famKeys[fki]] = { "$type": "fontFamily", "$value": fontFamilies[famKeys[fki]] };
+  }
 
   for (var i = 0; i < typo.sizes.length; i++) {
     var s = typo.sizes[i];

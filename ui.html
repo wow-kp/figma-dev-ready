@@ -176,6 +176,7 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
 .wf-step.collapsed .wf-step-chevron { transform: rotate(-90deg); }
 .wf-step-body { display: block; }
 .wf-step.collapsed .wf-step-body { display: none; }
+.wf-step.collapsed .wf-step-desc { display: none; }
 .wf-step.locked { opacity: 0.4; pointer-events: none; }
 .wf-step.locked .wf-step-header { cursor: default; }
 .wf-step-lock-msg { font-size: 10px; color: #585b70; font-style: italic; margin-left: 2px; }
@@ -569,7 +570,12 @@ body { font-family: Inter, system-ui, sans-serif; background: #1e1e2e; color: #c
         <div id="settings-proxy-status" style="font-size:10px;min-height:14px;color:#6c7086;"></div>
       </div>
     </details>
-    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #313244;text-align:center;">
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #313244;">
+      <div style="font-size:11px;font-weight:600;color:#a6adc8;margin-bottom:8px;">Workflow Data</div>
+      <div style="font-size:10px;color:#6c7086;margin-bottom:8px;line-height:1.5;">Reset all workflow progress and saved state for this file. Token configurations, audit results, and route selection will be cleared.</div>
+      <button id="settings-reset-workflow" style="width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#f38ba8;border-radius:6px;cursor:pointer;transition:all .15s;">Reset Workflow Data</button>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #313244;text-align:center;">
       <a href="#" id="settings-show-welcome" style="font-size:10px;color:#6c7086;text-decoration:underline;cursor:pointer;">Show welcome screen</a>
     </div>
   </div>
@@ -659,6 +665,7 @@ function updateBuildHtmlTab() {
 }
 // Workflow is the first tab — load it immediately on plugin open
 parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
+parent.postMessage({pluginMessage:{type:"check-wireframes"}},"*");
 
 // ── Settings tab ─────────────────────────────────────────────────────────────
 document.getElementById("settings-key-toggle").addEventListener("click", function() {
@@ -731,7 +738,7 @@ document.getElementById("settings-test-btn").addEventListener("click", function(
     if (_bhApiKey) headers["x-api-key"] = _bhApiKey;
   } else {
     headers["x-api-key"] = _bhApiKey;
-    headers["anthropic-version"] = "2025-04-15";
+    headers["anthropic-version"] = "2023-06-01";
     headers["anthropic-dangerous-direct-browser-access"] = "true";
   }
 
@@ -786,6 +793,14 @@ document.getElementById("settings-show-welcome").addEventListener("click", funct
   e.preventDefault();
   document.getElementById("welcome-overlay").style.display = "";
   if (bhHasBuiltinProxy && bhHasBuiltinProxy()) bhCheckProxyHealth();
+});
+
+document.getElementById("settings-reset-workflow").addEventListener("click", function() {
+  if (!confirm("Reset all workflow data for this file? Route selection, token config, audit results, and step progress will be cleared. AI settings (API key, proxy) will be kept.")) return;
+  var btn = document.getElementById("settings-reset-workflow");
+  btn.disabled = true; btn.textContent = "Resetting\u2026";
+  parent.postMessage({ pluginMessage: { type: "reset-settings" } }, "*");
+  setTimeout(function() { btn.disabled = false; btn.textContent = "Reset Workflow Data"; }, 1000);
 });
 
 // ── Audit ──────────────────────────────────────────────────────────────────────
@@ -844,7 +859,7 @@ function makeIssueRow(key, issue, fixable) {
     btn.addEventListener("click", doRename);
     input.addEventListener("keydown", function(e){ if(e.key==="Enter") doRename(); });
     // AI suggest button (single node)
-    if (key === "naming" && _bhApiKey) {
+    if (key === "naming" && (_bhApiKey || bhHasProxy())) {
       var aiBtn = document.createElement("button");
       aiBtn.className = "action-btn ai-name-btn";
       aiBtn.textContent = "✨";
@@ -1057,7 +1072,7 @@ function renderAudit(data){
     var aiWrap = document.createElement("div"); aiWrap.className = "ai-review-wrap";
     var aiBtn = document.createElement("button"); aiBtn.className = "ai-review-btn";
     aiBtn.innerHTML = "✨ AI Review — Get a prioritized action plan";
-    var aiHasAccess = _bhApiKey;
+    var aiHasAccess = _bhApiKey || bhHasProxy();
     if (!aiHasAccess) { aiBtn.disabled = true; aiBtn.title = "Set up AI access in Settings tab first"; aiBtn.innerHTML = "✨ AI Review — requires API key or proxy"; }
     var aiPanel = document.createElement("div"); aiPanel.className = "ai-review-panel"; aiPanel.style.display = "none";
     aiBtn.addEventListener("click", function(){
@@ -1116,7 +1131,7 @@ function renderAudit(data){
           header.appendChild(fixAllBtn);
         }
         // AI Name All button for naming checks
-        if (key === "naming" && _bhApiKey) {
+        if (key === "naming" && (_bhApiKey || bhHasProxy())) {
           var aiNameAllBtn = document.createElement("button");
           aiNameAllBtn.className = "action-btn ai-name-all-btn";
           aiNameAllBtn.textContent = "✨ AI Name All (" + count + ")";
@@ -1171,7 +1186,33 @@ function renderAudit(data){
 // Persists cover form values across re-renders
 var wfFormState = { project:"", version:"v1.0.0", date:"", designers:"", status:"In Progress", initialised:false, coverOpen:true, stepOpen:true, step2Open:true, step2Toggled:false, step2BasicOpen:false, step2ComplexOpen:false, step3Open:true, step4Open:true, step5Open:true };
 var wfTokensData = null;
-var wfStep1Color = "red"; // track step 1 status for step 2 gating
+// ── Route constants ──
+var WF_ROUTE_NONE = "none";    // detection banner — no route chosen yet
+var WF_ROUTE_A    = "fresh";   // 5 steps: structure → tokens → wireframes → audit → handoff
+var WF_ROUTE_B    = "import";  // 4 steps: structure → tokens → audit → handoff
+
+// ── Route state ──
+var wfRoute = WF_ROUTE_NONE;
+var wfStepStatus = {};          // { structure: "green", tokens: "red", ... }
+var _lastPagesData = null;      // cached pages-data for partial re-renders
+
+// ── File & content state ──
+var wfCurrentFileId = null; // tracks which Figma file we're looking at
+var wfPagesHaveContent = false; // true if Desktop/Mobile pages have children
+var wfFoundationsHaveContent = false; // true if Foundations page has children
+var wfComponentsHaveContent = false; // true if Components page has children
+
+// ── Route B specific state ──
+var wfRouteBStep = 0; // 0=not started, 1=step1 done, 2=tokens applied
+var wfRouteBAnalysis = null; // AnalysisResult from backend (with matched names)
+var wfRouteBExistingVars = null; // scanned existing variables
+var wfRouteBBindStats = null; // token binding stats
+var wfRouteBComponentStep = 0; // 0=not started, 1=scanning/AI, 2=review, 3=created (review), 4=swapped (done)
+var wfRouteBChunkData = null; // serialized tree chunks from backend
+var wfRouteBComponentDetections = null; // AI-classified components (round 2 result)
+var wfRouteBComponentStats = null; // creation results
+var wfRouteBComponentSwapMap = null; // swap map [{originalId, variantNodeId}] for persistence
+var wfRouteBComponentError = null; // last error message
 
 var REQUIRED_PAGES = [
   { key:"cover",       icon:"📄", name:"_Cover",           desc:"Thumbnail, version, status, designer names",          hint:"cover",       critical:false },
@@ -1182,18 +1223,110 @@ var REQUIRED_PAGES = [
   { key:"archive",     icon:"🗄️", name:"🗄️ Archive",      desc:"Deprecated screens, never delete old work",            hint:"archive",     critical:false },
 ];
 
-function renderWorkflow(data) {
-  var pages    = data.pages ? Array.prototype.slice.call(data.pages) : [];
-  var fileInfo = data.fileInfo || {};
-  var container = document.getElementById("wf-container");
-  container.innerHTML = "";
-  // Show error if code.js reported one
-  if (data.error) {
-    container.innerHTML = "<div style='padding:20px;font-size:11px;color:#f38ba8;margin:12px;border:1px solid #f38ba830;border-radius:8px;background:#f38ba810'>Plugin error: "+esc(data.error)+"</div>";
-    return;
-  }
+// Insert a step element into the container at the correct position.
+// Uses a known ordering of step IDs so steps never end up at the wrong place.
+// ══════════════════════════════════════════════════════════════════════════════
+// STEP REGISTRY ARCHITECTURE
+// ══════════════════════════════════════════════════════════════════════════════
+// ctx object passed to every step render function:
+//   { container, data, route, stepStatus: {}, steps: [] }
+// Each render function: fn(ctx, stepDef) — sets ctx.stepStatus[stepDef.id]
 
-  // Match each required page against the actual pages list
+// Step registries — each route defines its steps, render functions, and DOM IDs
+var ROUTE_A_STEPS = [
+  { id: "structure",  num: 1, domId: "wf-step-1",       render: renderStepStructure },
+  { id: "tokens",     num: 2, domId: "wf-step-2",       render: renderRouteATokens },
+  { id: "wireframes", num: 3, domId: "wf-step-3",       render: renderRouteAWireframes },
+  { id: "audit",      num: 4, domId: "wf-step-audit",   render: renderStepAudit },
+  { id: "handoff",    num: 5, domId: "wf-step-handoff", render: renderStepHandoff }
+];
+var ROUTE_B_STEPS = [
+  { id: "structure",  num: 1, domId: "wf-step-1",        render: renderStepStructure },
+  { id: "tokens",     num: 2, domId: "wf-step-routeb2",  render: renderRouteBTokens },
+  { id: "audit",      num: 3, domId: "wf-step-audit",    render: renderStepAudit },
+  { id: "handoff",    num: 4, domId: "wf-step-handoff",  render: renderStepHandoff }
+];
+
+function getActiveSteps() {
+  return wfRoute === WF_ROUTE_B ? ROUTE_B_STEPS : ROUTE_A_STEPS;
+}
+
+function renderAllSteps(container, data, steps) {
+  var ctx = { container: container, data: data, route: wfRoute, stepStatus: {}, steps: steps };
+  for (var i = 0; i < steps.length; i++) {
+    steps[i].render(ctx, steps[i]);
+  }
+  wfStepStatus = ctx.stepStatus;
+}
+
+function reRenderFromStep(stepId) {
+  var container = document.getElementById("wf-container");
+  if (!container || wfRoute === WF_ROUTE_NONE || !_lastPagesData) return;
+  var steps = getActiveSteps();
+  var startIdx = -1;
+  for (var i = 0; i < steps.length; i++) {
+    if (steps[i].id === stepId) { startIdx = i; break; }
+  }
+  if (startIdx < 0) return;
+  var ctx = { container: container, data: _lastPagesData, route: wfRoute, stepStatus: {}, steps: steps };
+  // Copy earlier step statuses
+  for (var j = 0; j < startIdx; j++) {
+    ctx.stepStatus[steps[j].id] = wfStepStatus[steps[j].id] || "red";
+  }
+  // Remove DOM elements from startIdx onward, then re-render
+  for (var k = startIdx; k < steps.length; k++) {
+    var el = document.getElementById(steps[k].domId);
+    if (el) el.remove();
+  }
+  for (var k2 = startIdx; k2 < steps.length; k2++) {
+    steps[k2].render(ctx, steps[k2]);
+  }
+  wfStepStatus = ctx.stepStatus;
+}
+
+// ── Detection Banner ────────────────────────────────────────────────────────
+function renderDetectionBanner(container, data) {
+  var banner = document.createElement("div");
+  banner.style.cssText = "margin:16px 12px;padding:20px;background:linear-gradient(135deg,#1e1e2e 0%,#181825 100%);border:1px solid #45475a;border-radius:12px;text-align:center;";
+  banner.innerHTML =
+    "<div style='font-size:28px;margin-bottom:8px;'>📐</div>" +
+    "<div style='font-size:14px;font-weight:700;color:#cdd6f4;margin-bottom:6px;'>Existing Design Detected</div>" +
+    "<div style='font-size:11px;color:#a6adc8;line-height:1.5;margin-bottom:16px;'>This file contains an existing design. You can import it into the dev-ready workflow or start fresh with a new file structure.</div>";
+  var btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:10px;justify-content:center;";
+  var importBtn = document.createElement("button");
+  importBtn.className = "wf-gen-btn";
+  importBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:700;flex:1;max-width:200px;";
+  importBtn.textContent = "Import Existing Design";
+  importBtn.addEventListener("click", function() {
+    wfRoute = WF_ROUTE_B;
+    saveSettings();
+    renderWorkflow(data);
+  });
+  var freshBtn = document.createElement("button");
+  freshBtn.style.cssText = "padding:10px 20px;font-size:12px;font-weight:600;flex:1;max-width:200px;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:8px;cursor:pointer;transition:all .15s;";
+  freshBtn.textContent = "Start Fresh";
+  freshBtn.addEventListener("mouseenter", function() { freshBtn.style.borderColor = "#89b4fa"; freshBtn.style.color = "#89b4fa"; });
+  freshBtn.addEventListener("mouseleave", function() { freshBtn.style.borderColor = "#45475a"; freshBtn.style.color = "#cdd6f4"; });
+  freshBtn.addEventListener("click", function() {
+    wfRoute = WF_ROUTE_A;
+    saveSettings();
+    renderWorkflow(data);
+  });
+  btnRow.appendChild(importBtn);
+  btnRow.appendChild(freshBtn);
+  banner.appendChild(btnRow);
+  container.appendChild(banner);
+}
+
+// ── Step 1: File Structure (shared) ─────────────────────────────────────────
+function renderStepStructure(ctx, stepDef) {
+  var prev = document.getElementById(stepDef.domId);
+  if (prev) prev.remove();
+
+  var pages = ctx.data.pages ? Array.prototype.slice.call(ctx.data.pages) : [];
+  var fileInfo = ctx.data.fileInfo || {};
+
   var results = REQUIRED_PAGES.map(function(req) {
     var match = pages.find(function(p) {
       var stripped = p.name.toLowerCase().replace(/[^a-z]/g, "");
@@ -1203,18 +1336,15 @@ function renderWorkflow(data) {
   });
 
   var missing = results.filter(function(r) { return !r.found; });
-  var allGood  = missing.length === 0;
-
-  // ── Step 1: File Structure ────────────────────────────────────────────────
-  // Determine indicator color: green = all found, red = critical missing, yellow = only non-critical missing
+  var allGood = missing.length === 0;
   var hasCriticalMissing = missing.some(function(r) { return r.req.critical; });
   var indicatorColor = allGood ? "green" : (hasCriticalMissing ? "red" : "yellow");
 
-  // Auto-collapse when all good
   if (allGood) wfFormState.stepOpen = false;
 
   var stepOpen = wfFormState.stepOpen;
   var step = document.createElement("div");
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (allGood ? " complete" : "");
 
   var header = document.createElement("div");
@@ -1222,34 +1352,28 @@ function renderWorkflow(data) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 1</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>File Structure" + (allGood ? " — All set" : "") + "</div>" +
-      (stepOpen ? "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>" : "") +
+      "<div class='wf-step-desc'>Every file needs these pages before design begins. Developers and reviewers rely on this structure to navigate the file.</div>" +
     "</div>" +
     "<span class='wf-step-chevron'>▼</span>";
   header.addEventListener("click", function() {
     wfFormState.stepOpen = !wfFormState.stepOpen;
     step.classList.toggle("collapsed", !wfFormState.stepOpen);
-    // Re-render to update description visibility
-    renderWorkflow({ pages: pages, fileInfo: data.fileInfo || {} });
   });
   step.appendChild(header);
 
   var body = document.createElement("div");
   body.className = "wf-step-body";
 
-  // Page rows
   var list = document.createElement("div");
   list.className = "wf-page-list";
 
   results.forEach(function(r) {
-    // ── Cover page gets a special collapsible card ──────────────────────────
     if (r.req.key === "cover") {
-      var coverOpen = wfFormState.coverOpen !== false; // default open
-
+      var coverOpen = wfFormState.coverOpen !== false;
       var card = document.createElement("div");
       card.className = "wf-cover-card";
-
       var actualName = r.found ? esc(r.match.name) : esc(r.req.name);
       var row = document.createElement("div");
       row.className = "wf-cover-row " + (r.found ? "found" : "missing") + (coverOpen ? " open" : " closed");
@@ -1260,8 +1384,6 @@ function renderWorkflow(data) {
           "<div class='wf-page-desc'>" + esc(r.req.desc) + "</div>" +
         "</div>" +
         "<span class='wf-page-status'>" + (r.found ? "✓ Found" : "Missing") + "</span>";
-
-      // Create button — only shown when form is collapsed and page is missing
       var createBtn = null;
       if (!r.found) {
         createBtn = document.createElement("button");
@@ -1275,21 +1397,14 @@ function renderWorkflow(data) {
         });
         row.appendChild(createBtn);
       }
-
-      // Chevron
       var chev = document.createElement("span");
       chev.className = "wf-chevron";
       chev.textContent = "▼";
       row.appendChild(chev);
-
       card.appendChild(row);
-
-      // Form panel
       var form = buildCoverForm(fileInfo);
       form.style.display = coverOpen ? "block" : "none";
       card.appendChild(form);
-
-      // Toggle on row click
       row.addEventListener("click", function() {
         coverOpen = !coverOpen;
         wfFormState.coverOpen = coverOpen;
@@ -1298,15 +1413,11 @@ function renderWorkflow(data) {
         row.classList.toggle("closed", !coverOpen);
         if (createBtn) createBtn.style.display = coverOpen ? "none" : "";
       });
-
       list.appendChild(card);
       return;
     }
-
-    // ── All other pages ─────────────────────────────────────────────────────
     var row = document.createElement("div");
     row.className = "wf-page-row " + (r.found ? "found" : "missing");
-
     var actualName = r.found ? esc(r.match.name) : esc(r.req.name);
     row.innerHTML =
       "<span class='wf-page-icon'>" + r.req.icon + "</span>" +
@@ -1315,7 +1426,6 @@ function renderWorkflow(data) {
         "<div class='wf-page-desc'>" + esc(r.req.desc) + "</div>" +
       "</div>" +
       "<span class='wf-page-status'>" + (r.found ? "✓ Found" : "Missing") + "</span>";
-
     if (!r.found) {
       var btn = document.createElement("button");
       btn.className = "wf-create-btn";
@@ -1331,8 +1441,34 @@ function renderWorkflow(data) {
 
   body.appendChild(list);
 
-  // Footer — only show when there are missing pages
-  if (!allGood) {
+  // Footer — route-specific
+  if (ctx.route === WF_ROUTE_B) {
+    if (wfRouteBStep >= 1) {
+      var archNote = document.createElement("div");
+      archNote.style.cssText = "margin-top:8px;padding:8px 10px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;color:#a6adc8;line-height:1.5;";
+      archNote.innerHTML = "📥 <b>Imported via design import.</b> Original content is safely archived in the 🗄️ Archive page.";
+      body.appendChild(archNote);
+    } else {
+      var footer = document.createElement("div");
+      footer.className = "wf-footer";
+      var setupBtn = document.createElement("button");
+      setupBtn.className = "wf-gen-btn";
+      setupBtn.style.cssText = "width:100%;padding:10px;font-size:12px;font-weight:700;";
+      setupBtn.textContent = "✦ Set Up File Structure";
+      setupBtn.addEventListener("click", function() {
+        setupBtn.disabled = true;
+        setupBtn.textContent = "Setting up…";
+        var progressArea = document.createElement("div");
+        progressArea.id = "routeb-step1-progress";
+        progressArea.style.cssText = "padding:8px 12px;font-size:10px;color:#a6adc8;";
+        progressArea.innerHTML = "<div style='margin-bottom:4px;'>Starting…</div><div style='height:4px;background:#313244;border-radius:2px;overflow:hidden;'><div id='routeb-step1-bar' style='height:100%;width:0%;background:#89b4fa;transition:width .3s;'></div></div>";
+        footer.appendChild(progressArea);
+        parent.postMessage({ pluginMessage: { type: "routeb-step1" } }, "*");
+      });
+      footer.appendChild(setupBtn);
+      body.appendChild(footer);
+    }
+  } else if (!allGood) {
     var footer = document.createElement("div");
     footer.className = "wf-footer";
     var summary = document.createElement("span");
@@ -1350,15 +1486,38 @@ function renderWorkflow(data) {
     footer.appendChild(createAll);
     body.appendChild(footer);
   }
+
   step.appendChild(body);
-  container.appendChild(step);
+  ctx.container.appendChild(step);
 
-  // Track step 1 status for gating step 2
-  wfStep1Color = indicatorColor;
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
+}
 
-  // Request token data and render step 2
-  parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
-  renderStep2(container);
+// ══════════════════════════════════════════════════════════════════════════════
+// WORKFLOW DISPATCHER
+// ══════════════════════════════════════════════════════════════════════════════
+function renderWorkflow(data) {
+  var pages = data.pages ? Array.prototype.slice.call(data.pages) : [];
+  var container = document.getElementById("wf-container");
+  container.innerHTML = "";
+
+  if (data.error) {
+    container.innerHTML = "<div style='padding:20px;font-size:11px;color:#f38ba8;margin:12px;border:1px solid #f38ba830;border-radius:8px;background:#f38ba810'>Plugin error: "+esc(data.error)+"</div>";
+    return;
+  }
+
+  if (wfRoute === WF_ROUTE_NONE) {
+    renderDetectionBanner(container, data);
+    return;
+  }
+
+  // Request token data for Route A (needed by Step 2)
+  if (wfRoute === WF_ROUTE_A) {
+    parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
+  }
+
+  renderAllSteps(container, data, getActiveSteps());
 }
 
 // Accordion token definitions: key matches generator category, countKey maps to tokens-data counts
@@ -1385,13 +1544,13 @@ var wfCustomColors = []; // { name: "Success", hex: "#22C55E" }
 var wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
 var wfGenerating = false;
 var wfGenerated = false;
-var wfStep2Color = "red";
-var wfStep3Color = "red";
-var wfStep4Color = "red";
-var wfAuditData = null; // last audit results for Step 4 (in-memory, not persisted)
+var wfAuditData = null; // last audit results for Step 4 (persisted via clientStorage)
 var wfAuditPassed = false; // persisted: crit+high all passed
 var wfAuditScore = -1; // persisted: last audit score
 var wfAuditIssues = 0; // persisted: last total issue count
+var wfLastAuditTs = 0; // timestamp of last audit run
+var wfLastDocChangeTs = 0; // timestamp of last document change
+var wfAuditStale = false; // true if document changed since last audit
 var wfDevReady = false; // Step 5 handoff
 var wfDevReadyDate = null;
 
@@ -1423,6 +1582,7 @@ function ensureColSpans(row) { if (!row.colSpans || row.colSpans.length !== row.
 var wfPromoGenerating = false;
 var wfPromoGenerated = false;
 var wfStep3Skipped = false;
+var wfWireframeData = null; // { desktop: { hero: bool, popup: bool, banner: bool }, mobile: { ... } }
 var wfPageType = "promo"; // "promo" | "landing" | "fullsite"
 var PAGE_TYPES = [
   { key: "promo",    label: "Promo" },
@@ -1509,6 +1669,155 @@ var wfZIndex = [
 ];
 var wfZiNextId = 8;
 
+// ── Reset all workflow state to defaults (used on file switch + settings reset) ──
+function resetWorkflowState() {
+  // Route state
+  wfRoute = WF_ROUTE_NONE;
+  wfStepStatus = {};
+  _lastPagesData = null;
+  wfRouteBStep = 0;
+  wfRouteBAnalysis = null;
+  wfRouteBExistingVars = null;
+  wfRouteBBindStats = null;
+  wfRouteBComponentStep = 0;
+  wfRouteBChunkData = null;
+  wfRouteBComponentDetections = null;
+  wfRouteBComponentStats = null;
+  wfRouteBComponentError = null;
+  wfRouteBComponentSwapMap = null;
+  wfPagesHaveContent = false;
+  wfFoundationsHaveContent = false;
+  wfComponentsHaveContent = false;
+  // Token config
+  wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
+  wfCustomColors = [];
+  wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
+  wfTextStyles = [
+    {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
+    {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
+    {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
+    {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
+    {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
+    {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
+    {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+    {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+    {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
+    {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
+    {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+    {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
+    {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
+  ];
+  wfTsNextId = 18;
+  wfSpacing = [
+    {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
+    {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
+    {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
+    {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
+    {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
+    {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
+  ];
+  wfTypography = {
+    sizes: [
+      { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
+      { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
+      { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
+      { name: "6xl", value: "60" }
+    ],
+    weights: [
+      { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
+      { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
+      { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
+    ],
+    lineHeights: [
+      { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
+      { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
+      { name: "loose", value: "2" }
+    ]
+  };
+  wfRadius = [
+    { name: "sm", value: "4" },
+    { name: "md", value: "8" },
+    { name: "lg", value: "16" }
+  ];
+  wfShadows = [
+    { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
+  ];
+  wfBorders = [
+    { name: "thin", value: "1" },
+    { name: "default", value: "1.5" },
+    { name: "thick", value: "2" },
+    { name: "heavy", value: "4" }
+  ];
+  wfBdNextId = 5;
+  wfZIndex = [
+    { name: "hide", value: "-1" },
+    { name: "base", value: "0" },
+    { name: "dropdown", value: "1000" },
+    { name: "sticky", value: "1100" },
+    { name: "overlay", value: "1300" },
+    { name: "modal", value: "1400" },
+    { name: "toast", value: "1700" }
+  ];
+  wfZiNextId = 8;
+  TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
+  wfTokensData = null;
+  wfGenerating = false;
+  wfGenerated = false;
+  // Step 3 — Page structures
+  wfPageType = "promo";
+  wfPromoSections = { hero: true, popup: true, banner: true };
+  wfPromoPopupIncludeForm = true;
+  wfPromoFormFields = [
+    { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
+    { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
+    { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
+  ];
+  wfPromoFormFieldNextId = 7;
+  wfPromoFormGrid = [
+    { cols: 2, colSpans: [6, 6], fields: [0, 1] },
+    { cols: 2, colSpans: [6, 6], fields: [2, 3] },
+    { cols: 1, colSpans: [12], fields: [4] }
+  ];
+  wfPromoGenerating = false;
+  wfPromoGenerated = false;
+  wfWireframeData = null;
+  wfStep3Skipped = false;
+  // Step 4 — Audit
+  wfAuditData = null;
+  wfAuditPassed = false;
+  wfAuditScore = -1;
+  wfAuditIssues = 0;
+  wfLastAuditTs = 0;
+  wfLastDocChangeTs = 0;
+  wfAuditStale = false;
+  // Step 5 — Handoff
+  wfDevReady = false;
+  wfDevReadyDate = null;
+  // Form UI state
+  wfFormState.project = "";
+  wfFormState.version = "v1.0.0";
+  wfFormState.date = "";
+  wfFormState.designers = "";
+  wfFormState.status = "In Progress";
+  wfFormState.initialised = false;
+  wfFormState.coverOpen = true;
+  wfFormState.stepOpen = true;
+  wfFormState.step2Open = true;
+  wfFormState.step2Toggled = false;
+  wfFormState.step2BasicOpen = false;
+  wfFormState.step2ComplexOpen = false;
+  wfFormState.step3Open = true;
+  wfFormState.step4Open = true;
+  wfFormState.step5Open = true;
+}
+
 // ── Settings persistence ──────────────────────────────────────────────────
 function collectSettings() {
   return {
@@ -1528,6 +1837,7 @@ function collectSettings() {
     tokenEnabled: JSON.parse(JSON.stringify(wfTokenEnabled)),
     pageType: wfPageType,
     promoGenerated: wfPromoGenerated,
+    wireframeData: wfWireframeData ? JSON.parse(JSON.stringify(wfWireframeData)) : null,
     step3Skipped: wfStep3Skipped,
     promoSections: JSON.parse(JSON.stringify(wfPromoSections)),
     promoPopupIncludeForm: wfPromoPopupIncludeForm,
@@ -1539,7 +1849,22 @@ function collectSettings() {
     devReadyDate: wfDevReadyDate,
     auditPassed: wfAuditPassed,
     auditScore: wfAuditScore,
-    auditIssues: wfAuditIssues
+    auditIssues: wfAuditIssues,
+    auditData: wfAuditData,
+    lastAuditTs: wfLastAuditTs,
+    lastDocChangeTs: wfLastDocChangeTs,
+    route: wfRoute,
+    stepStatus: JSON.parse(JSON.stringify(wfStepStatus)),
+    importMode: wfRoute === WF_ROUTE_B,  // backward compat
+    routeBStep: wfRouteBStep,
+    routeBAnalysis: wfRouteBAnalysis ? JSON.parse(JSON.stringify(wfRouteBAnalysis)) : null,
+    routeBExistingVars: wfRouteBExistingVars ? JSON.parse(JSON.stringify(wfRouteBExistingVars)) : null,
+    routeBBindStats: wfRouteBBindStats ? JSON.parse(JSON.stringify(wfRouteBBindStats)) : null,
+    routeBComponentStep: wfRouteBComponentStep,
+    routeBComponentDetections: wfRouteBComponentDetections ? JSON.parse(JSON.stringify(wfRouteBComponentDetections)) : null,
+    routeBComponentStats: wfRouteBComponentStats ? JSON.parse(JSON.stringify(wfRouteBComponentStats)) : null,
+    routeBComponentSwapMap: wfRouteBComponentSwapMap ? JSON.parse(JSON.stringify(wfRouteBComponentSwapMap)) : null,
+    currentFileId: wfCurrentFileId
   };
 }
 
@@ -1547,7 +1872,7 @@ var _saveTimer = null;
 function saveSettings() {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(function() {
-    parent.postMessage({ pluginMessage: { type: "save-settings", settings: collectSettings() } }, "*");
+    parent.postMessage({ pluginMessage: { type: "save-settings", fileId: wfCurrentFileId, settings: collectSettings() } }, "*");
   }, 400);
 }
 
@@ -1569,6 +1894,11 @@ function applyLoadedSettings(s) {
   if (s.tokenEnabled) { for (var k in s.tokenEnabled) { wfTokenEnabled[k] = s.tokenEnabled[k]; } }
   if (s.pageType) wfPageType = s.pageType;
   if (s.promoGenerated !== undefined) wfPromoGenerated = s.promoGenerated;
+  if (s.wireframeData !== undefined) wfWireframeData = s.wireframeData;
+  // Backward compat: if old promoGenerated is true but no wireframeData, treat as all generated
+  if (wfPromoGenerated && !wfWireframeData) {
+    wfWireframeData = { desktop: { hero: true, popup: true, banner: true }, mobile: { hero: true, popup: true, banner: true } };
+  }
   if (s.step3Skipped !== undefined) wfStep3Skipped = s.step3Skipped;
   if (s.promoSections) { for (var pk in s.promoSections) { wfPromoSections[pk] = s.promoSections[pk]; } }
   if (s.promoPopupIncludeForm !== undefined) wfPromoPopupIncludeForm = s.promoPopupIncludeForm;
@@ -1607,6 +1937,48 @@ function applyLoadedSettings(s) {
   if (s.auditPassed !== undefined) wfAuditPassed = s.auditPassed;
   if (s.auditScore !== undefined) wfAuditScore = s.auditScore;
   if (s.auditIssues !== undefined) wfAuditIssues = s.auditIssues;
+  if (s.lastAuditTs) wfLastAuditTs = s.lastAuditTs;
+  if (s.lastDocChangeTs) wfLastDocChangeTs = s.lastDocChangeTs;
+  // Check if document was modified since last audit
+  wfAuditStale = wfLastDocChangeTs > wfLastAuditTs && wfLastAuditTs > 0;
+  if (s.auditData && !wfAuditStale) {
+    wfAuditData = s.auditData;
+    // Also render in the Audit tab if data was persisted
+    window._auditAllTextStyles = (wfAuditData.fixable && wfAuditData.fixable.allTextStyles) || [];
+    renderAudit(wfAuditData);
+  } else if (wfAuditStale) {
+    // Document changed since last audit — invalidate results and revoke dev-ready
+    wfAuditData = null;
+    wfAuditPassed = false;
+    wfAuditScore = -1;
+    wfAuditIssues = 0;
+    if (wfDevReady) {
+      wfDevReady = false;
+      wfDevReadyDate = null;
+    }
+    // Clear the Audit tab
+    var _rr = document.getElementById("results"); if (_rr) { _rr.innerHTML = ""; _rr.style.display = "none"; }
+    var _sb = document.getElementById("score-bar"); if (_sb) _sb.style.display = "none";
+  }
+  // Restore route state — only if settings include route info
+  // (migrated settings have route stripped, so this stays WF_ROUTE_NONE for migrated files)
+  if (s.route) {
+    wfRoute = s.route;
+  } else if (s.importMode) {
+    wfRoute = WF_ROUTE_B;
+  }
+  if (s.stepStatus) wfStepStatus = s.stepStatus;
+  if (s.routeBStep !== undefined) wfRouteBStep = s.routeBStep;
+  if (s.routeBAnalysis) wfRouteBAnalysis = s.routeBAnalysis;
+  if (s.routeBExistingVars) wfRouteBExistingVars = s.routeBExistingVars;
+  if (s.routeBBindStats) wfRouteBBindStats = s.routeBBindStats;
+  if (s.routeBComponentStep !== undefined) wfRouteBComponentStep = s.routeBComponentStep;
+  if (s.routeBComponentDetections) wfRouteBComponentDetections = s.routeBComponentDetections;
+  if (s.routeBComponentStats) wfRouteBComponentStats = s.routeBComponentStats;
+  if (s.routeBComponentSwapMap) wfRouteBComponentSwapMap = s.routeBComponentSwapMap;
+  // If component step was in-progress (scanning), reset to 0 since AI state is lost on reload
+  if (wfRouteBComponentStep === 1) wfRouteBComponentStep = 0;
+  if (s.currentFileId) wfCurrentFileId = s.currentFileId;
 }
 
 function getWfColors() {
@@ -2451,34 +2823,41 @@ function buildBreakpointsPanel(panel) {
   panel.appendChild(info);
 }
 
-function renderStep2(container) {
-  var prev = document.getElementById("wf-step-2");
+function renderRouteATokens(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var locked = wfStep1Color === "red";
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
   var tokens = wfTokensData;
 
   // Check if enabled tokens have been generated
   var enabledWithCounts = TOKEN_DEFS.filter(function(d) { return wfTokenEnabled[d.key] && d.countKey; });
   var allHaveTokens = enabledWithCounts.every(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
   var someHaveTokens = enabledWithCounts.some(function(d) { return tokens && (tokens[d.countKey] || 0) > 0; });
-  var indicatorColor = locked ? "red" : (allHaveTokens ? "green" : (someHaveTokens ? "yellow" : "red"));
+  // Step 2 is only "all set" when tokens exist AND foundations/components pages have content
+  var pagesReady = wfFoundationsHaveContent && wfComponentsHaveContent;
+  var allDone = allHaveTokens && pagesReady;
+  var someProgress = someHaveTokens || wfFoundationsHaveContent || wfComponentsHaveContent;
+  var indicatorColor = locked ? "red" : (allDone ? "green" : (someProgress ? "yellow" : "red"));
 
-  var stepOpen = locked ? false : (allHaveTokens && !wfFormState.step2Toggled ? false : wfFormState.step2Open);
+  var stepOpen = locked ? false : (allDone && !wfFormState.step2Toggled ? false : wfFormState.step2Open);
 
   var step = document.createElement("div");
-  step.id = "wf-step-2";
-  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allHaveTokens && !locked ? " complete" : "");
+  step.id = stepDef.domId;
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (allDone && !locked ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 2</div>" +
-      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allHaveTokens ? " — All set" : "")) + "</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
+      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (allDone ? " — All set" : (allHaveTokens && !pagesReady ? " — Pages need content" : ""))) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete file structure first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Pick your brand colors, then generate or import tokens.</div>" : "")) +
+       "<div class='wf-step-desc'>Pick your brand colors, then generate or import tokens.</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
@@ -2486,9 +2865,7 @@ function renderStep2(container) {
     header.addEventListener("click", function() {
       wfFormState.step2Toggled = true;
       wfFormState.step2Open = !wfFormState.step2Open;
-      var prev2 = document.getElementById("wf-step-2");
-      if (prev2) prev2.remove();
-      renderStep2(container);
+      step.classList.toggle("collapsed", !wfFormState.step2Open);
     });
   }
   step.appendChild(header);
@@ -2847,48 +3224,586 @@ function renderStep2(container) {
   body.addEventListener("change", function() { saveSettings(); });
 
   step.appendChild(body);
-  container.appendChild(step);
+  ctx.container.appendChild(step);
 
-  // Track step 2 status for gating step 3
-  wfStep2Color = indicatorColor;
-  renderStep3(container);
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUTE B STEP 2 — Design Tokens (Import)
+// ══════════════════════════════════════════════════════════════════════════════
+function renderRouteBTokens(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
+  if (prev) prev.remove();
+
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
+  var tokensApplied = wfRouteBStep >= 2;
+  var hasAnalysis = !!wfRouteBAnalysis;
+  var indicatorColor = locked ? "red" : (tokensApplied ? "green" : (hasAnalysis ? "yellow" : "red"));
+  var stepOpen = locked ? false : wfFormState.step2Open;
+
+  var step = document.createElement("div");
+  step.id = stepDef.domId;
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (tokensApplied ? " complete" : "");
+
+  var header = document.createElement("div");
+  header.className = "wf-step-header";
+  header.innerHTML =
+    "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
+    "<div class='wf-step-info'>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
+      "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (tokensApplied ? " — Applied" : "")) + "</div>" +
+      (locked ? "<div class='wf-step-lock-msg'>Set up file structure first</div>" :
+       "<div class='wf-step-desc'>Review extracted design tokens, refine names, and apply variables to your design.</div>") +
+    "</div>" +
+    (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
+
+  if (!locked) {
+    header.addEventListener("click", function() {
+      wfFormState.step2Open = !wfFormState.step2Open;
+      step.classList.toggle("collapsed", !wfFormState.step2Open);
+    });
+  }
+  step.appendChild(header);
+
+  var body = document.createElement("div");
+  body.className = "wf-step-body";
+
+  if (!locked) {
+    if (tokensApplied) {
+      // ── Completed state: read-only summary ──
+      var summaryDiv = document.createElement("div");
+      summaryDiv.style.cssText = "padding:10px 12px;font-size:11px;color:#a6adc8;line-height:1.6;";
+      var stats = wfRouteBBindStats || {};
+      summaryDiv.innerHTML =
+        "<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>" +
+          "<span style='font-size:16px;'>✅</span>" +
+          "<span style='font-weight:600;color:#a6e3a1;'>Tokens applied and bound</span>" +
+        "</div>" +
+        "<div style='padding-left:24px;'>" +
+          (stats.colorsBound !== undefined ? "<div>🎨 " + stats.colorsBound + " color bindings</div>" : "") +
+          (stats.spacingBound !== undefined ? "<div>📐 " + stats.spacingBound + " spacing bindings</div>" : "") +
+          (stats.radiusBound !== undefined ? "<div>◻️ " + stats.radiusBound + " radius bindings</div>" : "") +
+          (stats.typographyBound !== undefined ? "<div>✏️ " + stats.typographyBound + " typography bindings</div>" : "") +
+        "</div>";
+      body.appendChild(summaryDiv);
+
+      // ── Component Detection Section ──
+      var compSection = document.createElement("div");
+      compSection.style.cssText = "margin:8px 12px 10px;padding:12px;background:#1e1e2e;border:1px solid #313244;border-radius:8px;";
+      compSection.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:8px;'>🧩 Components</div>";
+
+      if (wfRouteBComponentStep === 0) {
+        // Show error from previous attempt if any
+        if (wfRouteBComponentError) {
+          var errDiv = document.createElement("div");
+          errDiv.style.cssText = "font-size:10px;color:#f38ba8;margin-bottom:8px;padding:6px 8px;background:#f38ba810;border:1px solid #f38ba830;border-radius:4px;";
+          errDiv.textContent = "⚠ " + wfRouteBComponentError;
+          compSection.appendChild(errDiv);
+        }
+        // Not started — show detect button
+        var detectBtn = document.createElement("button");
+        detectBtn.style.cssText = "width:100%;padding:8px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;transition:all .15s;";
+        detectBtn.textContent = wfRouteBComponentError ? "✦ Retry Detection" : "✦ Detect Components with AI";
+        detectBtn.addEventListener("mouseenter", function() { detectBtn.style.borderColor = "#cba6f7"; detectBtn.style.color = "#cba6f7"; });
+        detectBtn.addEventListener("mouseleave", function() { detectBtn.style.borderColor = "#45475a"; detectBtn.style.color = "#cdd6f4"; });
+        detectBtn.addEventListener("click", function() {
+          wfRouteBComponentError = null;
+          wfRouteBComponentStep = 1;
+          parent.postMessage({ pluginMessage: { type: "routeb-detect-components" } }, "*");
+          reRenderFromStep("tokens");
+        });
+        compSection.appendChild(detectBtn);
+        var skipLink = document.createElement("div");
+        skipLink.style.cssText = "text-align:center;margin-top:6px;font-size:10px;color:#585b70;cursor:pointer;";
+        skipLink.textContent = "Skip — continue without components";
+        skipLink.addEventListener("click", function() {
+          wfRouteBComponentStep = 3;
+          wfRouteBComponentStats = { componentsCreated: 0, instancesSwapped: 0, skipped: true };
+          saveSettings();
+          reRenderFromStep("tokens");
+        });
+        compSection.appendChild(skipLink);
+      } else if (wfRouteBComponentStep === 1) {
+        // Scanning / AI in progress
+        var progressDiv = document.createElement("div");
+        progressDiv.id = "routeb-comp-progress";
+        progressDiv.style.cssText = "font-size:11px;color:#a6adc8;";
+        progressDiv.textContent = wfRouteBComponentDetections ? "Creating components…" : "Scanning design structure…";
+        compSection.appendChild(progressDiv);
+        var progressBar = document.createElement("div");
+        progressBar.style.cssText = "margin-top:6px;height:3px;background:#313244;border-radius:2px;overflow:hidden;";
+        progressBar.innerHTML = "<div id='routeb-comp-bar' style='height:100%;width:10%;background:#cba6f7;border-radius:2px;transition:width .3s;'></div>";
+        compSection.appendChild(progressBar);
+      } else if (wfRouteBComponentStep === 2 && wfRouteBComponentDetections) {
+        // Review detected components
+        var detections = wfRouteBComponentDetections.components || [];
+        if (detections.length === 0) {
+          compSection.innerHTML += "<div style='font-size:11px;color:#6c7086;margin-bottom:8px;'>No repeating component patterns detected in your design.</div>";
+          var retryBtn0 = document.createElement("button");
+          retryBtn0.textContent = "↻ Retry Detection";
+          retryBtn0.style.cssText = "padding:6px 12px;font-size:10px;color:#cdd6f4;background:#313244;border:1px solid #45475a;border-radius:6px;cursor:pointer;";
+          retryBtn0.onclick = function() {
+            wfRouteBComponentStep = 0;
+            wfRouteBComponentDetections = null;
+            wfRouteBComponentStats = null;
+            wfRouteBComponentError = null;
+            wfRouteBChunkData = null;
+            wfRouteBComponentSwapMap = null;
+            saveSettings();
+            reRenderFromStep("tokens");
+          };
+          compSection.appendChild(retryBtn0);
+        } else {
+          var typeIcons = { button: "🔘", input: "📝", dropdown: "📋", card: "🃏", badge: "🏷️", "nav-item": "🧭", tag: "🏷️", avatar: "👤", "list-item": "📋", image: "🖼️", custom: "🧩" };
+          for (var di = 0; di < detections.length; di++) {
+            (function(det, idx) {
+              var row = document.createElement("div");
+              row.style.cssText = "display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #31324440;";
+              var cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.checked = true;
+              cb.style.cssText = "margin-top:2px;accent-color:#cba6f7;";
+              cb.dataset.idx = String(idx);
+              cb.addEventListener("change", function() { det._enabled = cb.checked; });
+              det._enabled = true;
+              var info = document.createElement("div");
+              info.style.cssText = "flex:1;";
+              var icon = typeIcons[det.type] || "🧩";
+              var totalInstances = 0;
+              for (var vi = 0; vi < det.variants.length; vi++) totalInstances += (det.variants[vi].nodeIds || []).length;
+              info.innerHTML =
+                "<div style='font-size:11px;font-weight:600;color:#cdd6f4;'>" + icon + " " + esc(det.name) + " — " + totalInstances + " instances (" + det.variants.length + " variant" + (det.variants.length > 1 ? "s" : "") + ")</div>" +
+                "<div style='font-size:10px;color:#a6adc8;margin-top:2px;'>" + det.variants.map(function(v) { return v.name + " (" + (v.nodeIds || []).length + ")"; }).join(" · ") + "</div>";
+              // Editable name
+              var nameInput = document.createElement("input");
+              nameInput.type = "text";
+              nameInput.value = det.name;
+              nameInput.style.cssText = "margin-top:4px;width:100%;padding:3px 6px;font-size:10px;background:#11111b;border:1px solid #313244;border-radius:4px;color:#cdd6f4;";
+              nameInput.addEventListener("change", function() { det.name = nameInput.value; });
+              info.appendChild(nameInput);
+              row.appendChild(cb);
+              row.appendChild(info);
+              compSection.appendChild(row);
+            })(detections[di], di);
+          }
+          // Action buttons
+          var btnRow = document.createElement("div");
+          btnRow.style.cssText = "display:flex;gap:8px;margin-top:10px;";
+          var createBtn = document.createElement("button");
+          createBtn.className = "wf-gen-btn";
+          createBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:700;";
+          createBtn.textContent = "Create Components";
+          createBtn.addEventListener("click", function() {
+            var enabled = [];
+            for (var ei = 0; ei < detections.length; ei++) {
+              if (detections[ei]._enabled !== false) {
+                var clean = { name: detections[ei].name, type: detections[ei].type, description: detections[ei].description || "", variants: detections[ei].variants };
+                enabled.push(clean);
+              }
+            }
+            if (enabled.length === 0) return;
+            wfRouteBComponentStep = 1;
+            saveSettings();
+            parent.postMessage({ pluginMessage: { type: "routeb-create-components", components: enabled } }, "*");
+            reRenderFromStep("tokens");
+          });
+          var skipBtn2 = document.createElement("button");
+          skipBtn2.style.cssText = "padding:8px 16px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;";
+          skipBtn2.textContent = "Skip";
+          skipBtn2.addEventListener("click", function() {
+            wfRouteBComponentStep = 3;
+            wfRouteBComponentStats = { componentsCreated: 0, instancesSwapped: 0, skipped: true };
+            saveSettings();
+            reRenderFromStep("tokens");
+          });
+          btnRow.appendChild(createBtn);
+          btnRow.appendChild(skipBtn2);
+          compSection.appendChild(btnRow);
+        }
+      } else if (wfRouteBComponentStep === 3) {
+        // Components created — review on Components page, then swap
+        var cStats = wfRouteBComponentStats || {};
+        if (cStats.skipped) {
+          compSection.innerHTML += "<div style='font-size:10px;color:#585b70;'>Skipped — no components created</div>";
+        } else {
+          compSection.innerHTML +=
+            "<div style='display:flex;align-items:center;gap:6px;'>" +
+              "<span style='color:#a6e3a1;font-weight:600;font-size:11px;'>✅ " + (cStats.componentsCreated || 0) + " component set" + ((cStats.componentsCreated || 0) !== 1 ? "s" : "") + " created</span>" +
+            "</div>" +
+            "<div style='font-size:10px;color:#a6adc8;margin-top:4px;'>" +
+              (cStats.variantsCreated || 0) + " variants" +
+            "</div>" +
+            "<div style='font-size:10px;color:#cba6f7;margin-top:4px;'>Review the components on the Components page, then swap the originals.</div>";
+          if (cStats.errors && cStats.errors.length > 0) {
+            compSection.innerHTML += "<div style='font-size:10px;color:#f38ba8;margin-top:4px;'>" + cStats.errors.length + " error(s):</div>";
+            for (var ei = 0; ei < cStats.errors.length; ei++) {
+              compSection.innerHTML += "<div style='font-size:9px;color:#f38ba8;padding-left:8px;'>" + cStats.errors[ei] + "</div>";
+            }
+          }
+          // Swap + Re-detect buttons
+          var swapBtnRow = document.createElement("div");
+          swapBtnRow.style.cssText = "display:flex;gap:8px;margin-top:8px;";
+          var swapBtn = document.createElement("button");
+          swapBtn.className = "wf-gen-btn";
+          swapBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:700;";
+          swapBtn.textContent = "Swap Instances";
+          swapBtn.addEventListener("click", function() {
+            wfRouteBComponentStep = 1;
+            saveSettings();
+            parent.postMessage({ pluginMessage: { type: "routeb-swap-instances", swapMap: wfRouteBComponentSwapMap || [] } }, "*");
+            reRenderFromStep("tokens");
+          });
+          swapBtnRow.appendChild(swapBtn);
+          var skipSwapBtn = document.createElement("button");
+          skipSwapBtn.style.cssText = "padding:8px 16px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;";
+          skipSwapBtn.textContent = "Skip";
+          skipSwapBtn.addEventListener("click", function() {
+            wfRouteBComponentStep = 4;
+            wfRouteBComponentStats.instancesSwapped = 0;
+            wfRouteBComponentStats.swapSkipped = true;
+            saveSettings();
+            reRenderFromStep("tokens");
+          });
+          swapBtnRow.appendChild(skipSwapBtn);
+          compSection.appendChild(swapBtnRow);
+        }
+        // Re-detect button
+        var redoBtn = document.createElement("button");
+        redoBtn.textContent = "↻ Re-detect Components";
+        redoBtn.style.cssText = "margin-top:8px;padding:4px 10px;font-size:10px;color:#cdd6f4;background:#313244;border:1px solid #45475a;border-radius:6px;cursor:pointer;";
+        redoBtn.onclick = function() {
+          wfRouteBComponentStep = 0;
+          wfRouteBComponentDetections = null;
+          wfRouteBComponentStats = null;
+          wfRouteBComponentError = null;
+          wfRouteBChunkData = null;
+          wfRouteBComponentSwapMap = null;
+          saveSettings();
+          reRenderFromStep("tokens");
+        };
+        compSection.appendChild(redoBtn);
+      } else if (wfRouteBComponentStep === 4) {
+        // Fully completed (created + swapped)
+        var fStats = wfRouteBComponentStats || {};
+        compSection.innerHTML +=
+          "<div style='display:flex;align-items:center;gap:6px;'>" +
+            "<span style='color:#a6e3a1;font-weight:600;font-size:11px;'>✅ " + (fStats.componentsCreated || 0) + " component set" + ((fStats.componentsCreated || 0) !== 1 ? "s" : "") + " created</span>" +
+          "</div>" +
+          "<div style='font-size:10px;color:#a6adc8;margin-top:4px;'>" +
+            (fStats.variantsCreated || 0) + " variants · " + (fStats.instancesSwapped || 0) + " instances swapped" +
+            (fStats.swapSkipped ? " (swap skipped)" : "") +
+          "</div>";
+        if (fStats.errors && fStats.errors.length > 0) {
+          compSection.innerHTML += "<div style='font-size:10px;color:#f38ba8;margin-top:4px;'>" + fStats.errors.length + " error(s):</div>";
+          for (var ei = 0; ei < fStats.errors.length; ei++) {
+            compSection.innerHTML += "<div style='font-size:9px;color:#f38ba8;padding-left:8px;'>" + fStats.errors[ei] + "</div>";
+          }
+        }
+        var redoBtn2 = document.createElement("button");
+        redoBtn2.textContent = "↻ Re-detect Components";
+        redoBtn2.style.cssText = "margin-top:8px;padding:4px 10px;font-size:10px;color:#cdd6f4;background:#313244;border:1px solid #45475a;border-radius:6px;cursor:pointer;";
+        redoBtn2.onclick = function() {
+          wfRouteBComponentStep = 0;
+          wfRouteBComponentDetections = null;
+          wfRouteBComponentStats = null;
+          wfRouteBComponentError = null;
+          wfRouteBChunkData = null;
+          wfRouteBComponentSwapMap = null;
+          saveSettings();
+          reRenderFromStep("tokens");
+        };
+        compSection.appendChild(redoBtn2);
+      }
+
+      body.appendChild(compSection);
+    } else if (hasAnalysis) {
+      // ── Active state: token review UI ──
+      renderRouteBTokenReview(body, wfRouteBAnalysis, container);
+    } else {
+      // ── Waiting state: Step 1 not completed yet ──
+      var waitMsg = document.createElement("div");
+      waitMsg.style.cssText = "padding:16px;text-align:center;font-size:11px;color:#6c7086;";
+      waitMsg.textContent = "Complete Step 1 to extract design tokens.";
+      body.appendChild(waitMsg);
+    }
+  }
+
+  step.appendChild(body);
+  ctx.container.appendChild(step);
+
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
+}
+
+// Renders token review UI inside Route B Step 2 body
+function renderRouteBTokenReview(body, analysis, wfContainer) {
+  var wrap = document.createElement("div");
+  wrap.className = "wf-token-list";
+  wrap.style.cssText = "max-height:400px;overflow-y:auto;";
+
+  // ── Color swatches ──
+  if (analysis.colors && analysis.colors.length > 0) {
+    var colorSec = document.createElement("div");
+    colorSec.style.cssText = "padding:8px 12px;";
+    colorSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>🎨 Colors (" + analysis.colors.length + ")</div>";
+    var colorGrid = document.createElement("div");
+    colorGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
+    analysis.colors.forEach(function(c, i) {
+      var swatch = document.createElement("div");
+      swatch.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:6px;font-size:10px;";
+      var dot = document.createElement("span");
+      dot.style.cssText = "width:14px;height:14px;border-radius:3px;flex-shrink:0;background:" + (c.hex || c.value || "#888") + ";border:1px solid #45475a;";
+      swatch.appendChild(dot);
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = c.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:#cdd6f4;font-size:10px;width:100px;outline:none;";
+      nameInput.setAttribute("data-color-idx", i);
+      if (c.matched) {
+        nameInput.style.color = "#a6e3a1";
+        nameInput.title = "Matched with existing variable";
+      }
+      nameInput.addEventListener("change", function() {
+        analysis.colors[i].name = this.value;
+      });
+      swatch.appendChild(nameInput);
+      colorGrid.appendChild(swatch);
+    });
+    colorSec.appendChild(colorGrid);
+    wrap.appendChild(colorSec);
+  }
+
+  // ── Spacing values ──
+  if (analysis.spacing && analysis.spacing.length > 0) {
+    var spaceSec = document.createElement("div");
+    spaceSec.style.cssText = "padding:8px 12px;";
+    spaceSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>📐 Spacing (" + analysis.spacing.length + ")</div>";
+    var spaceList = document.createElement("div");
+    spaceList.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;";
+    analysis.spacing.forEach(function(s, i) {
+      var chip = document.createElement("div");
+      chip.style.cssText = "display:flex;align-items:center;gap:4px;padding:3px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;color:#cdd6f4;";
+      chip.innerHTML = "<span style='color:#6c7086;'>" + s.value + "px</span>";
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = s.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:" + (s.matched ? "#a6e3a1" : "#cdd6f4") + ";font-size:10px;width:80px;outline:none;";
+      nameInput.addEventListener("change", function() { analysis.spacing[i].name = this.value; });
+      chip.appendChild(nameInput);
+      spaceList.appendChild(chip);
+    });
+    spaceSec.appendChild(spaceList);
+    wrap.appendChild(spaceSec);
+  }
+
+  // ── Radius values ──
+  if (analysis.radius && analysis.radius.length > 0) {
+    var radSec = document.createElement("div");
+    radSec.style.cssText = "padding:8px 12px;";
+    radSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>◻️ Radius (" + analysis.radius.length + ")</div>";
+    var radList = document.createElement("div");
+    radList.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;";
+    analysis.radius.forEach(function(r, i) {
+      var chip = document.createElement("div");
+      chip.style.cssText = "display:flex;align-items:center;gap:4px;padding:3px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;color:#cdd6f4;";
+      chip.innerHTML = "<span style='color:#6c7086;'>" + r.value + "px</span>";
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = r.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:" + (r.matched ? "#a6e3a1" : "#cdd6f4") + ";font-size:10px;width:80px;outline:none;";
+      nameInput.addEventListener("change", function() { analysis.radius[i].name = this.value; });
+      chip.appendChild(nameInput);
+      radList.appendChild(chip);
+    });
+    radSec.appendChild(radList);
+    wrap.appendChild(radSec);
+  }
+
+  // ── Typography ──
+  if (analysis.typography && analysis.typography.length > 0) {
+    var typoSec = document.createElement("div");
+    typoSec.style.cssText = "padding:8px 12px;";
+    typoSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>✏️ Typography (" + analysis.typography.length + ")</div>";
+    var typoList = document.createElement("div");
+    typoList.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    analysis.typography.forEach(function(t, i) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;padding:3px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;color:#cdd6f4;";
+      row.innerHTML = "<span style='color:#6c7086;white-space:nowrap;'>" + esc(t.fontFamily || "") + " " + (t.fontSize || "") + "/" + (t.fontWeight || "") + "</span>";
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = t.name || "";
+      nameInput.style.cssText = "background:none;border:none;color:" + (t.matched ? "#a6e3a1" : "#cdd6f4") + ";font-size:10px;flex:1;outline:none;";
+      nameInput.addEventListener("change", function() { analysis.typography[i].name = this.value; });
+      row.appendChild(nameInput);
+      typoList.appendChild(row);
+    });
+    typoSec.appendChild(typoList);
+    wrap.appendChild(typoSec);
+  }
+
+  // ── Frame reclassification ──
+  if (analysis.frames && analysis.frames.length > 0) {
+    var frameSec = document.createElement("div");
+    frameSec.style.cssText = "padding:8px 12px;";
+    frameSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>🖼 Frame Classification (" + analysis.frames.length + ")</div>";
+    var frameList = document.createElement("div");
+    frameList.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    analysis.frames.forEach(function(f, i) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;";
+      row.innerHTML = "<span style='color:#cdd6f4;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + esc(f.name) + "'>" + esc(f.name) + "</span>" +
+        "<span style='color:#6c7086;'>" + (f.width || "?") + "x" + (f.height || "?") + "</span>";
+      var sel = document.createElement("select");
+      sel.style.cssText = "background:#313244;border:1px solid #45475a;color:#cdd6f4;font-size:10px;padding:2px 4px;border-radius:4px;";
+      ["Desktop", "Mobile", "Component", "Skip"].forEach(function(opt) {
+        var o = document.createElement("option");
+        o.value = opt.toLowerCase();
+        o.textContent = opt;
+        if ((f.classification || "").toLowerCase() === opt.toLowerCase()) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", function() { analysis.frames[i].classification = this.value; });
+      row.appendChild(sel);
+      frameList.appendChild(row);
+    });
+    frameSec.appendChild(frameList);
+    wrap.appendChild(frameSec);
+  }
+
+  body.appendChild(wrap);
+
+  // ── Action buttons ──
+  var btnWrap = document.createElement("div");
+  btnWrap.style.cssText = "padding:10px 12px;display:flex;gap:8px;";
+
+  var aiBtn = document.createElement("button");
+  aiBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:600;background:none;border:1px solid #45475a;color:#cdd6f4;border-radius:6px;cursor:pointer;transition:all .15s;";
+  aiBtn.textContent = "✦ Refine Names with AI";
+  aiBtn.addEventListener("mouseenter", function() { aiBtn.style.borderColor = "#cba6f7"; aiBtn.style.color = "#cba6f7"; });
+  aiBtn.addEventListener("mouseleave", function() { aiBtn.style.borderColor = "#45475a"; aiBtn.style.color = "#cdd6f4"; });
+  aiBtn.addEventListener("click", function() {
+    aiBtn.disabled = true;
+    aiBtn.textContent = "Refining…";
+    bhCallTokenNamingAI(analysis, function(err, result) {
+      if (err) {
+        aiBtn.textContent = "✦ Failed — " + err;
+        setTimeout(function() { aiBtn.textContent = "✦ Refine Names with AI"; }, 3000);
+        aiBtn.disabled = false;
+        return;
+      }
+      // Apply AI suggestions to the analysis
+      if (result && result.colors && Array.isArray(result.colors)) {
+        for (var aci = 0; aci < result.colors.length; aci++) {
+          var sc = result.colors[aci];
+          if (analysis.colors[sc.index]) {
+            analysis.colors[sc.index].name = sc.name;
+          }
+        }
+      }
+      if (result && result.typography && Array.isArray(result.typography)) {
+        for (var ati = 0; ati < result.typography.length; ati++) {
+          var st = result.typography[ati];
+          if (analysis.typography[st.index]) {
+            analysis.typography[st.index].group = st.group;
+            analysis.typography[st.index].name = st.name;
+          }
+        }
+      }
+      wfRouteBAnalysis = analysis;
+      wfFormState.step2Open = true;
+      // Re-render just the body content, not the whole step
+      var stepEl = document.getElementById("wf-step-routeb2");
+      if (stepEl) {
+        stepEl.classList.remove("collapsed");
+        var bodyEl = stepEl.querySelector(".wf-step-body");
+        if (bodyEl) {
+          bodyEl.innerHTML = "";
+          renderRouteBTokenReview(bodyEl, wfRouteBAnalysis, wfContainer);
+        }
+      }
+    });
+  });
+  btnWrap.appendChild(aiBtn);
+
+  var applyBtn = document.createElement("button");
+  applyBtn.className = "wf-gen-btn";
+  applyBtn.style.cssText = "flex:1;padding:8px;font-size:11px;font-weight:700;";
+  applyBtn.textContent = "Apply and Bind Tokens";
+  applyBtn.addEventListener("click", function() {
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Applying…";
+    parent.postMessage({ pluginMessage: { type: "routeb-apply-tokens", analysis: JSON.parse(JSON.stringify(analysis)) } }, "*");
+  });
+  btnWrap.appendChild(applyBtn);
+
+  body.appendChild(btnWrap);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 3 — Page Structures
 // ══════════════════════════════════════════════════════════════════════════════
-function renderStep3(container) {
-  var prev = document.getElementById("wf-step-3");
+function renderRouteAWireframes(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var step3Done = wfPromoGenerated || wfStep3Skipped;
-  var locked = wfStep2Color === "red" && !step3Done;
-  var indicatorColor = step3Done ? "green" : (locked ? "red" : "yellow");
+  // Compute wireframe existence from wfWireframeData
+  var wfSectionKeys = ["hero", "popup", "banner"];
+  var wfAllExist = false, wfNoneExist = true, wfSomeExist = false;
+  if (wfWireframeData) {
+    wfAllExist = wfSectionKeys.every(function(s) { return wfWireframeData.desktop[s] && wfWireframeData.mobile[s]; });
+    var anyExist = wfSectionKeys.some(function(s) { return wfWireframeData.desktop[s] || wfWireframeData.mobile[s]; });
+    wfNoneExist = !anyExist;
+    wfSomeExist = anyExist && !wfAllExist;
+  }
+
+  // Step 3 done = all wireframes exist on both pages OR user skipped OR pages have custom content
+  var step3Done = wfAllExist || wfStep3Skipped || (wfPagesHaveContent && wfNoneExist);
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var prevStepRed = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
+  var locked = prevStepRed && !step3Done;
+  var indicatorColor;
+  if (wfStep3Skipped) indicatorColor = "green";
+  else if (locked) indicatorColor = "red";
+  else if (wfAllExist) indicatorColor = "green";
+  else if (wfSomeExist) indicatorColor = "yellow";
+  else if (wfPagesHaveContent) indicatorColor = "green";
+  else indicatorColor = "red";
   var stepOpen = locked ? false : wfFormState.step3Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-3";
-  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (step3Done ? " complete" : "");
+  step.id = stepDef.domId;
+  step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (indicatorColor === "green" ? " complete" : "");
 
   var header = document.createElement("div");
   header.className = "wf-step-header";
-  var step3Status = wfPromoGenerated ? " — Generated" : (wfStep3Skipped ? " — Skipped" : "");
+  var step3Status = wfStep3Skipped ? " — Skipped" : (wfAllExist ? " — All set" : (wfSomeExist ? " — Partial" : (wfPagesHaveContent ? " — Custom content" : "")));
+  var step3Desc = "Choose a page type, configure sections, then generate desktop & mobile wireframes.";
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 3</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Page Structures" + (locked ? "" : step3Status) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Complete design tokens first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Choose a page type, configure sections, then generate desktop & mobile wireframes.</div>" : "")) +
+       "<div class='wf-step-desc'>" + step3Desc + "</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step3Open = !wfFormState.step3Open;
-      var prev3 = document.getElementById("wf-step-3");
-      if (prev3) prev3.remove();
-      renderStep3(container);
+      step.classList.toggle("collapsed", !wfFormState.step3Open);
+      if (wfFormState.step3Open) {
+        parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+        parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
+      }
     });
   }
   step.appendChild(header);
@@ -2898,7 +3813,7 @@ function renderStep3(container) {
 
   // Helper: append skip/unskip button to a container
   function appendSkipBtn(container) {
-    if (!wfPromoGenerated && !wfStep3Skipped) {
+    if (!wfAllExist && !wfStep3Skipped) {
       var skipBtn = document.createElement("button");
       skipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#6c7086;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
       skipBtn.textContent = "Skip — I'll design my own pages";
@@ -2910,11 +3825,11 @@ function renderStep3(container) {
         wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
         wfFormState.step4Open = true;
         saveSettings();
-        renderWorkflow();
+        parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
       });
       container.appendChild(skipBtn);
     }
-    if (wfStep3Skipped && !wfPromoGenerated) {
+    if (wfStep3Skipped && !wfAllExist) {
       var unskipBtn = document.createElement("button");
       unskipBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
       unskipBtn.textContent = "Undo skip";
@@ -2923,13 +3838,14 @@ function renderStep3(container) {
       unskipBtn.addEventListener("click", function() {
         wfStep3Skipped = false;
         saveSettings();
-        renderWorkflow();
+        parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
       });
       container.appendChild(unskipBtn);
     }
   }
 
   if (!locked) {
+
     var list = document.createElement("div");
     list.className = "wf-token-list";
 
@@ -2947,19 +3863,24 @@ function renderStep3(container) {
         if (wfPageType === pt.key) return;
         wfPageType = pt.key;
         saveSettings();
-        var prev3 = document.getElementById("wf-step-3");
-        if (prev3) prev3.remove();
-        renderStep3(container);
+        reRenderFromStep("wireframes");
       });
       typeBar.appendChild(tb);
     });
     list.appendChild(typeBar);
 
     if (wfPageType === "promo") {
-    // Section checkboxes
+    // Section checkboxes — reflect existence from wfWireframeData
     PROMO_SECTIONS.forEach(function(sec) {
+      var secExistsDesktop = wfWireframeData && wfWireframeData.desktop[sec.key];
+      var secExistsMobile = wfWireframeData && wfWireframeData.mobile[sec.key];
+      var secExists = secExistsDesktop && secExistsMobile;
+      var secPartial = (secExistsDesktop || secExistsMobile) && !secExists;
+      var secMissing = !secExistsDesktop && !secExistsMobile;
+      // Checkbox reflects user pref (wfPromoSections is the source of truth)
+      var isChecked = wfPromoSections[sec.key];
       var row = document.createElement("div");
-      row.className = "wf-token-acc" + (wfPromoSections[sec.key] ? " enabled" : " disabled");
+      row.className = "wf-token-acc" + (isChecked ? " enabled" : " disabled");
 
       var hdr = document.createElement("div");
       hdr.className = "wf-token-header";
@@ -2968,13 +3889,15 @@ function renderStep3(container) {
       var chk = document.createElement("input");
       chk.type = "checkbox";
       chk.className = "wf-token-chk";
-      chk.checked = wfPromoSections[sec.key];
+      chk.checked = isChecked;
       chk.addEventListener("click", function(e) { e.stopPropagation(); });
       chk.addEventListener("change", function() {
         wfPromoSections[sec.key] = chk.checked;
         row.classList.toggle("enabled", chk.checked);
         row.classList.toggle("disabled", !chk.checked);
         saveSettings();
+        // Re-render to update context-sensitive buttons
+        reRenderFromStep("wireframes");
       });
       hdr.appendChild(chk);
 
@@ -2985,7 +3908,13 @@ function renderStep3(container) {
 
       var infoDiv = document.createElement("div");
       infoDiv.className = "wf-token-info";
-      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(sec.name) + "</div><div class='wf-token-desc'>" + esc(sec.desc) + "</div>";
+      var existBadge = "";
+      if (wfWireframeData) {
+        if (secExists) existBadge = " <span style='font-size:9px;color:#a6e3a1;'>✓ on both pages</span>";
+        else if (secPartial) existBadge = " <span style='font-size:9px;color:#f9e2af;'>partial</span>";
+        else existBadge = " <span style='font-size:9px;color:#6c7086;'>not generated</span>";
+      }
+      infoDiv.innerHTML = "<div class='wf-token-name'>" + esc(sec.name) + existBadge + "</div><div class='wf-token-desc'>" + esc(sec.desc) + "</div>";
       hdr.appendChild(infoDiv);
 
       row.appendChild(hdr);
@@ -3448,48 +4377,108 @@ function renderStep3(container) {
       list.appendChild(row);
     });
 
-    // Generate / Reset buttons
+    // ── Context-sensitive buttons ──
+    // Determine which checked sections exist vs are missing
     var btnWrap = document.createElement("div");
     btnWrap.style.cssText = "padding: 8px 10px;";
 
-    if (wfPromoGenerated) {
-      var resetBtn = document.createElement("button");
-      resetBtn.className = "wf-reset-btn";
-      resetBtn.textContent = "Rebuild Wireframes";
-      resetBtn.addEventListener("click", function() {
-        if (!confirm("This will rebuild the Desktop and Mobile pages, replacing all existing wireframe content. Continue?")) return;
-        resetBtn.disabled = true; resetBtn.textContent = "Rebuilding…";
-        wfPromoGenerating = true;
-        sendPromoGenerate();
-      });
-      btnWrap.appendChild(resetBtn);
-    } else {
-      var genBtn = document.createElement("button");
-      genBtn.className = "wf-gen-btn";
-      genBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
-      genBtn.textContent = "Generate Wireframes";
-      genBtn.addEventListener("click", function() {
-        if (wfPromoGenerating) return;
-        wfPromoGenerating = true;
-        genBtn.disabled = true; genBtn.textContent = "Generating…";
-        sendPromoGenerate();
-      });
-      btnWrap.appendChild(genBtn);
-    }
-    // Delete wireframes button
-    var delBtn = document.createElement("button");
-    delBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
-    delBtn.textContent = "Delete Wireframes";
-    delBtn.addEventListener("mouseenter", function() { delBtn.style.borderColor = "#f38ba8"; delBtn.style.color = "#f38ba8"; });
-    delBtn.addEventListener("mouseleave", function() { delBtn.style.borderColor = "#45475a"; delBtn.style.color = "#a6adc8"; });
-    delBtn.addEventListener("click", function() {
-      if (!confirm("Delete all wireframes from Desktop and Mobile pages?")) return;
-      delBtn.disabled = true; delBtn.textContent = "Deleting…";
-      parent.postMessage({ pluginMessage: { type: "delete-wireframes" } }, "*");
+    var checkedSections = {};
+    var checkedExisting = 0;  // checked sections that already exist on both pages
+    var checkedMissing = 0;   // checked sections that are missing (need generation)
+    var checkedCount = 0;
+    wfSectionKeys.forEach(function(sk) {
+      if (wfPromoSections[sk]) {
+        checkedCount++;
+        checkedSections[sk] = true;
+        var exists = wfWireframeData && wfWireframeData.desktop[sk] && wfWireframeData.mobile[sk];
+        if (exists) checkedExisting++;
+        else checkedMissing++;
+      }
     });
-    btnWrap.appendChild(delBtn);
 
-    // Skip / Unskip button — right below delete
+    // State A: Nothing generated at all → Generate + Skip
+    // State B: Everything generated → Regenerate + Delete
+    // State C: Partial, only missing checked → Generate + Skip
+    // State D: Partial, mixed (existing + missing checked) → Regenerate + Delete + Skip
+    var hasAnyOnPages = wfSectionKeys.some(function(s) { return wfWireframeData && (wfWireframeData.desktop[s] || wfWireframeData.mobile[s]); });
+
+    if (checkedCount > 0) {
+      if (wfNoneExist || (checkedMissing > 0 && checkedExisting === 0)) {
+        // State A or C: Generate (creates only checked, preserving existing)
+        var genBtn = document.createElement("button");
+        genBtn.className = "wf-gen-btn";
+        genBtn.style.cssText = "width:100%;padding:8px;font-size:11px;";
+        genBtn.textContent = checkedMissing === checkedCount ? "Generate Wireframes" : "Generate Missing Sections";
+        genBtn.addEventListener("click", function() {
+          if (wfPromoGenerating) return;
+          wfPromoGenerating = true;
+          genBtn.disabled = true; genBtn.textContent = "Generating…";
+          // Delete only the sections we're regenerating, then generate
+          if (hasAnyOnPages) {
+            parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+          }
+          sendPromoGenerate();
+        });
+        btnWrap.appendChild(genBtn);
+      } else if (checkedExisting > 0 && checkedMissing === 0) {
+        // State B: All checked already exist → Regenerate + Delete
+        var regenBtn = document.createElement("button");
+        regenBtn.className = "wf-reset-btn";
+        regenBtn.textContent = "Regenerate Wireframes";
+        regenBtn.addEventListener("click", function() {
+          if (!confirm("This will recreate the selected sections on Desktop and Mobile pages. Continue?")) return;
+          regenBtn.disabled = true; regenBtn.textContent = "Regenerating…";
+          wfPromoGenerating = true;
+          // Delete selected sections first, then regenerate
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+          sendPromoGenerate();
+        });
+        btnWrap.appendChild(regenBtn);
+
+        var delBtn = document.createElement("button");
+        delBtn.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+        delBtn.textContent = "Delete Wireframes";
+        delBtn.addEventListener("mouseenter", function() { delBtn.style.borderColor = "#f38ba8"; delBtn.style.color = "#f38ba8"; });
+        delBtn.addEventListener("mouseleave", function() { delBtn.style.borderColor = "#45475a"; delBtn.style.color = "#a6adc8"; });
+        delBtn.addEventListener("click", function() {
+          if (!confirm("Delete selected wireframes from Desktop and Mobile pages?")) return;
+          delBtn.disabled = true; delBtn.textContent = "Deleting…";
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+        });
+        btnWrap.appendChild(delBtn);
+      } else {
+        // State D: Mixed — some existing + some missing checked → Regenerate + Delete + Skip
+        var regenBtn2 = document.createElement("button");
+        regenBtn2.className = "wf-reset-btn";
+        regenBtn2.textContent = "Regenerate Selected";
+        regenBtn2.addEventListener("click", function() {
+          if (!confirm("This will recreate all selected sections (existing ones will be replaced). Continue?")) return;
+          regenBtn2.disabled = true; regenBtn2.textContent = "Regenerating…";
+          wfPromoGenerating = true;
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: checkedSections } }, "*");
+          sendPromoGenerate();
+        });
+        btnWrap.appendChild(regenBtn2);
+
+        var delBtn2 = document.createElement("button");
+        delBtn2.style.cssText = "width:100%;padding:8px;font-size:11px;background:none;border:1px solid #45475a;color:#a6adc8;border-radius:6px;cursor:pointer;transition:all .15s;margin-top:8px;";
+        delBtn2.textContent = "Delete Selected";
+        delBtn2.addEventListener("mouseenter", function() { delBtn2.style.borderColor = "#f38ba8"; delBtn2.style.color = "#f38ba8"; });
+        delBtn2.addEventListener("mouseleave", function() { delBtn2.style.borderColor = "#45475a"; delBtn2.style.color = "#a6adc8"; });
+        delBtn2.addEventListener("click", function() {
+          var existingChecked = {};
+          wfSectionKeys.forEach(function(sk) {
+            if (wfPromoSections[sk] && wfWireframeData && wfWireframeData.desktop[sk] && wfWireframeData.mobile[sk]) existingChecked[sk] = true;
+          });
+          if (!confirm("Delete selected existing wireframes?")) return;
+          delBtn2.disabled = true; delBtn2.textContent = "Deleting…";
+          parent.postMessage({ pluginMessage: { type: "delete-wireframes", sections: existingChecked } }, "*");
+        });
+        btnWrap.appendChild(delBtn2);
+      }
+    }
+
+    // Skip / Unskip button
     appendSkipBtn(btnWrap);
 
     list.appendChild(btnWrap);
@@ -3524,21 +4513,28 @@ function renderStep3(container) {
   body.addEventListener("change", function() { saveSettings(); });
 
   step.appendChild(body);
-  container.appendChild(step);
+  ctx.container.appendChild(step);
 
-  // Track step 3 status for gating step 4
-  wfStep3Color = indicatorColor;
-  renderStep4(container);
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 4 — Audit & Validation
 // ══════════════════════════════════════════════════════════════════════════════
-function renderStep4(container) {
-  var prev = document.getElementById("wf-step-4");
+function renderStepAudit(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var locked = wfStep3Color === "red";
+  // Lock based on previous step in this route
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
+  var lockMsg = "Complete the previous step first";
+  if (prevStepId === "wireframes") lockMsg = "Generate wireframes first";
+  else if (prevStepId === "tokens") lockMsg = "Complete design tokens first";
+
   var hasResults = wfAuditData && !wfAuditData.noPages;
   var hasPersistedResults = !hasResults && wfAuditScore >= 0;
   var score = hasResults ? wfAuditData.score : wfAuditScore;
@@ -3548,7 +4544,7 @@ function renderStep4(container) {
   var stepOpen = locked ? false : wfFormState.step4Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-4";
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (critHighOk ? " complete" : "");
 
   var header = document.createElement("div");
@@ -3556,23 +4552,21 @@ function renderStep4(container) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 4</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Audit & Validation" + (locked ? "" : ((hasResults || hasPersistedResults) ? " — " + score + "/100" : "")) + "</div>" +
-      (locked ? "<div class='wf-step-lock-msg'>Generate wireframes first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>" : "")) +
+      (locked ? "<div class='wf-step-lock-msg'>" + lockMsg + "</div>" :
+       "<div class='wf-step-desc'>Run the dev-ready audit on Desktop & Mobile pages to check variable bindings, naming, layout and more.</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step4Open = !wfFormState.step4Open;
+      step.classList.toggle("collapsed", !wfFormState.step4Open);
       // If opening and we have persisted results but no full data, auto re-run audit
       if (wfFormState.step4Open && !wfAuditData && wfAuditScore >= 0) {
         parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
       }
-      var prev4 = document.getElementById("wf-step-4");
-      if (prev4) prev4.remove();
-      renderStep4(container);
     });
   }
   step.appendChild(header);
@@ -3644,7 +4638,7 @@ function renderStep4(container) {
               chdr.appendChild(fixAllBtnWf);
             }
             // AI Name All button for naming checks (workflow tab)
-            if (key === "naming" && _bhApiKey) {
+            if (key === "naming" && (_bhApiKey || bhHasProxy())) {
               var aiNameAllBtnWf = document.createElement("button");
               aiNameAllBtnWf.className = "action-btn ai-name-all-btn";
               aiNameAllBtnWf.textContent = "✨ AI Name All (" + count + ")";
@@ -3694,7 +4688,7 @@ function renderStep4(container) {
         var aiWrapWf = document.createElement("div"); aiWrapWf.className = "ai-review-wrap";
         var aiBtnWf = document.createElement("button"); aiBtnWf.className = "ai-review-btn";
         aiBtnWf.innerHTML = "✨ AI Review — Get a prioritized action plan";
-        var aiHasAccessWf = _bhApiKey;
+        var aiHasAccessWf = _bhApiKey || bhHasProxy();
         if (!aiHasAccessWf) { aiBtnWf.disabled = true; aiBtnWf.title = "Set up AI access in Settings tab first"; aiBtnWf.innerHTML = "✨ AI Review — requires API key or proxy"; }
         var aiPanelWf = document.createElement("div"); aiPanelWf.className = "ai-review-panel"; aiPanelWf.style.display = "none";
         aiBtnWf.addEventListener("click", function(){
@@ -3745,28 +4739,28 @@ function renderStep4(container) {
   }
 
   step.appendChild(body);
-  container.appendChild(step);
+  ctx.container.appendChild(step);
 
-  // No auto-run — user must click "Run Audit" or re-run manually
-
-  // Track step 4 status for gating step 5
-  wfStep4Color = indicatorColor;
-  renderStep5(container);
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STEP 5 — Ready for Dev
 // ══════════════════════════════════════════════════════════════════════════════
-function renderStep5(container) {
-  var prev = document.getElementById("wf-step-5");
+function renderStepHandoff(ctx, stepDef) {
+  var container = ctx.container;
+  var prev = document.getElementById(stepDef.domId);
   if (prev) prev.remove();
 
-  var locked = wfStep4Color === "red";
+  var stepIdx = ctx.steps.indexOf(stepDef);
+  var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
+  var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
   var indicatorColor = locked ? "red" : (wfDevReady ? "green" : "yellow");
   var stepOpen = locked ? false : wfFormState.step5Open;
 
   var step = document.createElement("div");
-  step.id = "wf-step-5";
+  step.id = stepDef.domId;
   step.className = "wf-step" + (stepOpen ? "" : " collapsed") + (locked ? " locked" : "") + (wfDevReady ? " complete" : "");
 
   var header = document.createElement("div");
@@ -3774,19 +4768,17 @@ function renderStep5(container) {
   header.innerHTML =
     "<span class='wf-step-indicator " + indicatorColor + "'></span>" +
     "<div class='wf-step-info'>" +
-      "<div class='wf-step-num'>Step 5</div>" +
+      "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Ready for Dev" + (locked ? "" : (wfDevReady ? " — Handed Off" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Run the audit first</div>" :
-       (stepOpen ? "<div class='wf-step-desc'>Review the summary and mark this file as ready for development handoff.</div>" : "")) +
+       "<div class='wf-step-desc'>Review the summary and mark this file as ready for development handoff.</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
   if (!locked) {
     header.addEventListener("click", function() {
       wfFormState.step5Open = !wfFormState.step5Open;
-      var prev5 = document.getElementById("wf-step-5");
-      if (prev5) prev5.remove();
-      renderStep5(container);
+      step.classList.toggle("collapsed", !wfFormState.step5Open);
     });
   }
   step.appendChild(header);
@@ -3802,10 +4794,15 @@ function renderStep5(container) {
     var summary = document.createElement("div");
     summary.style.cssText = "padding:10px 12px 6px;";
 
-    var checks = [
-      { label: "Pages created", done: wfStep1Color === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
-      { label: "Design tokens generated", done: wfStep2Color === "green", detail: "Variables, text styles & effect styles" },
-      { label: "Wireframes built", done: wfStep3Color === "green" || wfPromoGenerated || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
+    var checks = ctx.route === WF_ROUTE_B ? [
+      { label: "Pages created", done: ctx.stepStatus.structure === "green", detail: "Cover, Foundations, Components, Desktop, Mobile, Archive" },
+      { label: "Design tokens applied", done: ctx.stepStatus.tokens === "green", detail: "Variables, text styles & effect styles" },
+      { label: "Design organized", done: wfPagesHaveContent, detail: "Frames classified into Desktop & Mobile pages" },
+      { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
+    ] : [
+      { label: "Pages created", done: ctx.stepStatus.structure === "green", detail: "Cover, Foundations, Components, Desktop, Mobile" },
+      { label: "Design tokens generated", done: ctx.stepStatus.tokens === "green", detail: "Variables, text styles & effect styles" },
+      { label: "Wireframes built", done: (ctx.stepStatus.wireframes === "green") || wfStep3Skipped, detail: wfStep3Skipped ? "Skipped — using custom designs" : "Desktop & mobile page structures" },
       { label: "Audit — all critical & high passed", done: wfAuditData ? auditCritHighPass(wfAuditData) : wfAuditPassed, detail: wfAuditData ? wfAuditData.score + "/100 — " + wfAuditData.totalIssues + " issue" + (wfAuditData.totalIssues !== 1 ? "s" : "") : (wfAuditScore >= 0 ? wfAuditScore + "/100 — " + wfAuditIssues + " issue" + (wfAuditIssues !== 1 ? "s" : "") : "Not run yet") }
     ];
 
@@ -3889,7 +4886,10 @@ function renderStep5(container) {
   }
 
   step.appendChild(body);
-  container.appendChild(step);
+  ctx.container.appendChild(step);
+
+  // Track status
+  ctx.stepStatus[stepDef.id] = indicatorColor;
 }
 
 function sendPromoGenerate() {
@@ -4063,115 +5063,22 @@ function processNext(){while(importIdx<fileQueue.length&&fileQueue[importIdx].st
 window.onmessage=function(event){
   var msg=event.data.pluginMessage; if(!msg)return;
   if(msg.type==="load-settings"){
+    // If fileId changed, reset state before applying new file's settings
+    var _lsFileChanged = msg.fileId && msg.fileId !== wfCurrentFileId;
+    if (_lsFileChanged) {
+      wfCurrentFileId = msg.fileId;
+      resetWorkflowState();
+    }
     applyLoadedSettings(msg.settings);
     // Collapse completed steps by default on load
-    if (wfPromoGenerated || wfStep3Skipped) wfFormState.step3Open = false;
-    if (wfAuditPassed) wfFormState.step4Open = false;
+    if (wfPagesHaveContent || wfStep3Skipped) wfFormState.step3Open = false;
+    if (wfAuditPassed && !wfAuditStale) wfFormState.step4Open = false;
     updateBuildHtmlTab();
-    // Re-render workflow if it's visible
-    var wc=document.getElementById("wf-container"); if(wc) { try { parent.postMessage({pluginMessage:{type:"check-pages"}},"*"); } catch(e){} }
+    // Trigger workflow render (always on first load, or on file switch)
+    parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
   }
   if(msg.type==="settings-reset"){
-    // Reset all token variables to defaults
-    wfColors = { primary: "#3B82F6", secondary: "", tertiary: "", textColor: "#1A1A1A" };
-    wfCustomColors = [];
-    wfFonts = { primary: "Inter, sans-serif", secondary: "", tertiary: "" };
-    wfTextStyles = [
-      {id:1,  group:"heading", name:"h1",      fontRole:"primary",   fontSize:"36", fontWeight:"700", lineHeight:"1.25", letterSpacing:"-0.5"},
-      {id:2,  group:"heading", name:"h2",      fontRole:"primary",   fontSize:"30", fontWeight:"600", lineHeight:"1.3",  letterSpacing:"-0.3"},
-      {id:3,  group:"heading", name:"h3",      fontRole:"primary",   fontSize:"24", fontWeight:"600", lineHeight:"1.35", letterSpacing:"0"},
-      {id:4,  group:"heading", name:"h4",      fontRole:"primary",   fontSize:"20", fontWeight:"600", lineHeight:"1.4",  letterSpacing:"0"},
-      {id:5,  group:"body",    name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"400", lineHeight:"1.6",  letterSpacing:"0"},
-      {id:6,  group:"body",    name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:7,  group:"body",    name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:8,  group:"links",   name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"500", lineHeight:"1.6",  letterSpacing:"0"},
-      {id:9,  group:"links",   name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:10, group:"links",   name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"500", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:11, group:"buttons", name:"lg",      fontRole:"secondary", fontSize:"18", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
-      {id:12, group:"buttons", name:"default", fontRole:"secondary", fontSize:"16", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
-      {id:13, group:"buttons", name:"sm",      fontRole:"secondary", fontSize:"14", fontWeight:"600", lineHeight:"1.25", letterSpacing:"0.2"},
-      {id:14, group:"input",   name:"default", fontRole:"secondary", fontSize:"14", fontWeight:"400", lineHeight:"1.5",  letterSpacing:"0"},
-      {id:15, group:"label",   name:"default", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
-      {id:16, group:"label",   name:"focused", fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"},
-      {id:17, group:"label",   name:"error",   fontRole:"secondary", fontSize:"12", fontWeight:"500", lineHeight:"1.25", letterSpacing:"0.3"}
-    ];
-    wfTsNextId = 18;
-    wfSpacing = [
-      {id:1,name:"0",value:"0"},{id:2,name:"px",value:"1"},{id:3,name:"0-5",value:"2"},
-      {id:4,name:"1",value:"4"},{id:5,name:"1-5",value:"6"},{id:6,name:"2",value:"8"},
-      {id:7,name:"2-5",value:"10"},{id:8,name:"3",value:"12"},{id:9,name:"4",value:"16"},
-      {id:10,name:"5",value:"20"},{id:11,name:"6",value:"24"},{id:12,name:"8",value:"32"},
-      {id:13,name:"10",value:"40"},{id:14,name:"12",value:"48"},{id:15,name:"16",value:"64"},
-      {id:16,name:"20",value:"80"},{id:17,name:"24",value:"96"},{id:18,name:"32",value:"128"}
-    ];
-    wfTypography = {
-      sizes: [
-        { name: "xs", value: "12" }, { name: "sm", value: "14" }, { name: "base", value: "16" },
-        { name: "lg", value: "18" }, { name: "xl", value: "20" }, { name: "2xl", value: "24" },
-        { name: "3xl", value: "30" }, { name: "4xl", value: "36" }, { name: "5xl", value: "48" },
-        { name: "6xl", value: "60" }
-      ],
-      weights: [
-        { name: "thin", value: "100" }, { name: "extralight", value: "200" }, { name: "light", value: "300" },
-        { name: "regular", value: "400" }, { name: "medium", value: "500" }, { name: "semibold", value: "600" },
-        { name: "bold", value: "700" }, { name: "extrabold", value: "800" }, { name: "black", value: "900" }
-      ],
-      lineHeights: [
-        { name: "tight", value: "1.25" }, { name: "snug", value: "1.375" },
-        { name: "normal", value: "1.5" }, { name: "relaxed", value: "1.625" },
-        { name: "loose", value: "2" }
-      ]
-    };
-    wfRadius = [
-      { name: "sm", value: "4" },
-      { name: "md", value: "8" },
-      { name: "lg", value: "16" }
-    ];
-    wfShadows = [
-      { name: "default", value: "0px 4px 12px 0px rgba(0,0,0,0.22)" }
-    ];
-    wfBorders = [
-      { name: "thin", value: "1" },
-      { name: "default", value: "1.5" },
-      { name: "thick", value: "2" },
-      { name: "heavy", value: "4" }
-    ];
-    wfBdNextId = 5;
-    wfZIndex = [
-      { name: "hide", value: "-1" },
-      { name: "base", value: "0" },
-      { name: "dropdown", value: "1000" },
-      { name: "sticky", value: "1100" },
-      { name: "overlay", value: "1300" },
-      { name: "modal", value: "1400" },
-      { name: "toast", value: "1700" }
-    ];
-    wfZiNextId = 8;
-    TOKEN_DEFS.forEach(function(d) { wfTokenEnabled[d.key] = true; wfTokenOpen[d.key] = false; });
-    wfPageType = "promo";
-    wfPromoSections = { hero: true, popup: true, banner: true };
-    wfPromoPopupIncludeForm = true;
-    wfPromoFormFields = [
-      { label: "First name", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Last name", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Email address", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Phone number", enabled: true, dropdown: false, custom: false, required: true },
-      { label: "Select your store", enabled: true, dropdown: true, custom: false, required: true },
-      { label: "What Are You Shopping For?", enabled: false, dropdown: false, custom: false, required: false }
-    ];
-    wfPromoFormFieldNextId = 7;
-    wfPromoFormGrid = [
-      { cols: 2, colSpans: [6, 6], fields: [0, 1] },
-      { cols: 2, colSpans: [6, 6], fields: [2, 3] },
-      { cols: 1, colSpans: [12], fields: [4] }
-    ];
-    wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
-    wfFormState.step2Open = true;
-    wfFormState.step2Toggled = false;
-    wfFormState.step4Open = true;
-    wfFormState.step5Open = true;
-    wfDevReady = false;
-    wfDevReadyDate = null;
+    resetWorkflowState();
     updateBuildHtmlTab();
     // Re-render workflow
     parent.postMessage({pluginMessage:{type:"check-pages"}},"*");
@@ -4193,7 +5100,6 @@ window.onmessage=function(event){
           _aiNamingPendingSingle = null;
         }
         _aiNamingPendingBatch = false;
-        console.error("AI naming error:", err);
         return;
       }
       if (_aiNamingPendingSingle && names.length > 0) {
@@ -4236,22 +5142,206 @@ window.onmessage=function(event){
     renderAudit(msg.results);
     wfAuditData = msg.results;
     // Persist audit summary
-    wfAuditPassed = auditCritHighPass(msg.results);
+    var newPassed = auditCritHighPass(msg.results);
+    wfAuditPassed = newPassed;
     wfAuditScore = (msg.results && !msg.results.noPages) ? msg.results.score : -1;
     wfAuditIssues = (msg.results && msg.results.totalIssues !== undefined) ? msg.results.totalIssues : 0;
-    // Never auto-collapse — user should always see audit results after running
+    wfLastAuditTs = Date.now();
+    wfAuditStale = false;
+    // Revoke dev-ready if audit no longer passes
+    if (wfDevReady && !newPassed) {
+      wfDevReady = false;
+      wfDevReadyDate = null;
+    }
     saveSettings();
-    var sc = document.getElementById("wf-container");
-    if (sc) renderStep4(sc);
+    reRenderFromStep("audit");
   }
   if(msg.type==="pages-data"){
+    // Always track current file ID from backend
+    if (msg.fileInfo && msg.fileInfo.fileId) {
+      wfCurrentFileId = msg.fileInfo.fileId;
+    }
+    // First time on this file — empty file → Route A, has content → banner
+    if (wfRoute === WF_ROUTE_NONE) {
+      var fileHasContent = (msg.fileInfo && msg.fileInfo.totalTopLevelChildren > 0);
+      if (!fileHasContent) {
+        wfRoute = WF_ROUTE_A;
+      }
+      saveSettings();
+    }
+    // Cache for partial re-renders
+    _lastPagesData = { pages: msg.pages || [], fileInfo: msg.fileInfo || {} };
+    // Update content detection from live page data
+    var hadContentBefore = wfPagesHaveContent;
+    wfPagesHaveContent = !!(msg.fileInfo && (msg.fileInfo.hasDesktopContent || msg.fileInfo.hasMobileContent));
+    wfFoundationsHaveContent = !!(msg.fileInfo && msg.fileInfo.hasFoundationsContent);
+    wfComponentsHaveContent = !!(msg.fileInfo && msg.fileInfo.hasComponentsContent);
+    // Only auto-collapse on first detection (not when user explicitly toggled)
+    if (wfPagesHaveContent && !hadContentBefore) wfFormState.step3Open = false;
     try { renderWorkflow({pages:msg.pages||[], fileInfo:msg.fileInfo||({})}); }
     catch(e) { var wc=document.getElementById("wf-container"); if(wc) wc.innerHTML="<div style='padding:20px;font-size:11px;color:#f38ba8'>Error: "+String(e)+"</div>"; }
   }
+  if(msg.type==="page-content-update"){
+    var hadContent = wfPagesHaveContent;
+    var hadFoundations = wfFoundationsHaveContent;
+    var hadComponents = wfComponentsHaveContent;
+    wfPagesHaveContent = !!(msg.hasDesktopContent || msg.hasMobileContent);
+    wfFoundationsHaveContent = !!msg.hasFoundationsContent;
+    wfComponentsHaveContent = !!msg.hasComponentsContent;
+    var contentChanged = (hadContent !== wfPagesHaveContent) || (hadFoundations !== wfFoundationsHaveContent) || (hadComponents !== wfComponentsHaveContent);
+    if (contentChanged) {
+      // Content status changed — re-render affected steps
+      if (wfPagesHaveContent && !hadContent) wfFormState.step3Open = false;
+      // Re-render from tokens if foundations/components changed, otherwise from wireframes/handoff
+      if (hadFoundations !== wfFoundationsHaveContent || hadComponents !== wfComponentsHaveContent) {
+        reRenderFromStep("tokens");
+      } else if (wfRoute === WF_ROUTE_A) {
+        reRenderFromStep("wireframes");
+      } else {
+        reRenderFromStep("handoff");
+      }
+    }
+    // Refresh wireframe data too
+    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
+  }
+  if(msg.type==="document-changed"){
+    // Record document change timestamp
+    wfLastDocChangeTs = Date.now();
+    // If audit was run before, mark it stale and revoke dev-ready
+    if (wfLastAuditTs > 0) {
+      wfAuditStale = true;
+      if (wfDevReady) {
+        wfDevReady = false;
+        wfDevReadyDate = null;
+        var sc5 = document.getElementById("wf-container");
+        reRenderFromStep("handoff");
+      }
+      saveSettings();
+    }
+    // Auto-rerun audit if results are currently displayed
+    var _scoreBar = document.getElementById("score-bar");
+    var auditTabVisible = _scoreBar && _scoreBar.style.display === "flex";
+    var wfAuditVisible = !!wfAuditData;
+    if (auditTabVisible || wfAuditVisible) {
+      parent.postMessage({ pluginMessage: { type: "run-audit" } }, "*");
+    }
+  }
+  // ── Route B message handlers ──
+  if(msg.type==="routeb-step1-progress"){
+    var rb1Text = document.getElementById("routeb-step1-progress");
+    if (rb1Text) rb1Text.firstChild.textContent = msg.phase || "";
+    var rb1Bar = document.getElementById("routeb-step1-bar");
+    if (rb1Bar) rb1Bar.style.width = (msg.percent || 0) + "%";
+  }
+  if(msg.type==="routeb-step1-done"){
+    wfRouteBStep = 1;
+    wfRouteBAnalysis = msg.analysis || null;
+    wfRouteBExistingVars = msg.existingVars || null;
+    saveSettings();
+    // Trigger page re-check which will re-render workflow with Step 1 green
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+  }
+  if(msg.type==="routeb-tokens-error"){
+    // Show error and re-enable the apply button
+    var applyBtn2 = document.querySelector("#wf-step-routeb2 .wf-gen-btn");
+    if (applyBtn2) { applyBtn2.disabled = false; applyBtn2.textContent = "Apply and Bind Tokens"; }
+    var errDiv = document.createElement("div");
+    errDiv.style.cssText = "padding:8px 12px;font-size:11px;color:#f38ba8;";
+    errDiv.textContent = "Error: " + (msg.error || "Unknown error");
+    var rb2Body = document.querySelector("#wf-step-routeb2 .wf-step-body");
+    if (rb2Body) rb2Body.appendChild(errDiv);
+  }
+  if(msg.type==="routeb-step1-error"){
+    var setupBtn2 = document.querySelector(".wf-gen-btn");
+    if (setupBtn2) { setupBtn2.disabled = false; setupBtn2.textContent = "✦ Set Up File Structure"; }
+    var errDiv2 = document.createElement("div");
+    errDiv2.style.cssText = "padding:8px 12px;font-size:11px;color:#f38ba8;";
+    errDiv2.textContent = "Error: " + (msg.error || "Unknown error");
+    var progArea = document.getElementById("routeb-step1-progress");
+    if (progArea) progArea.parentNode.appendChild(errDiv2);
+  }
+  if(msg.type==="routeb-tokens-applied"){
+    wfRouteBStep = 2;
+    wfRouteBBindStats = msg.bindStats || {};
+    saveSettings();
+    reRenderFromStep("tokens");
+  }
+  // ── Route B Component Detection ──
+  if(msg.type==="routeb-serialize-next"){
+    // Bounce back to backend — this message round-trip yields the Figma UI thread
+    parent.postMessage({ pluginMessage: { type: "routeb-serialize-next" } }, "*");
+  }
+  if(msg.type==="routeb-create-load-vars"){
+    // Bounce back to backend — yields UI thread before variable loading
+    parent.postMessage({ pluginMessage: { type: "routeb-create-load-vars" } }, "*");
+  }
+  if(msg.type==="routeb-create-next"){
+    // Bounce back to backend — processes one component per round-trip to avoid freezing
+    parent.postMessage({ pluginMessage: { type: "routeb-create-next" } }, "*");
+  }
+  if(msg.type==="routeb-swap-next"){
+    // Bounce back to backend — processes one swap per round-trip
+    parent.postMessage({ pluginMessage: { type: "routeb-swap-next" } }, "*");
+  }
+  if(msg.type==="routeb-tree-chunks"){
+    wfRouteBChunkData = msg.chunks;
+    wfRouteBComponentStep = 1;
+    saveSettings();
+    // Update progress text
+    var progEl = document.getElementById("routeb-comp-progress");
+    if (progEl) progEl.textContent = "AI analyzing design patterns…";
+    var barEl = document.getElementById("routeb-comp-bar");
+    if (barEl) barEl.style.width = "30%";
+    // Start 2-round AI detection
+    runComponentDetectionAI(msg.chunks, function(err, result) {
+      if (err) {
+        wfRouteBComponentError = err;
+        wfRouteBComponentStep = 0;
+        saveSettings();
+        reRenderFromStep("tokens");
+        return;
+      }
+      wfRouteBComponentError = null;
+      wfRouteBComponentDetections = result;
+      wfRouteBComponentStep = 2;
+      saveSettings();
+      reRenderFromStep("tokens");
+    });
+  }
+  if(msg.type==="routeb-components-created"){
+    if (window._compCreateTimeout) { clearTimeout(window._compCreateTimeout); window._compCreateTimeout = null; }
+    wfRouteBComponentStats = msg.stats;
+    wfRouteBComponentSwapMap = msg.swapMap || [];
+    wfRouteBComponentStep = 3;
+    saveSettings();
+    reRenderFromStep("tokens");
+  }
+  if(msg.type==="routeb-components-error"){
+    if (window._compCreateTimeout) { clearTimeout(window._compCreateTimeout); window._compCreateTimeout = null; }
+    wfRouteBComponentError = msg.error || "Component creation failed.";
+    wfRouteBComponentStep = 0;
+    saveSettings();
+    reRenderFromStep("tokens");
+  }
+  if(msg.type==="routeb-swap-completed"){
+    var swapStats = msg.stats || {};
+    wfRouteBComponentStats.instancesSwapped = swapStats.instancesSwapped || 0;
+    if (swapStats.errors) {
+      wfRouteBComponentStats.errors = (wfRouteBComponentStats.errors || []).concat(swapStats.errors);
+    }
+    wfRouteBComponentStep = 4;
+    saveSettings();
+    reRenderFromStep("tokens");
+  }
+  if(msg.type==="routeb-components-progress"){
+    var progEl2 = document.getElementById("routeb-comp-progress");
+    if (progEl2) progEl2.textContent = msg.phase || "Processing…";
+    var barEl2 = document.getElementById("routeb-comp-bar");
+    if (barEl2) barEl2.style.width = (msg.percent || 10) + "%";
+  }
   if(msg.type==="tokens-data"){
     wfTokensData = msg.tokens || null;
-    var c = document.getElementById("wf-container");
-    if (c) renderStep2(c);
+    reRenderFromStep("tokens");
   }
   if(msg.type==="generate-result"){
     // Individual category done — nothing to do here, wait for generate-complete
@@ -4268,8 +5358,9 @@ window.onmessage=function(event){
   if(msg.type==="reset-complete"){
     wfGenerated = false;
     parent.postMessage({ pluginMessage: { type: "check-tokens" } }, "*");
-    var rc = document.getElementById("wf-container");
-    if (rc) renderStep2(rc);
+    if (wfRoute !== WF_ROUTE_NONE) {
+      reRenderFromStep("tokens");
+    }
   }
   if(msg.type==="cover-generated"){
     wfFormState.generated = true;
@@ -4279,7 +5370,6 @@ window.onmessage=function(event){
   if(msg.type==="promo-generated"){
     wfPromoGenerating = false;
     wfPromoGenerated = true;
-    wfFormState.step3Open = false;
     wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfFormState.step4Open = true;
     wfDevReady = false;
@@ -4288,27 +5378,46 @@ window.onmessage=function(event){
     clearAuditDisplay();
     updateBuildHtmlTab();
     saveSettings();
-    var pc = document.getElementById("wf-container");
-    if (pc) renderStep3(pc);
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
   }
   if(msg.type==="wireframes-deleted"){
     wfPromoGenerated = false;
+    wfWireframeData = null;
     wfAuditData = null; wfAuditPassed = false; wfAuditScore = -1; wfAuditIssues = 0;
     wfDevReady = false;
     wfDevReadyDate = null;
     clearAuditDisplay();
     updateBuildHtmlTab();
     saveSettings();
-    var pc2 = document.getElementById("wf-container");
-    if (pc2) renderStep3(pc2);
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+    parent.postMessage({ pluginMessage: { type: "check-wireframes" } }, "*");
+  }
+  if(msg.type==="wireframes-data"){
+    var _prevWfData = wfWireframeData;
+    wfWireframeData = msg.wireframes || null;
+    // Sync wfPromoGenerated for backward compat
+    if (wfWireframeData) {
+      var _allSections = ["hero", "popup", "banner"];
+      var _allExist = _allSections.every(function(s) { return wfWireframeData.desktop[s] && wfWireframeData.mobile[s]; });
+      var _anyExist = _allSections.some(function(s) { return wfWireframeData.desktop[s] || wfWireframeData.mobile[s]; });
+      wfPromoGenerated = _anyExist;
+      // Sync checkboxes to match actual page state
+      _allSections.forEach(function(s) {
+        wfPromoSections[s] = wfWireframeData.desktop[s] || wfWireframeData.mobile[s];
+      });
+    } else {
+      wfPromoGenerated = false;
+    }
+    saveSettings();
+    reRenderFromStep("wireframes");
   }
   if(msg.type==="debug-data"){if(!msg.data){if(msg.selCount>1){showDebugState("multi");document.getElementById("debug-multi-sub").textContent=msg.selCount+" layers selected — select just one to inspect.";}else showDebugState("empty");}else renderDebug(msg.data);}
   if(msg.type==="import-result"){for(var i=0;i<fileQueue.length;i++){if(fileQueue[i].name===msg.filename&&!fileQueue[i].status){fileQueue[i].status=msg.success?"ok":"error";fileQueue[i].message=msg.message;break;}}importIdx++;renderQueue();if(window._renderCzQueue)window._renderCzQueue();processNext();}
   if(msg.type==="cover-status-updated"){
     if (wfDevReady) wfFormState.step5Open = false;
     updateBuildHtmlTab();
-    var sc5 = document.getElementById("wf-container");
-    if (sc5) renderStep5(sc5);
+    reRenderFromStep("handoff");
   }
   // ── Image export pre-check ──
   if (msg.type === "check-images-export-result") {
@@ -4410,6 +5519,11 @@ window.onmessage=function(event){
   }
   if(msg.type==="ai-config-loaded"){
     var cfg = msg.config || {};
+    // Set built-in proxy URL from backend (injected at build time from proxy-config.json)
+    if (cfg.builtinProxyUrl) {
+      _bhBuiltinProxyUrl = cfg.builtinProxyUrl;
+      if (!_bhProxyUrl) _bhProxyUrl = cfg.builtinProxyUrl;
+    }
     if (cfg.apiKey) {
       _bhApiKey = cfg.apiKey;
       var settingsInp = document.getElementById("settings-api-key");
@@ -4426,6 +5540,8 @@ window.onmessage=function(event){
     if (!cfg.welcomeDone) {
       document.getElementById("welcome-overlay").style.display = "";
     }
+    // Now that proxy URL is known, check health and update UI
+    bhCheckProxyHealth();
     bhUpdateAiModeUI();
   }
 };
@@ -4459,6 +5575,266 @@ function bhTermLog(text, type) {
   log.scrollTop = log.scrollHeight;
 }
 
+// ── AI Token Naming ─────────────────────────────────────────────────────────
+
+function bhCallTokenNamingAI(analysis, callback) {
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key configured.", null); return; }
+
+  // Build a compact summary for AI
+  var colorSummary = analysis.colors.map(function(c) { return { hex: c.hex, uses: c.count, currentName: c.name }; });
+  var typoSummary = analysis.typography.map(function(t) {
+    return { family: t.fontFamily, size: t.fontSize, weight: t.fontWeight, uses: t.count, sample: t.sampleText, currentName: t.group + "/" + t.name };
+  });
+
+  var systemPrompt = "You are a design system token naming expert. Given extracted design tokens, suggest better semantic names.\n\n"
+    + "Rules:\n"
+    + "1. Color names: use semantic names like primary, secondary, tertiary, success, error, warning, info, surface, on-surface, muted. Keep black, white, gray as-is.\n"
+    + "2. Text style names: use group/name format like heading/h1, heading/h2, body/default, body/sm, label/default, caption/default, overline/default.\n"
+    + "3. Prefer short, developer-friendly names.\n"
+    + "4. Return ONLY valid JSON: {\"colors\": [{\"index\": 0, \"name\": \"primary\"}, ...], \"typography\": [{\"index\": 0, \"group\": \"heading\", \"name\": \"h1\"}, ...]}\n"
+    + "No markdown, no explanation — just the JSON.";
+
+  var userContent = JSON.stringify({ colors: colorSummary, typography: typoSummary });
+
+  var body = JSON.stringify({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [
+      { role: "user", content: userContent },
+      { role: "assistant", content: "{" }
+    ]
+  });
+
+  var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
+  if (useProxy) {
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        text = "{" + text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        var result = JSON.parse(text);
+        callback(null, result);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else {
+      callback("API error (" + xhr.status + ")", null);
+    }
+  };
+  xhr.onerror = function() { callback("Network error.", null); };
+  xhr.timeout = 30000;
+  xhr.ontimeout = function() { callback("AI request timed out.", null); };
+  xhr.send(body);
+}
+
+// ── AI Component Detection (Route B) ──
+function callComponentDetectionAI(systemPrompt, userContent, callback) {
+  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  if (!_bhApiKey && !useProxy) { callback("No API key or proxy configured. Set up AI in Settings tab.", null); return; }
+
+  var body = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [
+      { role: "user", content: userContent + "\n\nRespond with ONLY the JSON object, no markdown fences or explanation." }
+    ]
+  });
+
+  var xhr = new XMLHttpRequest();
+  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  xhr.open("POST", apiUrl, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
+  if (useProxy) {
+    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+  } else {
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
+    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+  }
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      try {
+        var resp = JSON.parse(xhr.responseText);
+        var text = "";
+        for (var ti = 0; ti < resp.content.length; ti++) {
+          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+        }
+        text = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+        var result = JSON.parse(text);
+        callback(null, result);
+      } catch(e) {
+        callback("Failed to parse AI response: " + e.message, null);
+      }
+    } else if (xhr.status === 429) {
+      var retryMsg = "Rate limited (429).";
+      try {
+        var errBody = JSON.parse(xhr.responseText);
+        if (errBody.retryAfterSeconds) {
+          var mins = Math.ceil(errBody.retryAfterSeconds / 60);
+          retryMsg = "Rate limited — retry in " + mins + " min (" + (errBody.remaining || 0) + "/" + (errBody.limit || "?") + " remaining).";
+        }
+      } catch(e) {}
+      callback(retryMsg, null);
+    } else {
+      var errDetail = "";
+      try { var eb = JSON.parse(xhr.responseText); errDetail = (eb.error && eb.error.message) || xhr.responseText.substring(0, 200); } catch(e) { errDetail = xhr.responseText ? xhr.responseText.substring(0, 200) : ""; }
+      callback("API error (" + xhr.status + "): " + errDetail, null);
+    }
+  };
+  xhr.onerror = function() { callback("Network error.", null); };
+  xhr.timeout = 60000;
+  xhr.ontimeout = function() { callback("AI request timed out (60s).", null); };
+  xhr.send(body);
+}
+
+function runComponentDetectionAI(chunks, callback) {
+  var round1SystemPrompt =
+    "You are a Figma design system expert. Analyze this UI frame's node tree and identify all repeating UI component patterns.\n\n" +
+    "Node format: id (unique ID), t (type: F=Frame, T=Text, R=Rect, V=Vector, I=Instance, G=Group), n (name), " +
+    "x/y (position relative to parent), w/h (dimensions), " +
+    "f (fill color), s (stroke color), sw (stroke weight), r (corner radius), o (opacity), l (layout: H/V/W), p (padding [t,r,b,l]), " +
+    "g (gap), ax/cx (alignment), txt (text content), fs (font size), fw (font weight), ta (text align), ff (font family), " +
+    "img (has image), clip (clips content), abs (absolute positioned), exp (has export/icon), shadow (has shadow), c (children), cc (child count if truncated).\n\n" +
+    "Find nodes that share similar structure and could be component instances. Look for:\n" +
+    "- Buttons (small frames with centered text, fills, radius)\n" +
+    "- Inputs/fields (frames with strokes, text, consistent height)\n" +
+    "- Cards (larger frames with image + text children)\n" +
+    "- Navigation items, tags, badges, avatars, list items\n" +
+    "- ANY repeating pattern — even uncommon/custom ones\n\n" +
+    "Guidelines:\n" +
+    "- Report the outermost frame that represents the full component (e.g., the button frame, not the text inside it).\n" +
+    "- Don't report a component's inner children as a separate pattern (e.g., don't create \"Button Label\" separately from \"Button\").\n" +
+    "- Each nodeId should appear in only one pattern. A pattern needs at least 2 instances.\n" +
+    "- Skip section layout wrappers and one-off unique elements.\n" +
+    "- Designs are often messy/unorganized: a button or input frame may NOT have its text as a child node. " +
+    "The text could be anywhere in the tree — a sibling, a cousin, or in a completely different branch. " +
+    "Use x/y position and w/h dimensions to find text nodes that visually overlap or sit adjacent to a component frame. " +
+    "For example, a text node at x:100,y:200 with a frame at x:95,y:195 are likely the same component. " +
+    "Also look for naming patterns (\"Button Label\", \"CTA\", \"Input Label\", etc.). " +
+    "Report ONLY the FRAME nodeId as the instance \"nodeId\". " +
+    "If there are associated text/icon nodes that visually belong to this component but are NOT children of the frame, " +
+    "list their nodeIds in the \"associatedNodeIds\" array.\n\n" +
+    "For each pattern, list ALL matching nodeIds and note what differs between instances.\n" +
+    "IMPORTANT: The \"nodeId\" field must be a FRAME node only. Non-child text/vector/rect nodes go in \"associatedNodeIds\".\n\n" +
+    "Return ONLY valid JSON:\n" +
+    '{"patterns":[{"type":"button|input|dropdown|card|badge|nav-item|tag|list-item|custom","description":"Short description","instances":[{"nodeId":"1:234","associatedNodeIds":["1:235"],"notes":"blue fill, text Submit"}],"differentiators":["fill color","text content"]}]}';
+
+  var round2SystemPrompt =
+    "You are a Figma design system expert. You've analyzed individual sections of a design and found component patterns in each. Now unify these into a final component library.\n\n" +
+    "Tasks:\n" +
+    "1. Merge patterns that appear across multiple sections (e.g., 'Button' found in hero AND in form)\n" +
+    "2. Identify variants: what property differentiates instances (Variant for style, Size for dimensions, State for border/color changes)\n" +
+    "3. Name each component and its variants using design system conventions\n" +
+    "4. Match Desktop and Mobile versions of the same component when applicable\n" +
+    "5. Remove false positives (layout containers, unique one-off elements)\n\n" +
+    "Guidelines:\n" +
+    "- nodeIds arrays must contain ONLY frame nodeIds — never text, vector, or rect nodeIds.\n" +
+    "- Carry forward associatedNodeIds from Round 1: for each nodeId in a variant, include its associated nodes " +
+    "in an \"associatedNodeIds\" map so they can be grouped into the component during creation.\n" +
+    "- Each nodeId should appear in exactly one variant of one component. Only use frame nodeIds from Round 1 results.\n" +
+    "- Each component must have at least 2 total instances across all variants.\n" +
+    "- If Round 1 found separate label/text patterns (e.g., 'Button Label'), merge them into the parent component rather than keeping them separate.\n" +
+    "- Prefer fewer, well-defined components over many small fragments.\n\n" +
+    "Return ONLY valid JSON:\n" +
+    '{"components":[{"name":"Button","type":"button","description":"Primary action button","variants":[{"name":"Primary","properties":{"Variant":"Primary"},"nodeIds":["1:234","5:678"],"associatedNodeIds":{"1:234":["1:235"],"5:678":["5:679"]}}]}]}';
+
+  var round1Results = [];
+  var completed = 0;
+  var totalChunks = chunks.length;
+  var hadError = false;
+
+  function updateProgress(text, pct) {
+    var progEl = document.getElementById("routeb-comp-progress");
+    if (progEl) progEl.textContent = text;
+    var barEl = document.getElementById("routeb-comp-bar");
+    if (barEl) barEl.style.width = pct + "%";
+  }
+
+  function processChunk(i) {
+    if (hadError) return;
+    updateProgress("Analyzing " + chunks[i].frameName + "… (" + (i + 1) + "/" + totalChunks + ")", 10 + Math.round(60 * i / totalChunks));
+
+    callComponentDetectionAI(round1SystemPrompt, JSON.stringify(chunks[i].tree), function(err, result) {
+      if (hadError) return;
+      if (err) {
+        hadError = true;
+        callback("Round 1 failed on " + chunks[i].frameName + ": " + err, null);
+        return;
+      }
+      console.log("Round 1 result for " + chunks[i].frameName + ":", JSON.stringify(result.patterns || []).substring(0, 500));
+      round1Results.push({ page: chunks[i].page, frameName: chunks[i].frameName, patterns: result.patterns || [] });
+      completed++;
+
+      if (completed < totalChunks) {
+        processChunk(completed);
+      } else {
+        updateProgress("Unifying patterns across all frames…", 75);
+        callComponentDetectionAI(round2SystemPrompt, JSON.stringify(round1Results), function(err2, finalResult) {
+          if (err2) {
+            callback("Round 2 aggregation failed: " + err2, null);
+            return;
+          }
+          console.log("Round 2 raw result:", JSON.stringify(finalResult).substring(0, 1000));
+          // Post-process: deduplicate nodeIds across all variants/components
+          if (finalResult && finalResult.components) {
+            var seen = {};
+            for (var ci2 = 0; ci2 < finalResult.components.length; ci2++) {
+              var comp2 = finalResult.components[ci2];
+              if (!comp2.variants) continue;
+              for (var vi2 = 0; vi2 < comp2.variants.length; vi2++) {
+                var variant = comp2.variants[vi2];
+                if (!variant.nodeIds) { variant.nodeIds = []; continue; }
+                var filtered = [];
+                for (var ni2 = 0; ni2 < variant.nodeIds.length; ni2++) {
+                  var nid = variant.nodeIds[ni2];
+                  if (seen[nid]) continue;
+                  seen[nid] = true;
+                  filtered.push(nid);
+                }
+                variant.nodeIds = filtered;
+              }
+              comp2.variants = comp2.variants.filter(function(v) { return v.nodeIds && v.nodeIds.length > 0; });
+            }
+            finalResult.components = finalResult.components.filter(function(c) {
+              var total = 0;
+              if (c.variants) c.variants.forEach(function(v) { total += v.nodeIds.length; });
+              return total >= 2;
+            });
+          }
+          console.log("After post-processing:", JSON.stringify(finalResult).substring(0, 1000));
+          updateProgress("Detection complete!", 100);
+          callback(null, finalResult);
+        });
+      }
+    });
+  }
+
+  if (totalChunks === 0) {
+    callback("No design frames found to analyze.", null);
+    return;
+  }
+
+  processChunk(0);
+}
+
 // ── Build HTML button handlers ──
 var _bhLastResult = null;
 var _bhLastRawResult = null;
@@ -4468,9 +5844,9 @@ var _figmaUserId = "";
 var _figmaUserName = "";
 var _bhApiKey = "";
 
-// Proxy URL — set via build (proxy-config.json), Settings tab, or clientStorage
+// Proxy URL — set via backend message (from proxy-config.json), Settings tab, or clientStorage
 var _bhProxyUrl = "";
-var _bhBuiltinProxyUrl = _bhProxyUrl; // Remember the build-time value
+var _bhBuiltinProxyUrl = ""; // Set when ai-config-loaded arrives with builtinProxyUrl
 
 var _bhProxyHealthy = false;
 var _bhProxyChecked = false;
@@ -4611,9 +5987,7 @@ document.getElementById("bh-ai-enhance").addEventListener("change", function() {
 });
 
 // Old bh-key-toggle and bh-api-key handlers removed — AI config now in Settings tab
-
-// Initialize AI mode — check proxy health, then update UI
-setTimeout(function() { bhCheckProxyHealth(); }, 100);
+// Proxy health check is triggered by ai-config-loaded message (no need for setTimeout)
 
 // Show welcome overlay if no ai-config was loaded after a brief delay
 var _aiConfigReceived = false;
@@ -4882,7 +6256,7 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
     reqHeaders["X-Figma-User-Id"] = _figmaUserId;
     reqHeaders["X-Figma-User-Name"] = _figmaUserName;
   } else {
-    reqHeaders["anthropic-version"] = "2025-04-15";
+    reqHeaders["anthropic-version"] = "2023-06-01";
     reqHeaders["anthropic-dangerous-direct-browser-access"] = "true";
   }
 
@@ -5144,7 +6518,7 @@ function bhCallNamingAI(serializedNodes, callback) {
     xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
     xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
   } else {
-    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
     xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
   }
   xhr.onload = function() {
@@ -5215,7 +6589,7 @@ function bhCallAuditAI(data, callback) {
     xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
     xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
   } else {
-    xhr.setRequestHeader("anthropic-version", "2025-04-15");
+    xhr.setRequestHeader("anthropic-version", "2023-06-01");
     xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
   }
   xhr.onload = function() {

@@ -13,7 +13,7 @@ export async function generateFoundationsPage(msg) {
   }
 
   var fontFamilies = msg.fontFamilies || {};
-  var userFonts = [fontFamilies.primary, fontFamilies.secondary, fontFamilies.tertiary].filter(Boolean);
+  var userFonts = Object.keys(fontFamilies).map(function(k) { return fontFamilies[k]; }).filter(Boolean);
   var loadedFamilies = {};
   for (var fi = 0; fi < userFonts.length; fi++) {
     var fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
@@ -130,9 +130,15 @@ export async function generateFoundationsPage(msg) {
   try {
     var ff = msg.fontFamilies || {};
     var ffEntries = [];
-    if (ff.primary) ffEntries.push({ role: "Primary", family: ff.primary });
-    if (ff.secondary && ff.secondary !== ff.primary) ffEntries.push({ role: "Secondary", family: ff.secondary });
-    if (ff.tertiary && ff.tertiary !== ff.primary) ffEntries.push({ role: "Tertiary", family: ff.tertiary });
+    var ffKeys = Object.keys(ff);
+    var ffSeen = {};
+    for (var ffki = 0; ffki < ffKeys.length; ffki++) {
+      var ffVal = ff[ffKeys[ffki]];
+      if (!ffVal || ffSeen[ffVal]) continue;
+      ffSeen[ffVal] = true;
+      var ffRole = ffKeys[ffki].charAt(0).toUpperCase() + ffKeys[ffki].slice(1);
+      ffEntries.push({ role: ffRole, family: ffVal });
+    }
 
     if (ffEntries.length > 0) {
       sectionTitle("Font Families");
@@ -169,22 +175,27 @@ export async function generateFoundationsPage(msg) {
         ffRoleLabel.x = 24; ffRoleLabel.y = 20;
         ffCard.appendChild(ffRoleLabel);
 
-        // Font family name in its own font
-        var ffNameStyle = await loadFontWithFallback(ffFam, 700);
+        // Detect if font is installed
+        var ffInstalled = true;
+        try { await figma.loadFontAsync({ family: ffFam, style: "Regular" }); } catch(e) { ffInstalled = false; }
+        var ffDisplayFam = ffInstalled ? ffFam : "Inter";
+
+        // Font family name in its own font (or Inter fallback)
+        var ffNameStyle = await loadFontWithFallback(ffDisplayFam, 700);
         var ffNameNode = figma.createText();
-        ffNameNode.fontName = { family: ffFam, style: ffNameStyle };
+        ffNameNode.fontName = { family: ffDisplayFam, style: ffNameStyle };
         ffNameNode.fontSize = 28;
-        ffNameNode.characters = ffFam;
-        ffNameNode.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+        ffNameNode.characters = ffFam + (ffInstalled ? "" : " (not installed)");
+        ffNameNode.fills = [{ type: "SOLID", color: ffInstalled ? { r: 0.1, g: 0.1, b: 0.1 } : { r: 0.6, g: 0.3, b: 0.3 } }];
         ffNameNode.x = 24; ffNameNode.y = 42;
         ffCard.appendChild(ffNameNode);
 
-        // Sample alphabet in Regular
-        var ffSampleStyle = await loadFontWithFallback(ffFam, 400);
+        // Sample alphabet in Regular (or fallback message)
+        var ffSampleStyle = await loadFontWithFallback(ffDisplayFam, 400);
         var ffSampleNode = figma.createText();
-        ffSampleNode.fontName = { family: ffFam, style: ffSampleStyle };
+        ffSampleNode.fontName = { family: ffDisplayFam, style: ffSampleStyle };
         ffSampleNode.fontSize = 14;
-        ffSampleNode.characters = "AaBbCcDdEeFfGgHhIiJjKkLl";
+        ffSampleNode.characters = ffInstalled ? "AaBbCcDdEeFfGgHhIiJjKkLl" : "Font not available — install to preview";
         ffSampleNode.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
         ffSampleNode.x = 24; ffSampleNode.y = 86;
         ffCard.appendChild(ffSampleNode);
@@ -208,9 +219,9 @@ export async function generateFoundationsPage(msg) {
         var ffwX = 24;
         for (var ffwi = 0; ffwi < ffWeightSamples.length; ffwi++) {
           var ffw = ffWeightSamples[ffwi];
-          var ffwStyle = await loadFontWithFallback(ffFam, ffw.w);
+          var ffwStyle = await loadFontWithFallback(ffDisplayFam, ffw.w);
           var ffwNode = figma.createText();
-          ffwNode.fontName = { family: ffFam, style: ffwStyle };
+          ffwNode.fontName = { family: ffDisplayFam, style: ffwStyle };
           ffwNode.fontSize = 11;
           ffwNode.characters = ffw.label;
           ffwNode.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];

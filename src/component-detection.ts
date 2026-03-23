@@ -102,6 +102,455 @@ function hasShadowEffect(node: SceneNode): boolean {
   return false;
 }
 
+// ── Layer Renaming ──────────────────────────────────────────────────────────
+
+/** Convert a string to kebab-case: "My Layer Name" → "my-layer-name" */
+function toKebab(s: string): string {
+  return s
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-zA-Z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+/** Check if a name is a Figma default (e.g., "Frame 12", "Rectangle 45") */
+function isFigmaDefaultName(name: string): boolean {
+  return /^(Frame|Rectangle|Ellipse|Line|Vector|Group|Polygon|Star|Component|Section|Image)\s*\d*$/i.test(name);
+}
+
+/**
+ * Generate a purpose-based kebab-case name for a node.
+ * componentType is the detected component type (e.g., "button", "input", "card").
+ */
+function semanticLayerName(node: SceneNode, componentType: string): string {
+  var name = node.name || "";
+  var nameLower = name.toLowerCase();
+
+  // If already clean kebab-case and not a Figma default, keep it
+  if (/^[a-z][a-z0-9-]*$/.test(name) && !isFigmaDefaultName(name)) {
+    return name;
+  }
+
+  // TEXT nodes — name by role in the component
+  if (node.type === "TEXT") {
+    // Check original name for hints
+    if (/label/i.test(nameLower)) return "label";
+    if (/placeholder/i.test(nameLower)) return "placeholder";
+    if (/title/i.test(nameLower)) return "title";
+    if (/subtitle|description|desc/i.test(nameLower)) return "description";
+    if (/caption/i.test(nameLower)) return "caption";
+    if (/price/i.test(nameLower)) return "price";
+    if (/badge/i.test(nameLower)) return "badge-text";
+    if (/error|message/i.test(nameLower)) return "message";
+
+    // Derive from component type
+    if (componentType === "button") return "label";
+    if (componentType === "input") {
+      var txt = (node as TextNode).characters || "";
+      if (/enter|type|search|email|password/i.test(txt)) return "placeholder";
+      return "label";
+    }
+    if (componentType === "card") {
+      var fs = typeof (node as TextNode).fontSize === "number" ? (node as TextNode).fontSize : 14;
+      if (fs >= 18) return "title";
+      return "description";
+    }
+    if (componentType === "nav-item" || componentType === "tag" || componentType === "badge") return "label";
+    return "label";
+  }
+
+  // Image fills
+  if (hasImageFill(node)) return "image";
+
+  // Vectors → icon
+  if (node.type === "VECTOR") return "icon";
+  if (node.type === "LINE") return "divider";
+  if (node.type === "ELLIPSE") {
+    if (/avatar/i.test(nameLower)) return "avatar";
+    return "shape";
+  }
+
+  // Rectangles — background or divider
+  if (node.type === "RECTANGLE") {
+    if (/background|bg/i.test(nameLower)) return "background";
+    if ((node as any).width > (node as any).height * 5) return "divider";
+    // Check if it has stroke but no fill → likely an outline/border element
+    var hasFill = firstSolidFillHex(node) !== null || hasImageFill(node);
+    var hasStroke = firstSolidStrokeHex(node) !== null;
+    if (hasStroke && !hasFill) return "border";
+    return "background";
+  }
+
+  // Frames/groups — use original name if meaningful, else derive from context
+  if (!isFigmaDefaultName(name) && name.length > 0) {
+    var kebab = toKebab(name);
+    if (kebab.length > 0) return kebab;
+  }
+
+  // Fallback based on component type
+  if (node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE") {
+    if (componentType === "input") return "field";
+    if (componentType === "card") return "content";
+    if (componentType === "dropdown") return "field-wrapper";
+    return "container";
+  }
+  if (node.type === "GROUP") return "group";
+
+  return "element";
+}
+
+/** Recursively rename child layers of a component to clean, purpose-based names */
+function renameComponentLayers(node: SceneNode, componentType: string, depth: number): void {
+  if (depth > 0) {
+    node.name = semanticLayerName(node, componentType);
+  }
+
+  if ("children" in node && (node as any).children) {
+    var ch = (node as any).children as SceneNode[];
+    for (var ci = 0; ci < ch.length; ci++) {
+      renameComponentLayers(ch[ci], componentType, depth + 1);
+    }
+  }
+}
+
+/**
+ * Set up proper auto-layout and responsive sizing on a component.
+ * Converts fixed-dimension frames to auto-layout with HUG/FILL.
+ */
+function applyResponsiveLayout(node: SceneNode, componentType: string, depth: number, varCache?: VarCache | null): void {
+  // Only process frames (includes components)
+  if (node.type !== "FRAME" && node.type !== "COMPONENT" && node.type !== "INSTANCE") return;
+
+  var frame = node as FrameNode;
+
+  // Skip if already has auto-layout — just recurse for child sizing
+  if (frame.layoutMode !== "NONE") {
+    if ("children" in frame) {
+      var ch = frame.children as SceneNode[];
+      for (var i = 0; i < ch.length; i++) {
+        applyResponsiveLayout(ch[i], componentType, depth + 1, varCache);
+      }
+    }
+    return;
+  }
+
+  var children = ("children" in frame) ? (frame.children as SceneNode[]).slice() : [];
+  if (children.length === 0) return;
+
+  // ── Record original geometry BEFORE any recursion changes child sizes ──
+  var frameW = (frame as any).width as number;
+  var frameH = (frame as any).height as number;
+
+  var originals: { node: SceneNode; x: number; y: number; w: number; h: number }[] = [];
+  for (var oi = 0; oi < children.length; oi++) {
+    var c = children[oi] as any;
+    originals.push({ node: children[oi], x: c.x, y: c.y, w: c.width || 0, h: c.height || 0 });
+  }
+
+  // ── Check if children can be converted to auto-layout ──
+  // Children that overlap significantly should stay absolute-positioned
+  var canAutoLayout = childrenCanAutoLayout(originals);
+
+  if (!canAutoLayout) {
+    // Keep absolute positioning — just recurse into child frames
+    for (var ri2 = 0; ri2 < children.length; ri2++) {
+      applyResponsiveLayout(children[ri2], componentType, depth + 1, varCache);
+    }
+    return;
+  }
+
+  // Recurse into children AFTER recording geometry (bottom-up)
+  for (var ri = 0; ri < children.length; ri++) {
+    applyResponsiveLayout(children[ri], componentType, depth + 1, varCache);
+  }
+
+  // ── Infer direction from ORIGINAL positions ──
+  var direction = inferLayoutDirection(originals);
+
+  // ── Sort children by position along the layout axis ──
+  var sortedOriginals = originals.slice().sort(function(a, b) {
+    return direction === "VERTICAL" ? a.y - b.y : a.x - b.x;
+  });
+
+  // Reorder children in the frame to match spatial order
+  for (var so = 0; so < sortedOriginals.length; so++) {
+    try { frame.appendChild(sortedOriginals[so].node); } catch (e) {}
+  }
+  // Re-read children in new order
+  children = (frame.children as SceneNode[]).slice();
+
+  // ── Infer gap and padding from original positions ──
+  var gap = inferGap(sortedOriginals, direction);
+  var padding = inferPadding(sortedOriginals, frameW, frameH);
+
+  // ── Infer alignment from original positions ──
+  var align = inferAlignment(originals, direction, frameW, frameH);
+
+  // ── Apply auto-layout ──
+  frame.layoutMode = direction;
+  frame.itemSpacing = gap;
+  frame.primaryAxisAlignItems = align.primary;
+  frame.counterAxisAlignItems = align.counter;
+  frame.paddingLeft = padding.left;
+  frame.paddingRight = padding.right;
+  frame.paddingTop = padding.top;
+  frame.paddingBottom = padding.bottom;
+
+  // Sizing: HUG by default
+  frame.primaryAxisSizingMode = "AUTO";
+  frame.counterAxisSizingMode = "AUTO";
+
+  // ── Bind spacing values to variables (or create new ones) ──
+  if (varCache) {
+    bindSpacingVar(frame, "paddingLeft", varCache);
+    bindSpacingVar(frame, "paddingRight", varCache);
+    bindSpacingVar(frame, "paddingTop", varCache);
+    bindSpacingVar(frame, "paddingBottom", varCache);
+    bindSpacingVar(frame, "itemSpacing", varCache);
+  }
+
+  // ── Set child sizing intelligently based on original geometry ──
+  for (var si = 0; si < children.length; si++) {
+    var child = children[si];
+    var orig: { x: number; y: number; w: number; h: number } | null = null;
+    for (var fi = 0; fi < originals.length; fi++) {
+      if (originals[fi].node === child) { orig = originals[fi]; break; }
+    }
+    if (!orig) continue;
+
+    try {
+      if (child.type === "TEXT") {
+        var textSpansWidth = orig.w >= frameW * 0.8;
+        (child as any).layoutSizingHorizontal = textSpansWidth ? "FILL" : "HUG";
+        (child as any).layoutSizingVertical = "HUG";
+      } else if (child.type === "FRAME" || child.type === "COMPONENT" || child.type === "INSTANCE") {
+        var spansH = orig.w >= frameW * 0.8;
+        var spansV = orig.h >= frameH * 0.8;
+        if (direction === "VERTICAL") {
+          (child as any).layoutSizingHorizontal = spansH ? "FILL" : "HUG";
+          (child as any).layoutSizingVertical = "HUG";
+        } else {
+          (child as any).layoutSizingHorizontal = "HUG";
+          (child as any).layoutSizingVertical = spansV ? "FILL" : "HUG";
+        }
+      } else if (child.type === "RECTANGLE") {
+        var isBackground = orig.w >= frameW * 0.9 && orig.h >= frameH * 0.9;
+        if (isBackground) {
+          (child as any).layoutSizingHorizontal = "FILL";
+          (child as any).layoutSizingVertical = "FILL";
+        } else if (direction === "VERTICAL" && orig.w >= frameW * 0.8) {
+          (child as any).layoutSizingHorizontal = "FILL";
+        }
+      }
+    } catch (e) {}
+  }
+}
+
+/** Check if children can be cleanly arranged in auto-layout (no significant overlaps) */
+function childrenCanAutoLayout(originals: { x: number; y: number; w: number; h: number }[]): boolean {
+  if (originals.length <= 1) return true;
+
+  // Check for significant overlap between children
+  for (var i = 0; i < originals.length; i++) {
+    for (var j = i + 1; j < originals.length; j++) {
+      var a = originals[i], b = originals[j];
+      // Calculate overlap area
+      var overlapX = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+      var overlapY = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+      var overlapArea = overlapX * overlapY;
+      var smallerArea = Math.min(a.w * a.h, b.w * b.h);
+      // If overlap is more than 50% of the smaller element, can't auto-layout
+      if (smallerArea > 0 && overlapArea > smallerArea * 0.5) return false;
+    }
+  }
+  return true;
+}
+
+/** Infer padding from original child positions relative to frame edges */
+function inferPadding(
+  sortedOriginals: { x: number; y: number; w: number; h: number }[],
+  frameW: number,
+  frameH: number
+): { top: number; right: number; bottom: number; left: number } {
+  var minChildX = Infinity, minChildY = Infinity;
+  var maxChildR = -Infinity, maxChildB = -Infinity;
+
+  for (var i = 0; i < sortedOriginals.length; i++) {
+    var o = sortedOriginals[i];
+    if (o.x < minChildX) minChildX = o.x;
+    if (o.y < minChildY) minChildY = o.y;
+    var r = o.x + o.w;
+    var b = o.y + o.h;
+    if (r > maxChildR) maxChildR = r;
+    if (b > maxChildB) maxChildB = b;
+  }
+
+  return {
+    left: Math.max(0, Math.round(minChildX)),
+    right: Math.max(0, Math.round(frameW - maxChildR)),
+    top: Math.max(0, Math.round(minChildY)),
+    bottom: Math.max(0, Math.round(frameH - maxChildB))
+  };
+}
+
+/** Bind a spacing property to an existing variable, or create a new one */
+function bindSpacingVar(frame: FrameNode, prop: string, cache: VarCache): void {
+  var val = (frame as any)[prop];
+  if (typeof val !== "number" || val <= 0) return;
+  var bv = frame.boundVariables && (frame.boundVariables as any)[prop];
+  if (bv) return;
+  var existing = findNearestFloatCached(val, cache.spacing);
+  if (existing) {
+    try { frame.setBoundVariable(prop as any, existing); } catch (e) {}
+    return;
+  }
+  // Create a new spacing variable
+  var newVar = createSpacingVariable(Math.round(val), cache);
+  if (newVar) {
+    try { frame.setBoundVariable(prop as any, newVar); } catch (e) {}
+  }
+}
+
+/** Create a new spacing variable and add it to the cache */
+function createSpacingVariable(value: number, cache: VarCache): Variable | null {
+  if (!cache.spacingCollection) return null;
+  try {
+    var modeId = cache.spacingCollection.modes[0] ? cache.spacingCollection.modes[0].modeId : null;
+    if (!modeId) return null;
+    var varName = "spacing/" + value;
+    // Check if this exact name already exists (avoid duplicates)
+    for (var i = 0; i < cache.spacing.length; i++) {
+      if (cache.spacing[i].value === value) return cache.spacing[i].variable;
+    }
+    var newVar = figma.variables.createVariable(varName, cache.spacingCollection, "FLOAT");
+    newVar.setValueForMode(modeId, value);
+    cache.spacing.push({ variable: newVar, value: value });
+    return newVar;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Infer layout direction from original child positions */
+function inferLayoutDirection(originals: { x: number; y: number; w: number; h: number }[]): "HORIZONTAL" | "VERTICAL" {
+  if (originals.length < 2) return "VERTICAL";
+
+  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (var i = 0; i < originals.length; i++) {
+    var o = originals[i];
+    if (o.x < minX) minX = o.x;
+    if (o.x + o.w > maxX) maxX = o.x + o.w;
+    if (o.y < minY) minY = o.y;
+    if (o.y + o.h > maxY) maxY = o.y + o.h;
+  }
+  var xRange = maxX - minX;
+  var yRange = maxY - minY;
+
+  return yRange > xRange ? "VERTICAL" : "HORIZONTAL";
+}
+
+/** Infer gap between children from their original positions */
+function inferGap(originals: { x: number; y: number; w: number; h: number }[], direction: "HORIZONTAL" | "VERTICAL"): number {
+  if (originals.length < 2) return 0;
+
+  var sorted = originals.slice().sort(function(a, b) {
+    return direction === "VERTICAL" ? a.y - b.y : a.x - b.x;
+  });
+
+  var gaps: number[] = [];
+  for (var i = 1; i < sorted.length; i++) {
+    var prev = sorted[i - 1];
+    var curr = sorted[i];
+    var gap: number;
+    if (direction === "VERTICAL") {
+      gap = curr.y - (prev.y + prev.h);
+    } else {
+      gap = curr.x - (prev.x + prev.w);
+    }
+    if (gap >= 0) gaps.push(Math.round(gap));
+  }
+
+  if (gaps.length === 0) return 0;
+  // Use the most common gap (mode)
+  var gapCounts: { [g: number]: number } = {};
+  for (var gi = 0; gi < gaps.length; gi++) {
+    gapCounts[gaps[gi]] = (gapCounts[gaps[gi]] || 0) + 1;
+  }
+  var bestGap = 0, bestCount = 0;
+  var gapKeys = Object.keys(gapCounts);
+  for (var gk = 0; gk < gapKeys.length; gk++) {
+    if (gapCounts[Number(gapKeys[gk])] > bestCount) {
+      bestCount = gapCounts[Number(gapKeys[gk])];
+      bestGap = Number(gapKeys[gk]);
+    }
+  }
+  return bestGap;
+}
+
+// inferAndApplyPadding replaced by inferPadding (returns values) + direct assignment in applyResponsiveLayout
+
+/** Infer primary and counter axis alignment from original child positions */
+function inferAlignment(
+  originals: { x: number; y: number; w: number; h: number }[],
+  direction: "HORIZONTAL" | "VERTICAL",
+  frameW: number,
+  frameH: number
+): { primary: "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN"; counter: "MIN" | "CENTER" | "MAX" } {
+  if (originals.length === 0) return { primary: "MIN", counter: "MIN" };
+
+  // Check counter-axis alignment: are children centered, left-aligned, or right-aligned?
+  var counterAligns: number[] = [];
+  for (var i = 0; i < originals.length; i++) {
+    var o = originals[i];
+    if (direction === "VERTICAL") {
+      // Counter axis is horizontal: check how each child is positioned within frame width
+      var centerOffset = (o.x + o.w / 2) - frameW / 2;
+      counterAligns.push(centerOffset);
+    } else {
+      // Counter axis is vertical: check how each child is positioned within frame height
+      var centerOffsetV = (o.y + o.h / 2) - frameH / 2;
+      counterAligns.push(centerOffsetV);
+    }
+  }
+
+  // Average offset from center — if near 0, they're centered
+  var avgOffset = 0;
+  for (var ai = 0; ai < counterAligns.length; ai++) avgOffset += counterAligns[ai];
+  avgOffset /= counterAligns.length;
+
+  var crossSize = direction === "VERTICAL" ? frameW : frameH;
+  var counter: "MIN" | "CENTER" | "MAX" = "MIN";
+  if (Math.abs(avgOffset) < crossSize * 0.1) {
+    counter = "CENTER";
+  } else if (avgOffset > crossSize * 0.1) {
+    counter = "MAX";
+  }
+
+  // Primary axis: check if children are centered along the main axis
+  var primaryAligns: number[] = [];
+  for (var pi = 0; pi < originals.length; pi++) {
+    var op = originals[pi];
+    if (direction === "VERTICAL") {
+      primaryAligns.push((op.y + op.h / 2) - frameH / 2);
+    } else {
+      primaryAligns.push((op.x + op.w / 2) - frameW / 2);
+    }
+  }
+  var avgPrimary = 0;
+  for (var ap = 0; ap < primaryAligns.length; ap++) avgPrimary += primaryAligns[ap];
+  avgPrimary /= primaryAligns.length;
+
+  var mainSize = direction === "VERTICAL" ? frameH : frameW;
+  var primary: "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN" = "MIN";
+  if (Math.abs(avgPrimary) < mainSize * 0.1) {
+    primary = "CENTER";
+  }
+
+  return { primary: primary, counter: counter };
+}
+
 // ── Serialization ────────────────────────────────────────────────────────────
 
 // Synchronous, depth-limited node serializer — fast because depth is capped
@@ -470,6 +919,12 @@ export async function createNextComponent(): Promise<void> {
 
       var comp = figma.createComponentFromNode(cloned);
 
+      // Rename inner layers to clean, purpose-based kebab-case names
+      renameComponentLayers(comp, compSpec.type, 0);
+
+      // Convert to responsive auto-layout with HUG/FILL sizing, bind/create spacing vars
+      applyResponsiveLayout(comp, compSpec.type, 0, _createVarCache);
+
       var propParts: string[] = [];
       var propKeys = Object.keys(varSpec.properties);
       for (var pk = 0; pk < propKeys.length; pk++) {
@@ -634,6 +1089,7 @@ interface VarCache {
   spacing: ResolvedFloatVar[];
   radius: ResolvedFloatVar[];
   borders: ResolvedFloatVar[];
+  spacingCollection?: VariableCollection;  // For creating new spacing variables
 }
 
 function colorDist(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): number {
@@ -665,6 +1121,14 @@ function buildVarCacheSync(
   collections: VariableCollection[]
 ): VarCache {
   var cache: VarCache = { colors: [], spacing: [], radius: [], borders: [] };
+
+  // Find the spacing collection for creating new variables
+  for (var sci = 0; sci < collections.length; sci++) {
+    if (collections[sci].name.toLowerCase().indexOf("spacing") !== -1) {
+      cache.spacingCollection = collections[sci];
+      break;
+    }
+  }
 
   // Build collection lookup: id → first modeId
   var modeMap: { [colId: string]: string } = {};
@@ -744,7 +1208,7 @@ function bindVariablesOnNode(node: SceneNode, cache: VarCache): void {
     if (sChanged) { try { (node as any).strokes = newStrokes; } catch (e) {} }
   }
 
-  // Bind spacing
+  // Bind spacing (find existing or create new variable)
   if ("layoutMode" in node && (node as FrameNode).layoutMode !== "NONE") {
     var fn = node as FrameNode;
     var spacingProps = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing"];
@@ -755,7 +1219,13 @@ function bindVariablesOnNode(node: SceneNode, cache: VarCache): void {
       var bvSp = fn.boundVariables && (fn.boundVariables as any)[prop];
       if (bvSp) continue;
       var nearSp = findNearestFloatCached(val, cache.spacing);
-      if (nearSp) { try { fn.setBoundVariable(prop as any, nearSp); } catch (e) {} }
+      if (nearSp) {
+        try { fn.setBoundVariable(prop as any, nearSp); } catch (e) {}
+      } else {
+        // No matching variable — create a new spacing variable
+        var newSpVar = createSpacingVariable(Math.round(val), cache);
+        if (newSpVar) { try { fn.setBoundVariable(prop as any, newSpVar); } catch (e) {} }
+      }
     }
   }
 

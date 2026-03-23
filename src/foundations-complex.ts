@@ -31,7 +31,7 @@ export async function generateFoundationsPageComplex() {
     var typMid = typCol.modes[0].modeId;
     for (var vi = 0; vi < allVars.length; vi++) {
       if (allVars[vi].variableCollectionId === typCol.id && allVars[vi].resolvedType === "STRING" && allVars[vi].name.toLowerCase().indexOf("family") !== -1) {
-        var fv = String(cxResolveVar(allVars[vi], typMid, allCols) || "").split(",")[0].trim().replace(/['"]/g, "");
+        var fv = String((await cxResolveVar(allVars[vi], typMid, allCols)) || "").split(",")[0].trim().replace(/['"]/g, "");
         if (fv && !loadedFams[fv]) {
           loadedFams[fv] = true;
           for (var fw2 = 0; fw2 < stdW.length; fw2++) await loadFontWithFallback(fv, stdW[fw2]);
@@ -237,31 +237,36 @@ export async function generateFoundationsPageComplex() {
 
       var ffRole = figma.createText();
       ffRole.fontName = { family: "Inter", style: "Regular" }; ffRole.fontSize = 10;
-      ffRole.characters = ffi === 0 ? "PRIMARY" : (ffi === 1 ? "SECONDARY" : "FONT " + (ffi + 1));
+      ffRole.characters = ffi === 0 ? "PRIMARY" : (ffi === 1 ? "SECONDARY" : (ffi === 2 ? "TERTIARY" : "FONT " + (ffi + 1)));
       ffRole.fills = [{ type: "SOLID", color: { r: 0.5, g: 0.5, b: 0.5 } }];
       ffRole.letterSpacing = { value: 1.5, unit: "PIXELS" };
       ffRole.x = 24; ffRole.y = 20; ffCard.appendChild(ffRole);
 
-      var ffNameStyle = await loadFontWithFallback(ffFam, 700);
+      // Detect if font is installed by trying to load it
+      var ffInstalled = true;
+      try { await figma.loadFontAsync({ family: ffFam, style: "Regular" }); } catch(e) { ffInstalled = false; }
+      var ffDisplayFam = ffInstalled ? ffFam : "Inter";
+
+      var ffNameStyle = await loadFontWithFallback(ffDisplayFam, 700);
       var ffName = figma.createText();
-      ffName.fontName = { family: ffFam, style: ffNameStyle }; ffName.fontSize = 28;
-      ffName.characters = ffFam;
-      ffName.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+      ffName.fontName = { family: ffDisplayFam, style: ffNameStyle }; ffName.fontSize = 28;
+      ffName.characters = ffFam + (ffInstalled ? "" : " (not installed)");
+      ffName.fills = [{ type: "SOLID", color: ffInstalled ? { r: 0.1, g: 0.1, b: 0.1 } : { r: 0.6, g: 0.3, b: 0.3 } }];
       ffName.x = 24; ffName.y = 42; ffCard.appendChild(ffName);
 
-      var ffSampleStyle = await loadFontWithFallback(ffFam, 400);
+      var ffSampleStyle = await loadFontWithFallback(ffDisplayFam, 400);
       var ffSample = figma.createText();
-      ffSample.fontName = { family: ffFam, style: ffSampleStyle }; ffSample.fontSize = 14;
-      ffSample.characters = "AaBbCcDdEeFfGgHhIiJjKkLl";
+      ffSample.fontName = { family: ffDisplayFam, style: ffSampleStyle }; ffSample.fontSize = 14;
+      ffSample.characters = ffInstalled ? "AaBbCcDdEeFfGgHhIiJjKkLl" : "Font not available — install to preview";
       ffSample.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
       ffSample.x = 24; ffSample.y = 86; ffCard.appendChild(ffSample);
 
       var ffWS = [{ w: 300, l: "Light" }, { w: 400, l: "Regular" }, { w: 600, l: "SemiBold" }, { w: 700, l: "Bold" }];
       var ffwx = 24;
       for (var fwi = 0; fwi < ffWS.length; fwi++) {
-        var fws = await loadFontWithFallback(ffFam, ffWS[fwi].w);
+        var fws = await loadFontWithFallback(ffDisplayFam, ffWS[fwi].w);
         var fwn = figma.createText();
-        fwn.fontName = { family: ffFam, style: fws }; fwn.fontSize = 11;
+        fwn.fontName = { family: ffDisplayFam, style: fws }; fwn.fontSize = 11;
         fwn.characters = ffWS[fwi].l;
         fwn.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
         fwn.x = ffwx; fwn.y = 118; ffCard.appendChild(fwn);

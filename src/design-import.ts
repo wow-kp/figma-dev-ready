@@ -40,7 +40,7 @@ export interface AnalysisResult {
   borders: BorderEntry[];
   shadows: ShadowEntry[];
   typography: TypoCombo[];
-  fontFamilies: { primary: string; secondary: string };
+  fontFamilies: { [key: string]: string };
   frames: FrameInfo[];
   totalNodes: number;
   pagesAnalyzed: number;
@@ -469,13 +469,21 @@ export async function analyzeDesign(): Promise<AnalysisResult> {
   typography.sort(function(a, b) { return b.count - a.count; });
   nameTypography(typography);
 
-  // Font families: top 2
-  var famEntries = Object.keys(fontFamilyCount).map(function(k) { return { name: k, count: fontFamilyCount[k] }; });
+  // Font families: derived from typography combos (the actual design hierarchy)
+  var typoFamCount: { [fam: string]: number } = {};
+  for (var tfi = 0; tfi < typography.length; tfi++) {
+    var tf = typography[tfi].fontFamily;
+    typoFamCount[tf] = (typoFamCount[tf] || 0) + typography[tfi].count;
+  }
+  var famEntries = Object.keys(typoFamCount).map(function(k) { return { name: k, count: typoFamCount[k] }; });
   famEntries.sort(function(a, b) { return b.count - a.count; });
-  var fontFamilies = {
-    primary: famEntries.length > 0 ? famEntries[0].name : "Inter",
-    secondary: famEntries.length > 1 ? famEntries[1].name : ""
-  };
+  var famRoleNames = ["primary", "secondary", "tertiary"];
+  var fontFamilies: { [key: string]: string } = {};
+  for (var ffi = 0; ffi < famEntries.length; ffi++) {
+    var roleKey = ffi < famRoleNames.length ? famRoleNames[ffi] : "font-" + (ffi + 1);
+    fontFamilies[roleKey] = famEntries[ffi].name;
+  }
+  if (!fontFamilies.primary) fontFamilies.primary = "Inter";
 
   return {
     colors: colors, spacing: spacing, radius: radius, borders: borders,

@@ -598,14 +598,20 @@ figma.ui.onmessage = async function(msg) {
   if (msg.type === "routeb-apply-tokens") {
     await figma.loadAllPagesAsync();
     try {
-      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Creating tokens…", percent: 20 });
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Creating tokens…", percent: 15 });
       var tokenResults = await createTokensFromAnalysis(msg.analysis);
 
-      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Binding variables…", percent: 50 });
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Binding variables…", percent: 40 });
       var bindStats = await bindTokensToDesign(function(phase: string, count: number, total: number) {
-        var pct = 50 + Math.round((count / Math.max(total, 1)) * 45);
+        var pct = 40 + Math.round((count / Math.max(total, 1)) * 35);
         figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Binding… (" + count + "/" + total + ")", percent: pct });
       });
+
+      // Generate Foundations page from the newly created variables
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Generating Foundations page…", percent: 80 });
+      ensureEssentialColors();
+      await ensureComponentTextStyles();
+      await generateFoundationsPageComplex();
 
       figma.ui.postMessage({
         type: "routeb-tokens-applied",
@@ -763,7 +769,7 @@ figma.ui.onmessage = async function(msg) {
       textColor: msg.textColor || "#1A1A1A",
       custom: msg.customColors || []
     };
-    var fontFamilies = msg.fontFamilies || { primary: "Inter, sans-serif", secondary: "Inter, sans-serif", tertiary: "Inter, sans-serif" };
+    var fontFamilies = msg.fontFamilies || { primary: "Inter, sans-serif" };
     var textStylesData = (msg.textStyles || []).map(function(s) {
       var resolved = {};
       for (var k in s) resolved[k] = s[k];

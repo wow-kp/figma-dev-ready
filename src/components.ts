@@ -13,7 +13,7 @@ export async function generateComponentsPage(msg) {
   }
 
   var fontFamilies = msg.fontFamilies || {};
-  var userFonts = [fontFamilies.primary, fontFamilies.secondary, fontFamilies.tertiary].filter(Boolean);
+  var userFonts = Object.keys(fontFamilies).map(function(k) { return fontFamilies[k]; }).filter(Boolean);
   for (var fi = 0; fi < userFonts.length; fi++) {
     var fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
     if (fam === "Inter") continue;

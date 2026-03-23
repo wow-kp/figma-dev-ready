@@ -26,13 +26,37 @@ The plugin auto-detects which route to offer based on file content.
 
 ---
 
-## Installation
+## Development Setup
+
+For developers building or modifying the plugin:
 
 1. `npm install`
-2. `npm run build` (or `npm run watch` for development)
+2. `npm run build` (or `npm run watch` for live rebuilds)
 3. In Figma Desktop: **Plugins > Development > Import plugin from manifest** → select `manifest.json`
 
-For team deployment, publish as a private org plugin or to the Figma Community.
+To distribute: publish as a private org plugin or to the Figma Community.
+
+---
+
+## Getting Started
+
+### For Designers (Using the Plugin)
+
+1. **Get the plugin** — your team admin will share it as a private org plugin in Figma, or you can install it from the Figma Community once published
+2. **Open it** — in any Figma file, go to **Plugins** menu and select **Dev-Ready Tools for Designers by wowbrands**
+3. **Follow the Workflow tab** — the plugin guides you step by step:
+   - **Empty file?** → Route A: set up pages, configure tokens, generate wireframes, audit, handoff
+   - **Existing design?** → Route B: import structure, extract tokens, detect components, audit, handoff
+4. **AI features** *(optional)* — go to the **Settings** tab and enter an Anthropic API key (or your team's proxy URL) to unlock AI-powered token naming, component detection, audit review, and HTML enhancement
+5. **Export** — once marked as "Dev Ready", switch to the **Build HTML** tab to generate production HTML/CSS
+
+### Tools Tab
+
+Available anytime, independent of the workflow:
+
+- **Audit** — run 14 quality checks, auto-fix issues, inspect individual problems
+- **Token Debugger** — select any layer to inspect its variable bindings and alias chains
+- **Import** — drag-and-drop DTCG JSON token files to create Figma Variables
 
 ---
 

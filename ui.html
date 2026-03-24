@@ -3624,27 +3624,71 @@ function renderRouteBTokenReview(body, analysis, wfContainer) {
     wrap.appendChild(radSec);
   }
 
-  // ── Typography ──
+  // ── Text Styles ──
   if (analysis.typography && analysis.typography.length > 0) {
-    var typoSec = document.createElement("div");
-    typoSec.style.cssText = "padding:8px 12px;";
-    typoSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:6px;'>✏️ Typography (" + analysis.typography.length + ")</div>";
-    var typoList = document.createElement("div");
-    typoList.style.cssText = "display:flex;flex-direction:column;gap:4px;";
+    var tsSec = document.createElement("div");
+    tsSec.style.cssText = "padding:8px 12px;";
+    tsSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:2px;'>✏️ Text Styles (" + analysis.typography.length + ")</div>" +
+      "<div style='font-size:9px;color:#6c7086;margin-bottom:6px;'>Named presets applied to text layers</div>";
+    var tsList = document.createElement("div");
+    tsList.style.cssText = "display:flex;flex-direction:column;gap:4px;";
     analysis.typography.forEach(function(t, i) {
       var row = document.createElement("div");
       row.style.cssText = "display:flex;align-items:center;gap:6px;padding:3px 8px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;color:#cdd6f4;";
-      row.innerHTML = "<span style='color:#6c7086;white-space:nowrap;'>" + esc(t.fontFamily || "") + " " + (t.fontSize || "") + "/" + (t.fontWeight || "") + "</span>";
+      var groupInput = document.createElement("input");
+      groupInput.type = "text";
+      groupInput.value = t.group || "";
+      groupInput.placeholder = "group";
+      groupInput.style.cssText = "background:none;border:none;color:#89b4fa;font-size:10px;width:72px;outline:none;border-right:1px solid #313244;padding-right:6px;";
+      groupInput.addEventListener("change", function() { analysis.typography[i].group = this.value; });
+      row.appendChild(groupInput);
+      row.innerHTML += "<span style='color:#6c7086;white-space:nowrap;'>" + esc(t.fontFamily || "") + " " + (t.fontSize || "") + "/" + (t.fontWeight || "") + "</span>";
       var nameInput = document.createElement("input");
       nameInput.type = "text";
       nameInput.value = t.name || "";
+      nameInput.placeholder = "name";
       nameInput.style.cssText = "background:none;border:none;color:" + (t.matched ? "#a6e3a1" : "#cdd6f4") + ";font-size:10px;flex:1;outline:none;";
       nameInput.addEventListener("change", function() { analysis.typography[i].name = this.value; });
       row.appendChild(nameInput);
-      typoList.appendChild(row);
+      tsList.appendChild(row);
     });
-    typoSec.appendChild(typoList);
-    wrap.appendChild(typoSec);
+    tsSec.appendChild(tsList);
+    wrap.appendChild(tsSec);
+  }
+
+  // ── Typography Variables ──
+  if (analysis.typographyScale && (analysis.typographyScale.sizes.length > 0 || analysis.typographyScale.weights.length > 0 || analysis.typographyScale.lineHeights.length > 0)) {
+    var scSec = document.createElement("div");
+    scSec.style.cssText = "padding:8px 12px;";
+    scSec.innerHTML = "<div style='font-size:11px;font-weight:600;color:#cdd6f4;margin-bottom:2px;'>🔤 Typography Variables</div>" +
+      "<div style='font-size:9px;color:#6c7086;margin-bottom:6px;'>Token scale: sizes, weights, line-heights</div>";
+
+    function buildScaleGroup(label, items, field) {
+      if (!items || items.length === 0) return;
+      var grpDiv = document.createElement("div");
+      grpDiv.style.cssText = "margin-bottom:8px;";
+      grpDiv.innerHTML = "<div style='font-size:9px;color:#6c7086;font-weight:600;text-transform:uppercase;margin-bottom:4px;'>" + label + "</div>";
+      var rowsDiv = document.createElement("div");
+      rowsDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;";
+      items.forEach(function(item, idx) {
+        var chip = document.createElement("div");
+        chip.style.cssText = "display:flex;align-items:center;gap:4px;padding:2px 6px;background:#1e1e2e;border:1px solid #313244;border-radius:4px;font-size:10px;";
+        chip.innerHTML = "<span style='color:#6c7086;'>" + item.value + "</span>";
+        var inp = document.createElement("input");
+        inp.type = "text";
+        inp.value = item.name || "";
+        inp.style.cssText = "background:none;border:none;color:#cdd6f4;font-size:10px;width:64px;outline:none;";
+        inp.addEventListener("change", function() { analysis.typographyScale[field][idx].name = this.value; });
+        chip.appendChild(inp);
+        rowsDiv.appendChild(chip);
+      });
+      grpDiv.appendChild(rowsDiv);
+      scSec.appendChild(grpDiv);
+    }
+    buildScaleGroup("Font Sizes", analysis.typographyScale.sizes, "sizes");
+    buildScaleGroup("Font Weights", analysis.typographyScale.weights, "weights");
+    buildScaleGroup("Line Heights", analysis.typographyScale.lineHeights, "lineHeights");
+    wrap.appendChild(scSec);
   }
 
   // ── Frame reclassification ──
@@ -3712,6 +3756,27 @@ function renderRouteBTokenReview(body, analysis, wfContainer) {
           if (analysis.typography[st.index]) {
             analysis.typography[st.index].group = st.group;
             analysis.typography[st.index].name = st.name;
+          }
+        }
+      }
+      if (result && result.typographyScale && analysis.typographyScale) {
+        var rsc = result.typographyScale;
+        if (rsc.sizes && Array.isArray(rsc.sizes)) {
+          for (var rsi = 0; rsi < rsc.sizes.length; rsi++) {
+            var rs = rsc.sizes[rsi];
+            if (analysis.typographyScale.sizes[rs.index]) analysis.typographyScale.sizes[rs.index].name = rs.name;
+          }
+        }
+        if (rsc.weights && Array.isArray(rsc.weights)) {
+          for (var rwi = 0; rwi < rsc.weights.length; rwi++) {
+            var rw = rsc.weights[rwi];
+            if (analysis.typographyScale.weights[rw.index]) analysis.typographyScale.weights[rw.index].name = rw.name;
+          }
+        }
+        if (rsc.lineHeights && Array.isArray(rsc.lineHeights)) {
+          for (var rlhi = 0; rlhi < rsc.lineHeights.length; rlhi++) {
+            var rlh = rsc.lineHeights[rlhi];
+            if (analysis.typographyScale.lineHeights[rlh.index]) analysis.typographyScale.lineHeights[rlh.index].name = rlh.name;
           }
         }
       }
@@ -5586,16 +5651,25 @@ function bhCallTokenNamingAI(analysis, callback) {
   var typoSummary = analysis.typography.map(function(t) {
     return { family: t.fontFamily, size: t.fontSize, weight: t.fontWeight, uses: t.count, sample: t.sampleText, currentName: t.group + "/" + t.name };
   });
+  var sc = analysis.typographyScale || { sizes: [], weights: [], lineHeights: [] };
+  var scaleSummary = {
+    sizes: sc.sizes.map(function(s) { return { value: s.value, currentName: s.name }; }),
+    weights: sc.weights.map(function(s) { return { value: s.value, currentName: s.name }; }),
+    lineHeights: sc.lineHeights.map(function(s) { return { value: s.value, currentName: s.name }; })
+  };
 
   var systemPrompt = "You are a design system token naming expert. Given extracted design tokens, suggest better semantic names.\n\n"
     + "Rules:\n"
     + "1. Color names: use semantic names like primary, secondary, tertiary, success, error, warning, info, surface, on-surface, muted. Keep black, white, gray as-is.\n"
     + "2. Text style names: use group/name format like heading/h1, heading/h2, body/default, body/sm, label/default, caption/default, overline/default.\n"
-    + "3. Prefer short, developer-friendly names.\n"
-    + "4. Return ONLY valid JSON: {\"colors\": [{\"index\": 0, \"name\": \"primary\"}, ...], \"typography\": [{\"index\": 0, \"group\": \"heading\", \"name\": \"h1\"}, ...]}\n"
+    + "3. Typography scale sizes: use t-shirt sizing or semantic names (xs/sm/md/lg/xl/2xl/3xl) or (caption/body/subheading/heading/display). Sort smallest to largest.\n"
+    + "4. Typography scale weights: use semantic names (thin/extralight/light/regular/medium/semibold/bold/extrabold/black).\n"
+    + "5. Typography scale line-heights: use density names (none/tight/snug/normal/relaxed/loose).\n"
+    + "6. Prefer short, developer-friendly names.\n"
+    + "7. Return ONLY valid JSON: {\"colors\": [{\"index\": 0, \"name\": \"primary\"}, ...], \"typography\": [{\"index\": 0, \"group\": \"heading\", \"name\": \"h1\"}, ...], \"typographyScale\": {\"sizes\": [{\"index\": 0, \"name\": \"xs\"}, ...], \"weights\": [{\"index\": 0, \"name\": \"regular\"}, ...], \"lineHeights\": [{\"index\": 0, \"name\": \"normal\"}, ...]}}\n"
     + "No markdown, no explanation — just the JSON.";
 
-  var userContent = JSON.stringify({ colors: colorSummary, typography: typoSummary });
+  var userContent = JSON.stringify({ colors: colorSummary, typography: typoSummary, typographyScale: scaleSummary });
 
   var body = JSON.stringify({
     model: "claude-haiku-4-5-20251001",
@@ -5644,13 +5718,22 @@ function bhCallTokenNamingAI(analysis, callback) {
 }
 
 // ── AI Component Detection (Route B) ──
-function callComponentDetectionAI(systemPrompt, userContent, callback) {
+function callComponentDetectionAI(systemPrompt, userContent, callbackOrMaxTokens, maxTokensOrCallback) {
+  // Support both (prompt, content, callback) and (prompt, content, maxTokens, callback)
+  var callback, maxTokens;
+  if (typeof callbackOrMaxTokens === "function") {
+    callback = callbackOrMaxTokens;
+    maxTokens = null;
+  } else {
+    maxTokens = callbackOrMaxTokens;
+    callback = maxTokensOrCallback;
+  }
   var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
   if (!_bhApiKey && !useProxy) { callback("No API key or proxy configured. Set up AI in Settings tab.", null); return; }
 
   var body = JSON.stringify({
     model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    max_tokens: maxTokens || 4096,
     system: systemPrompt,
     messages: [
       { role: "user", content: userContent + "\n\nRespond with ONLY the JSON object, no markdown fences or explanation." }
@@ -5787,7 +5870,7 @@ function runComponentDetectionAI(chunks, callback) {
         processChunk(completed);
       } else {
         updateProgress("Unifying patterns across all frames…", 75);
-        callComponentDetectionAI(round2SystemPrompt, JSON.stringify(round1Results), function(err2, finalResult) {
+        callComponentDetectionAI(round2SystemPrompt, JSON.stringify(round1Results), 16384, function(err2, finalResult) {
           if (err2) {
             callback("Round 2 aggregation failed: " + err2, null);
             return;

@@ -211,10 +211,6 @@ export async function generateFoundationsPageComplex() {
   // FONT FAMILIES — from Typography STRING vars or text styles
   // ══════════════════════════════════════════════════════════════════════════
   var fontFamList = userFontFamilies.slice();
-  for (var tfi = 0; tfi < textStyles.length; tfi++) {
-    var tfFam = textStyles[tfi].fontName.family;
-    if (fontFamList.indexOf(tfFam) === -1) fontFamList.push(tfFam);
-  }
   if (fontFamList.length > 0) {
     sectionTitle("Font Families");
     var FF_W = 380, FF_H = 160, FF_GAP = 24;
@@ -242,35 +238,39 @@ export async function generateFoundationsPageComplex() {
       ffRole.letterSpacing = { value: 1.5, unit: "PIXELS" };
       ffRole.x = 24; ffRole.y = 20; ffCard.appendChild(ffRole);
 
-      // Detect if font is installed by trying to load it
+      // Detect if font is installed
       var ffInstalled = true;
       try { await figma.loadFontAsync({ family: ffFam, style: "Regular" }); } catch(e) { ffInstalled = false; }
-      var ffDisplayFam = ffInstalled ? ffFam : "Inter";
 
-      var ffNameStyle = await loadFontWithFallback(ffDisplayFam, 700);
-      var ffName = figma.createText();
-      ffName.fontName = { family: ffDisplayFam, style: ffNameStyle }; ffName.fontSize = 28;
-      ffName.characters = ffFam + (ffInstalled ? "" : " (not installed)");
-      ffName.fills = [{ type: "SOLID", color: ffInstalled ? { r: 0.1, g: 0.1, b: 0.1 } : { r: 0.6, g: 0.3, b: 0.3 } }];
-      ffName.x = 24; ffName.y = 42; ffCard.appendChild(ffName);
+      if (ffInstalled) {
+        var ffNameStyle = await loadFontWithFallback(ffFam, 700);
+        var ffName = figma.createText();
+        ffName.fontName = { family: ffFam, style: ffNameStyle }; ffName.fontSize = 28;
+        ffName.characters = ffFam;
+        ffName.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+        ffName.x = 24; ffName.y = 42; ffCard.appendChild(ffName);
 
-      var ffSampleStyle = await loadFontWithFallback(ffDisplayFam, 400);
-      var ffSample = figma.createText();
-      ffSample.fontName = { family: ffDisplayFam, style: ffSampleStyle }; ffSample.fontSize = 14;
-      ffSample.characters = ffInstalled ? "AaBbCcDdEeFfGgHhIiJjKkLl" : "Font not available — install to preview";
-      ffSample.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
-      ffSample.x = 24; ffSample.y = 86; ffCard.appendChild(ffSample);
+        var ffSampleStyle = await loadFontWithFallback(ffFam, 400);
+        var ffSample = figma.createText();
+        ffSample.fontName = { family: ffFam, style: ffSampleStyle }; ffSample.fontSize = 14;
+        ffSample.characters = "AaBbCcDdEeFfGgHhIiJjKkLl";
+        ffSample.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
+        ffSample.x = 24; ffSample.y = 86; ffCard.appendChild(ffSample);
 
-      var ffWS = [{ w: 300, l: "Light" }, { w: 400, l: "Regular" }, { w: 600, l: "SemiBold" }, { w: 700, l: "Bold" }];
-      var ffwx = 24;
-      for (var fwi = 0; fwi < ffWS.length; fwi++) {
-        var fws = await loadFontWithFallback(ffDisplayFam, ffWS[fwi].w);
-        var fwn = figma.createText();
-        fwn.fontName = { family: ffDisplayFam, style: fws }; fwn.fontSize = 11;
-        fwn.characters = ffWS[fwi].l;
-        fwn.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
-        fwn.x = ffwx; fwn.y = 118; ffCard.appendChild(fwn);
-        ffwx += fwn.width + 16;
+        var ffWS = [{ w: 300, l: "Light" }, { w: 400, l: "Regular" }, { w: 600, l: "SemiBold" }, { w: 700, l: "Bold" }];
+        var ffwx = 24;
+        for (var fwi = 0; fwi < ffWS.length; fwi++) {
+          var fws = await loadFontWithFallback(ffFam, ffWS[fwi].w);
+          var fwn = figma.createText();
+          fwn.fontName = { family: ffFam, style: fws }; fwn.fontSize = 11;
+          fwn.characters = ffWS[fwi].l;
+          fwn.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+          fwn.x = ffwx; fwn.y = 118; ffCard.appendChild(fwn);
+          ffwx += fwn.width + 16;
+        }
+      } else {
+        createSpecText(ffCard, ffFam, 24, 42, 20, "Bold", { r: 0.6, g: 0.3, b: 0.3 });
+        createSpecText(ffCard, "Font not installed — add to your system to preview", 24, 76, 11, "Regular", { r: 0.6, g: 0.3, b: 0.3 });
       }
     }
     y += Math.ceil(fontFamList.length / ffCols) * (FF_H + FF_GAP) + SECTION_GAP;
@@ -408,61 +408,70 @@ export async function generateFoundationsPageComplex() {
 
     if (tSizes.length || tWeights.length || tLH.length) {
       sectionTitle("Typography Scale");
-      var primaryFam = userFontFamilies.length > 0 ? userFontFamilies[0] : "Inter";
+      var primaryFam = userFontFamilies.length > 0 ? userFontFamilies[0] : "";
+      var primaryInstalled = false;
+      if (primaryFam) { try { await figma.loadFontAsync({ family: primaryFam, style: "Regular" }); primaryInstalled = true; } catch(e) {} }
 
-      if (tSizes.length) {
-        createSpecText(frame, "Font Sizes", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 }); y += 24;
-        for (var fsi = 0; fsi < tSizes.length; fsi++) {
-          var sz = tSizes[fsi]; var px = Math.min(sz.value, 60);
-          var szStyle = await loadFontWithFallback(primaryFam, 400);
-          var szText = figma.createText();
-          szText.fontName = { family: primaryFam, style: szStyle }; szText.fontSize = px;
-          szText.characters = sz.name + " — " + sz.value + "px";
-          szText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
-          szText.x = PAD; szText.y = y; frame.appendChild(szText);
-          y += Math.max(szText.height, 20) + 8;
+      if (!primaryInstalled) {
+        var noFontMsg = primaryFam ? (primaryFam + " is not installed — install font to preview typography scale") : "No primary font found";
+        createSpecText(frame, noFontMsg, PAD, y, 12, "Regular", { r: 0.6, g: 0.3, b: 0.3 });
+        y += 32 + SECTION_GAP;
+      } else {
+        if (tSizes.length) {
+          createSpecText(frame, "Font Sizes", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 }); y += 24;
+          for (var fsi = 0; fsi < tSizes.length; fsi++) {
+            var sz = tSizes[fsi]; var px = Math.min(sz.value, 60);
+            var szStyle = await loadFontWithFallback(primaryFam, 400);
+            var szText = figma.createText();
+            szText.fontName = { family: primaryFam, style: szStyle }; szText.fontSize = px;
+            szText.characters = sz.name + " — " + sz.value + "px";
+            szText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
+            szText.x = PAD; szText.y = y; frame.appendChild(szText);
+            y += Math.max(szText.height, 20) + 8;
+          }
+          y += 24;
         }
-        y += 24;
-      }
 
-      if (tWeights.length) {
-        createSpecText(frame, "Font Weights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 }); y += 24;
-        var wx = PAD;
-        for (var fwi2 = 0; fwi2 < tWeights.length; fwi2++) {
-          var wt = tWeights[fwi2];
-          var wtStyle = await loadFontWithFallback(primaryFam, wt.value);
-          var wtText = figma.createText();
-          wtText.fontName = { family: primaryFam, style: wtStyle }; wtText.fontSize = 16;
-          wtText.characters = wt.name + " (" + wt.value + ")";
-          wtText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
-          wtText.x = wx; wtText.y = y; frame.appendChild(wtText);
-          wx += 160;
-          if (wx + 160 > W - PAD) { wx = PAD; y += 32; }
+        if (tWeights.length) {
+          createSpecText(frame, "Font Weights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 }); y += 24;
+          var wx = PAD;
+          for (var fwi2 = 0; fwi2 < tWeights.length; fwi2++) {
+            var wt = tWeights[fwi2];
+            var wtStyle = await loadFontWithFallback(primaryFam, wt.value);
+            var wtText = figma.createText();
+            wtText.fontName = { family: primaryFam, style: wtStyle }; wtText.fontSize = 16;
+            wtText.characters = wt.name + " (" + wt.value + ")";
+            wtText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
+            wtText.x = wx; wtText.y = y; frame.appendChild(wtText);
+            wx += 160;
+            if (wx + 160 > W - PAD) { wx = PAD; y += 32; }
+          }
+          y += 40;
         }
-        y += 40;
-      }
 
-      if (tLH.length) {
-        createSpecText(frame, "Line Heights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 }); y += 24;
-        var lhSample = "The quick brown fox jumps\nover the lazy dog. Pack my\nbox with five dozen\nliquor jugs.";
-        var lhColW = Math.floor((W - PAD * 2 - (tLH.length - 1) * 24) / Math.max(tLH.length, 1));
-        var lhX = PAD, lhMaxH = 0;
-        for (var lhi = 0; lhi < tLH.length; lhi++) {
-          var lh = tLH[lhi]; var lhVal = lh.value || 1.5;
-          createSpecText(frame, lh.name + " (" + lh.value + ")", lhX, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
-          var lhNode = figma.createText();
-          lhNode.fontName = { family: "Inter", style: "Regular" }; lhNode.fontSize = 16;
-          lhNode.lineHeight = { value: lhVal * 100, unit: "PERCENT" };
-          lhNode.characters = lhSample;
-          lhNode.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
-          lhNode.x = lhX; lhNode.y = y + 16; lhNode.resize(lhColW, lhNode.height);
-          lhNode.textAutoResize = "HEIGHT"; frame.appendChild(lhNode);
-          if (lhNode.height + 16 > lhMaxH) lhMaxH = lhNode.height + 16;
-          lhX += lhColW + 24;
+        if (tLH.length) {
+          createSpecText(frame, "Line Heights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 }); y += 24;
+          var lhSample = "The quick brown fox jumps\nover the lazy dog. Pack my\nbox with five dozen\nliquor jugs.";
+          var lhColW = Math.floor((W - PAD * 2 - (tLH.length - 1) * 24) / Math.max(tLH.length, 1));
+          var lhX = PAD, lhMaxH = 0;
+          for (var lhi = 0; lhi < tLH.length; lhi++) {
+            var lh = tLH[lhi]; var lhVal = lh.value || 1.5;
+            createSpecText(frame, lh.name + " (" + lh.value + ")", lhX, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
+            var lhNode = figma.createText();
+            var lhStyle = await loadFontWithFallback(primaryFam, 400);
+            lhNode.fontName = { family: primaryFam, style: lhStyle }; lhNode.fontSize = 16;
+            lhNode.lineHeight = { value: lhVal * 100, unit: "PERCENT" };
+            lhNode.characters = lhSample;
+            lhNode.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
+            lhNode.x = lhX; lhNode.y = y + 16; lhNode.resize(lhColW, lhNode.height);
+            lhNode.textAutoResize = "HEIGHT"; frame.appendChild(lhNode);
+            if (lhNode.height + 16 > lhMaxH) lhMaxH = lhNode.height + 16;
+            lhX += lhColW + 24;
+          }
+          y += lhMaxH + 24;
         }
-        y += lhMaxH + 24;
+        y += SECTION_GAP;
       }
-      y += SECTION_GAP;
     }
   }
 

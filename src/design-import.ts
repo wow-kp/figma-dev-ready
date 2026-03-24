@@ -33,6 +33,14 @@ interface FrameInfo {
   classification: "desktop" | "mobile" | "component" | "other";
 }
 
+interface ScaleEntry { name: string; value: number; }
+
+export interface TypographyScale {
+  sizes: ScaleEntry[];
+  weights: ScaleEntry[];
+  lineHeights: ScaleEntry[];
+}
+
 export interface AnalysisResult {
   colors: ColorEntry[];
   spacing: SpacingEntry[];
@@ -40,6 +48,7 @@ export interface AnalysisResult {
   borders: BorderEntry[];
   shadows: ShadowEntry[];
   typography: TypoCombo[];
+  typographyScale: TypographyScale;
   fontFamilies: { [key: string]: string };
   frames: FrameInfo[];
   totalNodes: number;
@@ -485,11 +494,53 @@ export async function analyzeDesign(): Promise<AnalysisResult> {
   }
   if (!fontFamilies.primary) fontFamilies.primary = "Inter";
 
+  var typographyScale = deriveTypographyScale(typography);
+
   return {
     colors: colors, spacing: spacing, radius: radius, borders: borders,
-    shadows: shadows, typography: typography, fontFamilies: fontFamilies,
-    frames: frames, totalNodes: totalNodes, pagesAnalyzed: pagesAnalyzed
+    shadows: shadows, typography: typography, typographyScale: typographyScale,
+    fontFamilies: fontFamilies, frames: frames, totalNodes: totalNodes, pagesAnalyzed: pagesAnalyzed
   };
+}
+
+function deriveTypographyScale(combos: TypoCombo[]): TypographyScale {
+  var sizeSet: {[k:string]: number} = {};
+  var weightSet: {[k:string]: number} = {};
+  var lhSet: {[k:string]: number} = {};
+  for (var i = 0; i < combos.length; i++) {
+    var c = combos[i];
+    sizeSet[String(c.fontSize)] = c.fontSize;
+    weightSet[String(c.fontWeight)] = c.fontWeight;
+    if (c.lineHeight > 0) {
+      var lhRatio = Math.round((c.lineHeight / c.fontSize) * 100) / 100;
+      lhSet[String(lhRatio)] = lhRatio;
+    }
+  }
+
+  var DEFAULT_SIZE_NAMES = ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl"];
+  var WEIGHT_NAMES: {[k:string]: string} = { "100": "thin", "200": "extralight", "300": "light", "400": "regular", "500": "medium", "600": "semibold", "700": "bold", "800": "extrabold", "900": "black" };
+  var LH_NAMES: [number, string][] = [[1.0, "none"], [1.15, "tight"], [1.3, "snug"], [1.5, "normal"], [1.65, "relaxed"], [2.0, "loose"]];
+
+  var sizes = Object.keys(sizeSet).map(function(k) { return sizeSet[k]; }).sort(function(a, b) { return a - b; });
+  var scSizes: ScaleEntry[] = sizes.map(function(v, idx) {
+    return { value: v, name: idx < DEFAULT_SIZE_NAMES.length ? DEFAULT_SIZE_NAMES[idx] : "s-" + v };
+  });
+
+  var weights = Object.keys(weightSet).map(function(k) { return weightSet[k]; }).sort(function(a, b) { return a - b; });
+  var scWeights: ScaleEntry[] = weights.map(function(v) {
+    return { value: v, name: WEIGHT_NAMES[String(v)] || "w-" + v };
+  });
+
+  var lhVals = Object.keys(lhSet).map(function(k) { return lhSet[k]; }).sort(function(a, b) { return a - b; });
+  var scLH: ScaleEntry[] = lhVals.map(function(v) {
+    var name = "lh-" + v;
+    for (var li = 0; li < LH_NAMES.length; li++) {
+      if (Math.abs(v - LH_NAMES[li][0]) < 0.1) { name = LH_NAMES[li][1]; break; }
+    }
+    return { value: v, name: name };
+  });
+
+  return { sizes: scSizes, weights: scWeights, lineHeights: scLH };
 }
 
 // ── Color Naming ─────────────────────────────────────────────────────────────
@@ -725,45 +776,10 @@ export async function createTokensFromAnalysis(analysis: AnalysisResult): Promis
 
   // Typography variables (sizes, weights, line-heights, families)
   if (analysis.typography.length > 0) {
-    // Extract unique sizes
-    var sizeSet: {[k:string]: number} = {};
-    var weightSet: {[k:string]: number} = {};
-    var lhSet: {[k:string]: number} = {};
-    for (var tvi = 0; tvi < analysis.typography.length; tvi++) {
-      var tv = analysis.typography[tvi];
-      sizeSet[String(tv.fontSize)] = tv.fontSize;
-      weightSet[String(tv.fontWeight)] = tv.fontWeight;
-      if (tv.lineHeight > 0) {
-        var lhRatio = Math.round((tv.lineHeight / tv.fontSize) * 100) / 100;
-        lhSet[String(lhRatio)] = lhRatio;
-      }
-    }
-    var sizes = Object.keys(sizeSet).map(function(k) { return sizeSet[k]; }).sort(function(a, b) { return a - b; });
-    var sizeNames = ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl"];
-    var typoSizes: {name:string, value:string}[] = [];
-    for (var tsi2 = 0; tsi2 < sizes.length; tsi2++) {
-      var sn = tsi2 < sizeNames.length ? sizeNames[tsi2] : "s-" + sizes[tsi2];
-      typoSizes.push({ name: sn, value: String(sizes[tsi2]) });
-    }
-
-    var WEIGHT_NAMES: {[k:string]: string} = { "100": "thin", "200": "extralight", "300": "light", "400": "regular", "500": "medium", "600": "semibold", "700": "bold", "800": "extrabold", "900": "black" };
-    var weights = Object.keys(weightSet).map(function(k) { return weightSet[k]; }).sort(function(a, b) { return a - b; });
-    var typoWeights: {name:string, value:string}[] = [];
-    for (var twi = 0; twi < weights.length; twi++) {
-      var wn = WEIGHT_NAMES[String(weights[twi])] || "w-" + weights[twi];
-      typoWeights.push({ name: wn, value: String(weights[twi]) });
-    }
-
-    var LH_NAMES: [number, string][] = [[1.0, "none"], [1.15, "tight"], [1.3, "snug"], [1.5, "normal"], [1.65, "relaxed"], [2.0, "loose"]];
-    var lhVals = Object.keys(lhSet).map(function(k) { return lhSet[k]; }).sort(function(a, b) { return a - b; });
-    var typoLH: {name:string, value:string}[] = [];
-    for (var lhi = 0; lhi < lhVals.length; lhi++) {
-      var lhName = "lh-" + lhVals[lhi];
-      for (var lni = 0; lni < LH_NAMES.length; lni++) {
-        if (Math.abs(lhVals[lhi] - LH_NAMES[lni][0]) < 0.1) { lhName = LH_NAMES[lni][1]; break; }
-      }
-      typoLH.push({ name: lhName, value: String(lhVals[lhi]) });
-    }
+    var scale = analysis.typographyScale || deriveTypographyScale(analysis.typography);
+    var typoSizes = scale.sizes.map(function(s) { return { name: s.name, value: String(s.value) }; });
+    var typoWeights = scale.weights.map(function(s) { return { name: s.name, value: String(s.value) }; });
+    var typoLH = scale.lineHeights.map(function(s) { return { name: s.name, value: String(s.value) }; });
 
     var typoData = generateTypographyData(
       { sizes: typoSizes, weights: typoWeights, lineHeights: typoLH },

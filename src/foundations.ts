@@ -178,56 +178,56 @@ export async function generateFoundationsPage(msg) {
         // Detect if font is installed
         var ffInstalled = true;
         try { await figma.loadFontAsync({ family: ffFam, style: "Regular" }); } catch(e) { ffInstalled = false; }
-        var ffDisplayFam = ffInstalled ? ffFam : "Inter";
 
-        // Font family name in its own font (or Inter fallback)
-        var ffNameStyle = await loadFontWithFallback(ffDisplayFam, 700);
-        var ffNameNode = figma.createText();
-        ffNameNode.fontName = { family: ffDisplayFam, style: ffNameStyle };
-        ffNameNode.fontSize = 28;
-        ffNameNode.characters = ffFam + (ffInstalled ? "" : " (not installed)");
-        ffNameNode.fills = [{ type: "SOLID", color: ffInstalled ? { r: 0.1, g: 0.1, b: 0.1 } : { r: 0.6, g: 0.3, b: 0.3 } }];
-        ffNameNode.x = 24; ffNameNode.y = 42;
-        ffCard.appendChild(ffNameNode);
+        if (ffInstalled) {
+          var ffNameStyle = await loadFontWithFallback(ffFam, 700);
+          var ffNameNode = figma.createText();
+          ffNameNode.fontName = { family: ffFam, style: ffNameStyle };
+          ffNameNode.fontSize = 28;
+          ffNameNode.characters = ffFam;
+          ffNameNode.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+          ffNameNode.x = 24; ffNameNode.y = 42;
+          ffCard.appendChild(ffNameNode);
 
-        // Sample alphabet in Regular (or fallback message)
-        var ffSampleStyle = await loadFontWithFallback(ffDisplayFam, 400);
-        var ffSampleNode = figma.createText();
-        ffSampleNode.fontName = { family: ffDisplayFam, style: ffSampleStyle };
-        ffSampleNode.fontSize = 14;
-        ffSampleNode.characters = ffInstalled ? "AaBbCcDdEeFfGgHhIiJjKkLl" : "Font not available — install to preview";
-        ffSampleNode.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
-        ffSampleNode.x = 24; ffSampleNode.y = 86;
-        ffCard.appendChild(ffSampleNode);
+          var ffSampleStyle = await loadFontWithFallback(ffFam, 400);
+          var ffSampleNode = figma.createText();
+          ffSampleNode.fontName = { family: ffFam, style: ffSampleStyle };
+          ffSampleNode.fontSize = 14;
+          ffSampleNode.characters = "AaBbCcDdEeFfGgHhIiJjKkLl";
+          ffSampleNode.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
+          ffSampleNode.x = 24; ffSampleNode.y = 86;
+          ffCard.appendChild(ffSampleNode);
 
-        // Full family value as subtitle
-        var ffValueNode = figma.createText();
-        ffValueNode.fontName = { family: "Inter", style: "Regular" };
-        ffValueNode.fontSize = 11;
-        ffValueNode.characters = ffe.family;
-        ffValueNode.fills = [{ type: "SOLID", color: { r: 0.55, g: 0.55, b: 0.55 } }];
-        ffValueNode.x = 24; ffValueNode.y = 118;
-        ffCard.appendChild(ffValueNode);
+          var ffValueNode = figma.createText();
+          ffValueNode.fontName = { family: "Inter", style: "Regular" };
+          ffValueNode.fontSize = 11;
+          ffValueNode.characters = ffe.family;
+          ffValueNode.fills = [{ type: "SOLID", color: { r: 0.55, g: 0.55, b: 0.55 } }];
+          ffValueNode.x = 24; ffValueNode.y = 118;
+          ffCard.appendChild(ffValueNode);
 
-        // Weight samples row
-        var ffWeightSamples = [
-          { w: 300, label: "Light" },
-          { w: 400, label: "Regular" },
-          { w: 600, label: "SemiBold" },
-          { w: 700, label: "Bold" }
-        ];
-        var ffwX = 24;
-        for (var ffwi = 0; ffwi < ffWeightSamples.length; ffwi++) {
-          var ffw = ffWeightSamples[ffwi];
-          var ffwStyle = await loadFontWithFallback(ffDisplayFam, ffw.w);
-          var ffwNode = figma.createText();
-          ffwNode.fontName = { family: ffDisplayFam, style: ffwStyle };
-          ffwNode.fontSize = 11;
-          ffwNode.characters = ffw.label;
-          ffwNode.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
-          ffwNode.x = ffwX; ffwNode.y = 138;
-          ffCard.appendChild(ffwNode);
-          ffwX += ffwNode.width + 16;
+          var ffWeightSamples = [
+            { w: 300, label: "Light" },
+            { w: 400, label: "Regular" },
+            { w: 600, label: "SemiBold" },
+            { w: 700, label: "Bold" }
+          ];
+          var ffwX = 24;
+          for (var ffwi = 0; ffwi < ffWeightSamples.length; ffwi++) {
+            var ffw = ffWeightSamples[ffwi];
+            var ffwStyle = await loadFontWithFallback(ffFam, ffw.w);
+            var ffwNode = figma.createText();
+            ffwNode.fontName = { family: ffFam, style: ffwStyle };
+            ffwNode.fontSize = 11;
+            ffwNode.characters = ffw.label;
+            ffwNode.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+            ffwNode.x = ffwX; ffwNode.y = 138;
+            ffCard.appendChild(ffwNode);
+            ffwX += ffwNode.width + 16;
+          }
+        } else {
+          createSpecText(ffCard, ffFam, 24, 42, 20, "Bold", { r: 0.6, g: 0.3, b: 0.3 });
+          createSpecText(ffCard, "Font not installed — add to your system to preview", 24, 76, 11, "Regular", { r: 0.6, g: 0.3, b: 0.3 });
         }
       }
 
@@ -407,6 +407,15 @@ export async function generateFoundationsPage(msg) {
 
   if (hasSizes || hasWeights || hasLH) {
     sectionTitle("Typography Scale");
+    var scaleFam = userFonts.length > 0 ? userFonts[0].split(",")[0].trim().replace(/['"]/g, "") : "";
+    var scaleInstalled = false;
+    if (scaleFam) { try { await figma.loadFontAsync({ family: scaleFam, style: "Regular" }); scaleInstalled = true; } catch(e) {} }
+
+    if (!scaleInstalled) {
+      var scaleMsg = scaleFam ? (scaleFam + " is not installed — install font to preview typography scale") : "No primary font found";
+      createSpecText(frame, scaleMsg, PAD, y, 12, "Regular", { r: 0.6, g: 0.3, b: 0.3 });
+      y += 32 + SECTION_GAP;
+    } else {
     // ── Font Sizes ──
     if (hasSizes) {
       try {
@@ -416,7 +425,8 @@ export async function generateFoundationsPage(msg) {
           var sz = typo.sizes[fsi];
           var pxVal = parseFloat(sz.value) || 16;
           var sizeText = figma.createText();
-          sizeText.fontName = { family: "Inter", style: "Regular" };
+          var scSz = await loadFontWithFallback(scaleFam, 400);
+          sizeText.fontName = { family: scaleFam, style: scSz };
           sizeText.fontSize = Math.min(pxVal, 60);
           sizeText.characters = sz.name + " — " + sz.value + "px";
           sizeText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
@@ -436,9 +446,9 @@ export async function generateFoundationsPage(msg) {
         var wx = PAD;
         for (var fwi = 0; fwi < typo.weights.length; fwi++) {
           var wt = typo.weights[fwi];
-          await loadFontWithFallback("Inter", wt.value);
+          await loadFontWithFallback(scaleFam, wt.value);
           var wtText = figma.createText();
-          setFontName(wtText, "Inter", wt.value);
+          setFontName(wtText, scaleFam, wt.value);
           wtText.fontSize = 16;
           wtText.characters = wt.name + " (" + wt.value + ")";
           wtText.fills = [{ type: "SOLID", color: { r: 0.15, g: 0.15, b: 0.15 } }];
@@ -465,7 +475,8 @@ export async function generateFoundationsPage(msg) {
           var lhVal = parseFloat(lh.value) || 1.5;
           createSpecText(frame, lh.name + " (" + lh.value + ")", lhX, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
           var lhNode = figma.createText();
-          lhNode.fontName = { family: "Inter", style: "Regular" };
+          var lhSt = await loadFontWithFallback(scaleFam, 400);
+          lhNode.fontName = { family: scaleFam, style: lhSt };
           lhNode.fontSize = 16;
           lhNode.lineHeight = { value: lhVal * 100, unit: "PERCENT" };
           lhNode.characters = lhSampleText;
@@ -481,6 +492,7 @@ export async function generateFoundationsPage(msg) {
       } catch(e) { /* line heights failed */ }
     }
     y += SECTION_GAP;
+    } // end scaleInstalled
   }
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -5643,8 +5643,7 @@ function bhTermLog(text, type) {
 // ── AI Token Naming ─────────────────────────────────────────────────────────
 
 function bhCallTokenNamingAI(analysis, callback) {
-  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
-  if (!_bhApiKey && !useProxy) { callback("No API key configured.", null); return; }
+  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key configured.", null); return; }
 
   // Build a compact summary for AI
   var colorSummary = analysis.colors.map(function(c) { return { hex: c.hex, uses: c.count, currentName: c.name }; });
@@ -5681,40 +5680,21 @@ function bhCallTokenNamingAI(analysis, callback) {
     ]
   });
 
-  var xhr = new XMLHttpRequest();
-  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
-  xhr.open("POST", apiUrl, true);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
-  if (useProxy) {
-    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
-    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
-  } else {
-    xhr.setRequestHeader("anthropic-version", "2023-06-01");
-    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
-  }
-  xhr.onload = function() {
-    if (xhr.status === 200) {
+  bhPost(body, 30000, function(status, text) {
+    if (status === 200) {
       try {
-        var resp = JSON.parse(xhr.responseText);
-        var text = "";
+        var resp = JSON.parse(text);
+        var t = "";
         for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+          if (resp.content[ti].type === "text") t += resp.content[ti].text;
         }
-        text = "{" + text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
-        var result = JSON.parse(text);
-        callback(null, result);
-      } catch(e) {
-        callback("Failed to parse AI response: " + e.message, null);
-      }
-    } else {
-      callback("API error (" + xhr.status + ")", null);
-    }
-  };
-  xhr.onerror = function() { callback("Network error.", null); };
-  xhr.timeout = 30000;
-  xhr.ontimeout = function() { callback("AI request timed out.", null); };
-  xhr.send(body);
+        t = "{" + t.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        callback(null, JSON.parse(t));
+      } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
+    } else if (status === -1) { callback("AI request timed out.", null);
+    } else if (status === 0)  { callback("Network error.", null);
+    } else { callback("API error (" + status + ")", null); }
+  });
 }
 
 // ── AI Component Detection (Route B) ──
@@ -5728,8 +5708,7 @@ function callComponentDetectionAI(systemPrompt, userContent, callbackOrMaxTokens
     maxTokens = callbackOrMaxTokens;
     callback = maxTokensOrCallback;
   }
-  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
-  if (!_bhApiKey && !useProxy) { callback("No API key or proxy configured. Set up AI in Settings tab.", null); return; }
+  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key or proxy configured. Set up AI in Settings tab.", null); return; }
 
   var body = JSON.stringify({
     model: "claude-sonnet-4-6",
@@ -5740,52 +5719,29 @@ function callComponentDetectionAI(systemPrompt, userContent, callbackOrMaxTokens
     ]
   });
 
-  var xhr = new XMLHttpRequest();
-  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
-  xhr.open("POST", apiUrl, true);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
-  if (useProxy) {
-    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
-    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
-  } else {
-    xhr.setRequestHeader("anthropic-version", "2023-06-01");
-    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
-  }
-  xhr.onload = function() {
-    if (xhr.status === 200) {
+  bhPost(body, 60000, function(status, text, didFallback) {
+    if (status === 200) {
       try {
-        var resp = JSON.parse(xhr.responseText);
-        var text = "";
+        var resp = JSON.parse(text);
+        var t = "";
         for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+          if (resp.content[ti].type === "text") t += resp.content[ti].text;
         }
-        text = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-        var result = JSON.parse(text);
-        callback(null, result);
-      } catch(e) {
-        callback("Failed to parse AI response: " + e.message, null);
-      }
-    } else if (xhr.status === 429) {
+        t = t.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+        callback(null, JSON.parse(t));
+      } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
+    } else if (status === -1) { callback("AI request timed out (60s).", null);
+    } else if (status === 0)  { callback("Network error.", null);
+    } else if (status === 429) {
       var retryMsg = "Rate limited (429).";
-      try {
-        var errBody = JSON.parse(xhr.responseText);
-        if (errBody.retryAfterSeconds) {
-          var mins = Math.ceil(errBody.retryAfterSeconds / 60);
-          retryMsg = "Rate limited — retry in " + mins + " min (" + (errBody.remaining || 0) + "/" + (errBody.limit || "?") + " remaining).";
-        }
-      } catch(e) {}
+      try { var eb = JSON.parse(text); if (eb.retryAfterSeconds) { var mins = Math.ceil(eb.retryAfterSeconds / 60); retryMsg = "Rate limited — retry in " + mins + " min (" + (eb.remaining || 0) + "/" + (eb.limit || "?") + " remaining)."; } } catch(e) {}
       callback(retryMsg, null);
     } else {
       var errDetail = "";
-      try { var eb = JSON.parse(xhr.responseText); errDetail = (eb.error && eb.error.message) || xhr.responseText.substring(0, 200); } catch(e) { errDetail = xhr.responseText ? xhr.responseText.substring(0, 200) : ""; }
-      callback("API error (" + xhr.status + "): " + errDetail, null);
+      try { var eb2 = JSON.parse(text); errDetail = (eb2.error && eb2.error.message) || text.substring(0, 200); } catch(e) { errDetail = text ? text.substring(0, 200) : ""; }
+      callback("API error (" + status + "): " + errDetail, null);
     }
-  };
-  xhr.onerror = function() { callback("Network error.", null); };
-  xhr.timeout = 60000;
-  xhr.ontimeout = function() { callback("AI request timed out (60s).", null); };
-  xhr.send(body);
+  });
 }
 
 function runComponentDetectionAI(chunks, callback) {
@@ -5940,6 +5896,43 @@ function bhHasProxy() {
 
 function bhHasBuiltinProxy() {
   return _bhBuiltinProxyUrl && _bhBuiltinProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhBuiltinProxyUrl.length > 10;
+}
+
+// Low-level POST helper: prefers proxy when configured, falls back to API key on 429.
+// onDone(status, responseText, didFallback)
+function bhPost(bodyStr, timeoutMs, onDone) {
+  var tryProxy = bhHasProxy() && _bhProxyHealthy;
+  var hasKey = !!_bhApiKey;
+  function doRequest(useProxy, resultCb) {
+    var url = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    if (useProxy) {
+      xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
+      xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
+    } else {
+      xhr.setRequestHeader("x-api-key", _bhApiKey);
+      xhr.setRequestHeader("anthropic-version", "2023-06-01");
+      xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+    }
+    xhr.onload = function() { resultCb(xhr.status, xhr.responseText); };
+    xhr.onerror = function() { resultCb(0, ""); };
+    xhr.timeout = timeoutMs || 30000;
+    xhr.ontimeout = function() { resultCb(-1, ""); };
+    xhr.send(bodyStr);
+  }
+  if (tryProxy) {
+    doRequest(true, function(status, text) {
+      if (status === 429 && hasKey) {
+        doRequest(false, function(s2, t2) { onDone(s2, t2, true); });
+      } else {
+        onDone(status, text, false);
+      }
+    });
+  } else {
+    doRequest(false, function(status, text) { onDone(status, text, false); });
+  }
 }
 
 function bhUpdateProxyUI() {
@@ -6274,7 +6267,7 @@ function bhEnhanceWithAI(htmlFiles, css, screenshots, callback, pageType) {
 
 function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
   pageType = pageType || "promo";
-  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
+  var useProxy = bhHasProxy() && _bhProxyHealthy;
   if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var htmlSummary = "";
@@ -6465,13 +6458,20 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
   }
 
   // ── XHR streaming (ReadableStream not supported in Figma sandbox) ──
-  function sendWithXHR() {
+  function sendWithXHR(isFallback) {
+    var url = isFallback ? "https://api.anthropic.com/v1/messages" : apiUrl;
+    var headers = isFallback ? {
+      "Content-Type": "application/json",
+      "x-api-key": _bhApiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    } : reqHeaders;
     var payload = Object.assign({}, msgPayload, { stream: true });
     var body = JSON.stringify(payload);
     var xhr = new XMLHttpRequest();
-    xhr.open("POST", apiUrl, true);
-    var hKeys = Object.keys(reqHeaders);
-    for (var hi = 0; hi < hKeys.length; hi++) xhr.setRequestHeader(hKeys[hi], reqHeaders[hKeys[hi]]);
+    xhr.open("POST", url, true);
+    var hKeys = Object.keys(headers);
+    for (var hi = 0; hi < hKeys.length; hi++) xhr.setRequestHeader(hKeys[hi], headers[hKeys[hi]]);
 
     var _lastParsedIdx = 0; // Track how far we've parsed for incremental char counting
     xhr.onprogress = function() {
@@ -6509,6 +6509,9 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
       if (xhr.status === 200) {
         var parsed = parseSSEResponse(xhr.responseText);
         finishStream(parsed.text, parsed.thinking, null);
+      } else if (xhr.status === 429 && !isFallback && _bhApiKey) {
+        bhTermLog("Proxy rate-limited (429), falling back to direct API key…", "info");
+        sendWithXHR(true);
       } else {
         finishStream("", "", buildErrorMsg(xhr.status, xhr.responseText));
       }
@@ -6524,7 +6527,7 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
   }
 
   bhTermLog("Sending request to " + (useProxy ? "proxy" : "Anthropic API") + " (streaming)…", "info");
-  sendWithXHR();
+  sendWithXHR(false);
 }
 
 // ── AI Audit Review ──────────────────────────────────────────────────────────
@@ -6567,8 +6570,7 @@ var _aiNamingPendingSingle = null; // { nodeId, input, btn }
 var _aiNamingPendingBatch = false;
 
 function bhCallNamingAI(serializedNodes, callback) {
-  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
-  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var systemPrompt = "You are a Figma layer naming expert. Given a JSON array of unnamed UI layers with their context (type, size, children, parent, siblings), suggest semantic kebab-case names.\n\n"
     + "Rules:\n"
@@ -6592,54 +6594,31 @@ function bhCallNamingAI(serializedNodes, callback) {
     ]
   });
 
-  var xhr = new XMLHttpRequest();
-  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
-  xhr.open("POST", apiUrl, true);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
-  if (useProxy) {
-    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
-    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
-  } else {
-    xhr.setRequestHeader("anthropic-version", "2023-06-01");
-    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
-  }
-  xhr.onload = function() {
-    if (xhr.status === 200) {
+  bhPost(body, 30000, function(status, text) {
+    if (status === 200) {
       try {
-        var resp = JSON.parse(xhr.responseText);
-        var text = "";
+        var resp = JSON.parse(text);
+        var t = "";
         for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+          if (resp.content[ti].type === "text") t += resp.content[ti].text;
         }
-        // Prepend "[" prefix from assistant prefill, strip markdown fences if any
-        text = "[" + text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
-        var names = JSON.parse(text);
+        t = "[" + t.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        var names = JSON.parse(t);
         if (!Array.isArray(names)) throw new Error("Expected JSON array");
         callback(null, names);
-      } catch(e) {
-        callback("Failed to parse AI response: " + e.message, null);
-      }
-    } else if (xhr.status === 429) {
-      callback("Rate limit exceeded. Please wait and try again.", null);
+      } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
+    } else if (status === 429) { callback("Rate limit exceeded. Please wait and try again.", null);
+    } else if (status === -1)  { callback("AI naming request timed out.", null);
+    } else if (status === 0)   { callback("Network error.", null);
     } else {
-      try {
-        var errBody = JSON.parse(xhr.responseText);
-        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
-      } catch(e2) {
-        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
-      }
+      try { var eb = JSON.parse(text); callback("API error (" + status + "): " + ((eb.error && eb.error.message) || ""), null); }
+      catch(e2) { callback("API error (" + status + ")", null); }
     }
-  };
-  xhr.onerror = function() { callback("Network error.", null); };
-  xhr.timeout = 30000;
-  xhr.ontimeout = function() { callback("AI naming request timed out.", null); };
-  xhr.send(body);
+  });
 }
 
 function bhCallAuditAI(data, callback) {
-  var useProxy = !_bhApiKey && bhHasProxy() && _bhProxyHealthy;
-  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var auditText = bhSerializeAuditForAI(data);
 
@@ -6663,45 +6642,24 @@ function bhCallAuditAI(data, callback) {
     messages: [{ role: "user", content: "Here are the audit results for my Figma file:\n\n" + auditText + "\n\nGive me a prioritized action plan to improve my score." }]
   });
 
-  var xhr = new XMLHttpRequest();
-  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
-  xhr.open("POST", apiUrl, true);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  if (_bhApiKey) xhr.setRequestHeader("x-api-key", _bhApiKey);
-  if (useProxy) {
-    xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
-    xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
-  } else {
-    xhr.setRequestHeader("anthropic-version", "2023-06-01");
-    xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
-  }
-  xhr.onload = function() {
-    if (xhr.status === 200) {
+  bhPost(body, 30000, function(status, text) {
+    if (status === 200) {
       try {
-        var resp = JSON.parse(xhr.responseText);
-        var text = "";
+        var resp = JSON.parse(text);
+        var t = "";
         for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") text += resp.content[ti].text;
+          if (resp.content[ti].type === "text") t += resp.content[ti].text;
         }
-        callback(null, text);
-      } catch(e) {
-        callback("Failed to parse AI response: " + e.message, null);
-      }
-    } else if (xhr.status === 429) {
-      callback("Rate limit exceeded. Please wait and try again.", null);
+        callback(null, t);
+      } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
+    } else if (status === 429) { callback("Rate limit exceeded. Please wait and try again.", null);
+    } else if (status === -1)  { callback("AI review request timed out.", null);
+    } else if (status === 0)   { callback("Network error. Check your connection.", null);
     } else {
-      try {
-        var errBody = JSON.parse(xhr.responseText);
-        callback("API error (" + xhr.status + "): " + ((errBody.error && errBody.error.message) || xhr.statusText), null);
-      } catch(e2) {
-        callback("API error (" + xhr.status + "): " + xhr.statusText, null);
-      }
+      try { var eb = JSON.parse(text); callback("API error (" + status + "): " + ((eb.error && eb.error.message) || ""), null); }
+      catch(e2) { callback("API error (" + status + ")", null); }
     }
-  };
-  xhr.onerror = function() { callback("Network error. Check your connection.", null); };
-  xhr.timeout = 30000;
-  xhr.ontimeout = function() { callback("AI review request timed out.", null); };
-  xhr.send(body);
+  });
 }
 
 // Simple markdown to HTML: **bold**, - bullets, newlines

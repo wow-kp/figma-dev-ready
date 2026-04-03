@@ -1,5 +1,5 @@
-// Build script: reads proxy-config.json (if it exists), updates manifest.json
-// allowedDomains, and injects the proxy URL into code.js via esbuild --define.
+// Build script: reads proxy-config.json (if it exists), generates manifest.json
+// from template with allowedDomains, and injects proxy URL into code.js via esbuild.
 const fs = require("fs");
 const child = require("child_process");
 
@@ -19,8 +19,8 @@ const proxyDomain = proxyUrl.replace(/^https?:\/\//, "");
 const hasValidProxy = proxyUrl && proxyUrl.indexOf("YOUR_SUBDOMAIN") === -1;
 const effectiveProxy = hasValidProxy ? proxyUrl : "";
 
-// 1. Update manifest.json — allowedDomains
-const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+// 1. Generate manifest.json from template — always start fresh from template
+const manifest = JSON.parse(fs.readFileSync("manifest.template.json", "utf8"));
 manifest.networkAccess = manifest.networkAccess || {};
 const domains = ["https://api.anthropic.com"];
 if (hasValidProxy) {

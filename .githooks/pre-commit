@@ -1,30 +1,17 @@
 #!/bin/sh
-# Pre-commit hook: strip build-injected proxy URL from ui.html and manifest.json
-# so that proxy-config.json values never leak into version control.
+# Pre-commit hook: ensure proxy-config values don't leak into version control.
+#
+# manifest.json is now gitignored (generated at build time from manifest.template.json),
+# so we only need to check ui.html for leaked proxy URLs.
 #
 # Install: git config core.hooksPath .githooks
 
-# Only act if the files are staged
 UI_STAGED=$(git diff --cached --name-only -- ui.html)
-MANIFEST_STAGED=$(git diff --cached --name-only -- manifest.json)
 
 if [ -n "$UI_STAGED" ]; then
-  # Reset _bhProxyUrl to empty string
-  sed -i '' 's/var _bhProxyUrl = ".*";/var _bhProxyUrl = "";/' ui.html
-  git add ui.html
-fi
-
-if [ -n "$MANIFEST_STAGED" ]; then
-  # Remove any non-Anthropic domain from allowedDomains
-  node -e '
-    var fs = require("fs");
-    var m = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
-    if (m.networkAccess && m.networkAccess.allowedDomains) {
-      m.networkAccess.allowedDomains = m.networkAccess.allowedDomains.filter(function(d) {
-        return d === "https://api.anthropic.com";
-      });
-    }
-    fs.writeFileSync("manifest.json", JSON.stringify(m, null, 4) + "\n");
-  '
-  git add manifest.json
+  # Reset any hardcoded proxy URL to empty string
+  if grep -q 'AIClient\.config\.proxyUrl = "http' ui.html 2>/dev/null; then
+    sed -i '' 's/AIClient\.config\.proxyUrl = "http[^"]*"/AIClient.config.proxyUrl = ""/' ui.html
+    git add ui.html
+  fi
 fi

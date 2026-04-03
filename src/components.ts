@@ -1,33 +1,34 @@
 // components.ts — Components page generator (simple / msg-based)
 import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, createPlaceholderImageHash, cxResolveVar } from './utils';
+import { bindFill, bindStroke, bindRadius, bindCompSpacing, bindBorderWidth, bindRadiusByValue, bindOpacity, sectionTitle, findStyle, pickLabelStyle } from './component-helpers';
 import { DESKTOP_WIDTH, PAGE_PADDING, STANDARD_EXPORT_SETTINGS } from './constants';
 
 export async function generateComponentsPage(msg) {
-  var page = findPageByHint("components");
+  const page = findPageByHint("components");
   if (!page) return;
   await figma.setCurrentPageAsync(page);
 
-  var compWeights = [400, 500, 600, 700];
-  for (var cw = 0; cw < compWeights.length; cw++) {
+  const compWeights = [400, 500, 600, 700];
+  for (let cw = 0; cw < compWeights.length; cw++) {
     await loadFontWithFallback("Inter", compWeights[cw]);
   }
 
-  var fontFamilies = msg.fontFamilies || {};
-  var userFonts = Object.keys(fontFamilies).map(function(k) { return fontFamilies[k]; }).filter(Boolean);
-  for (var fi = 0; fi < userFonts.length; fi++) {
-    var fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
+  const fontFamilies = msg.fontFamilies || {};
+  const userFonts = Object.keys(fontFamilies).map(function(k) { return fontFamilies[k]; }).filter(Boolean);
+  for (let fi = 0; fi < userFonts.length; fi++) {
+    const fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
     if (fam === "Inter") continue;
-    for (var cwi = 0; cwi < compWeights.length; cwi++) {
+    for (let cwi = 0; cwi < compWeights.length; cwi++) {
       await loadFontWithFallback(fam, compWeights[cwi]);
     }
   }
 
   // Remove existing specimens
-  var existing = page.children.filter(function(n) { return n.name === "Components"; });
+  const existing = page.children.filter(function(n) { return n.name === "Components"; });
   existing.forEach(function(n) { try { n.remove(); } catch(e) {} });
 
-  var W = DESKTOP_WIDTH, PAD = PAGE_PADDING, SECTION_GAP = 80;
-  var frame = figma.createFrame();
+  const W = DESKTOP_WIDTH, PAD = PAGE_PADDING, SECTION_GAP = 80;
+  const frame = figma.createFrame();
   frame.name = "components";
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
   frame.layoutMode = "VERTICAL";
@@ -38,83 +39,55 @@ export async function generateComponentsPage(msg) {
   frame.paddingLeft = PAD; frame.paddingRight = PAD;
   frame.itemSpacing = 24;
   page.appendChild(frame);
-  // Note: bindCompSpacing(frame) called after helpers are defined (see below)
+  // Note: bindCompSpacing(frame, spacingVarMapComp) called after variable maps are built (see below)
 
-  var brandColor = hexToFigma(msg.brandColor || "#3B82F6");
+  const brandColor = hexToFigma(msg.brandColor || "#3B82F6");
 
   // ── Look up color variables for binding ──
-  var colorCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name === "Colors"; });
-  var colorVarMap = {};
+  const colorCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name === "Colors"; });
+  const colorVarMap = {};
   if (colorCols.length > 0) {
-    var colorVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) {
+    const colorVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) {
       return v.variableCollectionId === colorCols[0].id && v.resolvedType === "COLOR";
     });
-    for (var cvi = 0; cvi < colorVars.length; cvi++) {
+    for (let cvi = 0; cvi < colorVars.length; cvi++) {
       colorVarMap[colorVars[cvi].name] = colorVars[cvi];
     }
   }
-  function bindFill(node, varName) {
-    var v = colorVarMap[varName]; if (!v) return;
-    try { node.fills = [figma.variables.setBoundVariableForPaint(node.fills[0], "color", v)]; } catch(e) {}
-  }
-  function bindStroke(node, varName) {
-    var v = colorVarMap[varName]; if (!v) return;
-    try { node.strokes = [figma.variables.setBoundVariableForPaint(node.strokes[0], "color", v)]; } catch(e) {}
-  }
-
-  function sectionTitle(title) {
-    createSpecText(frame, title, 0, 0, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
-    var div = figma.createRectangle();
-    div.resize(100, 1);
-    div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
-    frame.appendChild(div);
-    div.layoutSizingHorizontal = "FILL";
-  }
-
   // Find text styles by group/name
-  var localStyles = await figma.getLocalTextStylesAsync();
-  function findStyle(group, name) {
-    var styleName = group + "/" + name;
-    for (var i = 0; i < localStyles.length; i++) {
-      if (localStyles[i].name === styleName) return localStyles[i];
-    }
-    return null;
-  }
+  const localStyles = await figma.getLocalTextStylesAsync();
 
   // Get radius value and variable
-  var radiusData = msg.radius || [];
-  var defaultRadius = 8;
-  for (var ri = 0; ri < radiusData.length; ri++) {
+  const radiusData = msg.radius || [];
+  let defaultRadius = 8;
+  for (let ri = 0; ri < radiusData.length; ri++) {
     if (radiusData[ri].name === "md" || radiusData[ri].name === "default") {
       defaultRadius = parseFloat(radiusData[ri].value) || 8;
       break;
     }
   }
-  var radiusCols2 = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("radius") !== -1; });
-  var defaultRadiusVar = null;
+  const radiusCols2 = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("radius") !== -1; });
+  let defaultRadiusVar = null;
   if (radiusCols2.length > 0) {
-    var rvars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
-    for (var rvi = 0; rvi < rvars.length; rvi++) {
-      var rvn = rvars[rvi].name.split("/").pop();
+    const rvars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
+    for (let rvi = 0; rvi < rvars.length; rvi++) {
+      const rvn = rvars[rvi].name.split("/").pop();
       if (rvn === "md" || rvn === "default") { defaultRadiusVar = rvars[rvi]; break; }
     }
   }
-  function bindRadius(node) {
-    if (!defaultRadiusVar) return;
-    try { node.setBoundVariable("cornerRadius", defaultRadiusVar); } catch(e) {}
-  }
+
 
   // ── Look up spacing variables for binding ──
-  var spacingCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("spacing") !== -1; });
-  var spacingVarMapComp = {};
+  const spacingCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("spacing") !== -1; });
+  const spacingVarMapComp = {};
   if (spacingCols.length > 0) {
-    var spVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === spacingCols[0].id && v.resolvedType === "FLOAT"; });
-    var allColsBasic = await figma.variables.getLocalVariableCollectionsAsync();
-    for (var svi = 0; svi < spVars.length; svi++) {
-      var spv = spVars[svi];
-      var modeId = spacingCols[0].modes[0].modeId;
+    const spVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === spacingCols[0].id && v.resolvedType === "FLOAT"; });
+    const allColsBasic = await figma.variables.getLocalVariableCollectionsAsync();
+    for (let svi = 0; svi < spVars.length; svi++) {
+      const spv = spVars[svi];
+      const modeId = spacingCols[0].modes[0].modeId;
       try {
-        var val = spv.valuesByMode[modeId];
+        let val = spv.valuesByMode[modeId];
         if (val && typeof val === "object" && val.type === "VARIABLE_ALIAS") {
           val = await cxResolveVar(spv, modeId, allColsBasic);
         }
@@ -122,28 +95,18 @@ export async function generateComponentsPage(msg) {
       } catch(e) {}
     }
   }
-  function bindCompSpacing(frame) {
-    var props = ["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing","counterAxisSpacing"];
-    for (var pi = 0; pi < props.length; pi++) {
-      var prop = props[pi];
-      if (!(prop in frame)) continue;
-      var val = frame[prop];
-      if (val === undefined || val === null) continue;
-      var sv = spacingVarMapComp[val];
-      if (sv) { try { frame.setBoundVariable(prop, sv); } catch(e) {} }
-    }
-  }
+
 
   // ── Look up border width variables for binding ──
-  var borderCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("border") !== -1 && c.name.toLowerCase().indexOf("width") !== -1; });
-  var borderVarMapComp = {};
+  const borderCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("border") !== -1 && c.name.toLowerCase().indexOf("width") !== -1; });
+  const borderVarMapComp = {};
   if (borderCols.length > 0) {
-    var bwVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === borderCols[0].id && v.resolvedType === "FLOAT"; });
-    var allColsBw = await figma.variables.getLocalVariableCollectionsAsync();
-    var bwModeId = borderCols[0].modes[0].modeId;
-    for (var bwi = 0; bwi < bwVars.length; bwi++) {
+    const bwVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === borderCols[0].id && v.resolvedType === "FLOAT"; });
+    const allColsBw = await figma.variables.getLocalVariableCollectionsAsync();
+    const bwModeId = borderCols[0].modes[0].modeId;
+    for (let bwi = 0; bwi < bwVars.length; bwi++) {
       try {
-        var bwVal = bwVars[bwi].valuesByMode[bwModeId];
+        let bwVal = bwVars[bwi].valuesByMode[bwModeId];
         if (bwVal && typeof bwVal === "object" && bwVal.type === "VARIABLE_ALIAS") {
           bwVal = await cxResolveVar(bwVars[bwi], bwModeId, allColsBw);
         }
@@ -151,23 +114,17 @@ export async function generateComponentsPage(msg) {
       } catch(e) {}
     }
   }
-  function bindBorderWidth(node) {
-    if (!("strokeWeight" in node)) return;
-    var val = node.strokeWeight;
-    if (val === undefined || val === null || typeof val !== "number") return;
-    var bv = borderVarMapComp[val];
-    if (bv) { try { node.setBoundVariable("strokeWeight", bv); } catch(e) {} }
-  }
+
 
   // ── Look up radius variables by value for binding ──
-  var radiusVarByValueComp = {};
+  const radiusVarByValueComp = {};
   if (radiusCols2.length > 0) {
-    var rvars2 = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
-    var allColsRv = await figma.variables.getLocalVariableCollectionsAsync();
-    var rvModeId = radiusCols2[0].modes[0].modeId;
-    for (var rvi2 = 0; rvi2 < rvars2.length; rvi2++) {
+    const rvars2 = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === radiusCols2[0].id && v.resolvedType === "FLOAT"; });
+    const allColsRv = await figma.variables.getLocalVariableCollectionsAsync();
+    const rvModeId = radiusCols2[0].modes[0].modeId;
+    for (let rvi2 = 0; rvi2 < rvars2.length; rvi2++) {
       try {
-        var rvv = rvars2[rvi2].valuesByMode[rvModeId];
+        let rvv = rvars2[rvi2].valuesByMode[rvModeId];
         if (rvv && typeof rvv === "object" && rvv.type === "VARIABLE_ALIAS") {
           rvv = await cxResolveVar(rvars2[rvi2], rvModeId, allColsRv);
         }
@@ -175,90 +132,78 @@ export async function generateComponentsPage(msg) {
       } catch(e) {}
     }
   }
-  function bindRadiusByValue(node) {
-    if (!("cornerRadius" in node)) return;
-    var val = node.cornerRadius;
-    if (val === undefined || val === null || typeof val !== "number") return;
-    var rv = radiusVarByValueComp[val];
-    if (rv) { try { node.setBoundVariable("cornerRadius", rv); } catch(e) {} }
-  }
+
 
   // ── Look up opacity variables for binding ──
-  var opacityCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("opacity") !== -1; });
-  var opacityVarMapComp = {};
-  var opacityColIdComp = null;
-  var opacityPctModeIdComp = null;  // Percentage mode for Figma "Opacity" binding
+  const opacityCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) { return c.name.toLowerCase().indexOf("opacity") !== -1; });
+  const opacityVarMapComp = {};
+  let opacityColIdComp = null;
+  let opacityPctModeIdComp = null;  // Percentage mode for Figma "Opacity" binding
   if (opacityCols.length > 0) {
     opacityColIdComp = opacityCols[0].id;
-    var opModesComp = opacityCols[0].modes || [];
-    for (var omi = 0; omi < opModesComp.length; omi++) {
+    const opModesComp = opacityCols[0].modes || [];
+    for (let omi = 0; omi < opModesComp.length; omi++) {
       if (opModesComp[omi].name === "Percentage") { opacityPctModeIdComp = opModesComp[omi].modeId; break; }
     }
-    var opVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === opacityCols[0].id && v.resolvedType === "FLOAT"; });
-    var opModeId = opacityCols[0].modes[0].modeId;
-    var allColsBasicOp = await figma.variables.getLocalVariableCollectionsAsync();
-    for (var opi = 0; opi < opVars.length; opi++) {
+    const opVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) { return v.variableCollectionId === opacityCols[0].id && v.resolvedType === "FLOAT"; });
+    const opModeId = opacityCols[0].modes[0].modeId;
+    const allColsBasicOp = await figma.variables.getLocalVariableCollectionsAsync();
+    for (let opi = 0; opi < opVars.length; opi++) {
       try {
-        var opVal = await cxResolveVar(opVars[opi], opModeId, allColsBasicOp);
+        const opVal = await cxResolveVar(opVars[opi], opModeId, allColsBasicOp);
         if (typeof opVal === "number") opacityVarMapComp[Math.round(opVal * 100)] = opVars[opi];
       } catch(e) {}
     }
-  }
-  function bindOpacity(node) {
-    if (!("opacity" in node)) return;
-    var pct = Math.round(node.opacity * 100);
-    var ov = opacityVarMapComp[pct];
-    if (ov) { try { node.setBoundVariable("opacity", ov); } catch(e) {} }
   }
   // Figma's "Opacity" property uses percentage values — set Percentage mode on main frame
   if (opacityColIdComp && opacityPctModeIdComp) {
     try { frame.setExplicitVariableModeForCollection(opacityColIdComp, opacityPctModeIdComp); } catch(e) {}
   }
 
-  // Bind the main frame spacing now that helpers are defined
-  bindCompSpacing(frame);
+  // Bind the main frame spacing now that variable maps are built
+  bindCompSpacing(frame, spacingVarMapComp);
 
   // ══════════════════════════════════════════════════════════════════════════
   // BUTTONS (component set with Variant + Size properties)
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Buttons");
-  var btnSizes = [
+  sectionTitle(frame, "Buttons");
+  const btnSizes = [
     { label: "Large",   style: "lg" },
     { label: "Default", style: "default" },
     { label: "Small",   style: "sm" }
   ];
-  var btnVariants = [
+  const btnVariants = [
     { label: "Primary",   filled: true },
     { label: "Secondary", filled: false },
   ];
 
-  var allBtnComps = [];
-  for (var bvi = 0; bvi < btnVariants.length; bvi++) {
-    var variant = btnVariants[bvi];
-    for (var bsi = 0; bsi < btnSizes.length; bsi++) {
-      var bs = btnSizes[bsi];
-      var ts = findStyle("buttons", bs.style);
-      var padH = bs.style === "lg" ? 16 : (bs.style === "sm" ? 8 : 12);
-      var padW = bs.style === "lg" ? 32 : (bs.style === "sm" ? 16 : 24);
+  const allBtnComps = [];
+  for (let bvi = 0; bvi < btnVariants.length; bvi++) {
+    const variant = btnVariants[bvi];
+    for (let bsi = 0; bsi < btnSizes.length; bsi++) {
+      const bs = btnSizes[bsi];
+      const ts = findStyle("buttons", bs.style, localStyles);
+      const padH = bs.style === "lg" ? 16 : (bs.style === "sm" ? 8 : 12);
+      const padW = bs.style === "lg" ? 32 : (bs.style === "sm" ? 16 : 24);
 
-      var btnComp = figma.createComponent();
+      const btnComp = figma.createComponent();
       btnComp.name = "Variant=" + variant.label + ", Size=" + bs.label;
       btnComp.cornerRadius = defaultRadius;
-      bindRadius(btnComp);
+      bindRadius(btnComp, defaultRadiusVar);
 
       if (variant.filled) {
         btnComp.fills = [{ type: "SOLID", color: brandColor }];
-        bindFill(btnComp, "brand/primary");
+        bindFill(btnComp, "brand/primary", colorVarMap);
       } else {
         btnComp.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
         btnComp.strokes = [{ type: "SOLID", color: brandColor }];
-        bindFill(btnComp, "white");
-        bindStroke(btnComp, "brand/primary");
+        bindFill(btnComp, "white", colorVarMap);
+        bindStroke(btnComp, "brand/primary", colorVarMap);
         btnComp.strokeWeight = 1.5;
-        bindBorderWidth(btnComp);
+        bindBorderWidth(btnComp, borderVarMapComp);
       }
 
-      var btnText = figma.createText();
+      const btnText = figma.createText();
       if (ts) {
         await btnText.setTextStyleIdAsync(ts.id);
       } else {
@@ -267,7 +212,7 @@ export async function generateComponentsPage(msg) {
       }
       btnText.characters = "Button";
       btnText.fills = [{ type: "SOLID", color: variant.filled ? { r: 1, g: 1, b: 1 } : brandColor }];
-      bindFill(btnText, variant.filled ? "white" : "brand/primary");
+      bindFill(btnText, variant.filled ? "white" : "brand/primary", colorVarMap);
 
       btnComp.layoutMode = "HORIZONTAL";
       btnComp.primaryAxisAlignItems = "CENTER";
@@ -277,13 +222,13 @@ export async function generateComponentsPage(msg) {
       btnComp.primaryAxisSizingMode = "AUTO";
       btnComp.counterAxisSizingMode = "AUTO";
       btnComp.appendChild(btnText);
-      bindCompSpacing(btnComp);
+      bindCompSpacing(btnComp, spacingVarMapComp);
 
       allBtnComps.push(btnComp);
     }
   }
 
-  var btnSet = figma.combineAsVariants(allBtnComps, frame);
+  const btnSet = figma.combineAsVariants(allBtnComps, frame);
   btnSet.name = "Button";
   btnSet.layoutMode = "HORIZONTAL";
   btnSet.layoutWrap = "WRAP";
@@ -294,61 +239,57 @@ export async function generateComponentsPage(msg) {
   btnSet.primaryAxisSizingMode = "AUTO";
   btnSet.counterAxisSizingMode = "AUTO";
   btnSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-  bindFill(btnSet, "white");
+  bindFill(btnSet, "white", colorVarMap);
   btnSet.cornerRadius = 12;
-  bindRadiusByValue(btnSet);
+  bindRadiusByValue(btnSet, radiusVarByValueComp);
   btnSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   btnSet.strokeWeight = 1;
-  bindBorderWidth(btnSet);
-  bindCompSpacing(btnSet);
+  bindBorderWidth(btnSet, borderVarMapComp);
+  bindCompSpacing(btnSet, spacingVarMapComp);
 
   // ══════════════════════════════════════════════════════════════════════════
   // INPUTS — 3 component sets (one per type), stacked vertically with titles
   // Types: Placeholder, Floating Label, Label + Placeholder
   // Each has State variants: Default, Focused, Error, Disabled
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Inputs");
-  var inputStyle = findStyle("input", "default");
-  var labelStyle = findStyle("label", "default");
-  var labelStyleFocused = findStyle("label", "focused");
-  var labelStyleError   = findStyle("label", "error");
-  function pickLabelStyle(state) {
-    if (state === "Focused" && labelStyleFocused) return labelStyleFocused;
-    if (state === "Error"   && labelStyleError)   return labelStyleError;
-    return labelStyle;
-  }
+  sectionTitle(frame, "Inputs");
+  const inputStyle = findStyle("input", "default", localStyles);
+  const labelStyle = findStyle("label", "default", localStyles);
+  const labelStyleFocused = findStyle("label", "focused", localStyles);
+  const labelStyleError   = findStyle("label", "error", localStyles);
 
-  var inputTypes = [
+
+  const inputTypes = [
     { type: "Placeholder",         hasLabel: false, hasPlaceholder: true,  floatingLabel: false },
     { type: "Floating Label",      hasLabel: true,  hasPlaceholder: false, floatingLabel: true  },
     { type: "Label + Placeholder", hasLabel: true,  hasPlaceholder: true,  floatingLabel: false },
   ];
-  var inputStates = [
+  const inputStates = [
     { label: "Default",  borderColor: { r: 0.8, g: 0.8, b: 0.8 }, strokeW: 1.5, borderVar: "border/default" },
     { label: "Focused",  borderColor: hexToFigma("#000000"), strokeW: 2, borderVar: "focus/border" },
     { label: "Error",    borderColor: hexToFigma("#E32E22"), strokeW: 1.5, borderVar: "error/border" },
     { label: "Disabled", borderColor: { r: 0.88, g: 0.88, b: 0.88 }, strokeW: 1, borderVar: "border/default" },
   ];
 
-  for (var iti = 0; iti < inputTypes.length; iti++) {
-    var itype = inputTypes[iti];
-    var typeComps = [];
+  for (let iti = 0; iti < inputTypes.length; iti++) {
+    const itype = inputTypes[iti];
+    const typeComps = [];
 
     // ── Type title ──
-    var typeTitle = figma.createText();
+    const typeTitle = figma.createText();
     typeTitle.fontName = { family: "Inter", style: "Semi Bold" };
     typeTitle.fontSize = 14;
     typeTitle.characters = itype.type;
     typeTitle.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
-    bindFill(typeTitle, "text/primary");
+    bindFill(typeTitle, "text/primary", colorVarMap);
     frame.appendChild(typeTitle);
 
-    for (var isi = 0; isi < inputStates.length; isi++) {
-      var ist = inputStates[isi];
-      var isError = ist.label === "Error";
-      var isDisabled = ist.label === "Disabled";
+    for (let isi = 0; isi < inputStates.length; isi++) {
+      const ist = inputStates[isi];
+      const isError = ist.label === "Error";
+      const isDisabled = ist.label === "Disabled";
 
-      var inputComp = figma.createComponent();
+      const inputComp = figma.createComponent();
       inputComp.name = "State=" + ist.label;
       inputComp.resize(260, 44);
       inputComp.layoutMode = "VERTICAL";
@@ -359,16 +300,16 @@ export async function generateComponentsPage(msg) {
 
       if (itype.floatingLabel) {
         // ── Floating Label type: form-field > field-wrapper > field + label ──
-        var isDefault = ist.label === "Default";
+        const isDefault = ist.label === "Default";
 
-        var formField = figma.createFrame();
+        const formField = figma.createFrame();
         formField.name = "form-field";
         formField.layoutMode = "VERTICAL";
         formField.primaryAxisSizingMode = "AUTO";
         formField.counterAxisSizingMode = "AUTO";
         formField.fills = [];
 
-        var fieldWrapper = figma.createFrame();
+        const fieldWrapper = figma.createFrame();
         fieldWrapper.name = "field-wrapper";
         fieldWrapper.layoutMode = "VERTICAL";
         fieldWrapper.primaryAxisSizingMode = "AUTO";
@@ -376,20 +317,20 @@ export async function generateComponentsPage(msg) {
         fieldWrapper.fills = [];
 
         // Input field — the styled element with border, bg, radius
-        var field;
+        let field;
         if (isDefault) {
           // Default state: no children, use a rectangle
           field = figma.createRectangle();
           field.name = "field";
           field.resize(260, 44);
           field.cornerRadius = defaultRadius;
-          bindRadius(field);
+          bindRadius(field, defaultRadiusVar);
           field.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-          bindFill(field, "white");
+          bindFill(field, "white", colorVarMap);
           field.strokes = [{ type: "SOLID", color: ist.borderColor }];
-          bindStroke(field, ist.borderVar);
+          bindStroke(field, ist.borderVar, colorVarMap);
           field.strokeWeight = ist.strokeW;
-          bindBorderWidth(field);
+          bindBorderWidth(field, borderVarMapComp);
         } else {
           // Non-default states: frame with value text inside
           field = figma.createFrame();
@@ -401,15 +342,15 @@ export async function generateComponentsPage(msg) {
           field.paddingLeft = 14; field.paddingRight = 14;
           field.paddingTop = 20; field.paddingBottom = 6;
           field.cornerRadius = defaultRadius;
-          bindRadius(field);
+          bindRadius(field, defaultRadiusVar);
           field.fills = [{ type: "SOLID", color: isDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-          if (!isDisabled) bindFill(field, "white");
+          if (!isDisabled) bindFill(field, "white", colorVarMap);
           field.strokes = [{ type: "SOLID", color: ist.borderColor }];
-          bindStroke(field, ist.borderVar);
+          bindStroke(field, ist.borderVar, colorVarMap);
           field.strokeWeight = ist.strokeW;
-          bindBorderWidth(field);
+          bindBorderWidth(field, borderVarMapComp);
 
-          var floatInput = figma.createText();
+          const floatInput = figma.createText();
           if (inputStyle) {
             await floatInput.setTextStyleIdAsync(inputStyle.id);
           } else {
@@ -418,17 +359,17 @@ export async function generateComponentsPage(msg) {
             floatInput.fills = [{ type: "SOLID", color: { r: 0.13, g: 0.13, b: 0.13 } }];
           }
           floatInput.characters = isDisabled ? "Disabled" : "Value";
-          if (isDisabled) { floatInput.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }]; floatInput.opacity = 0.5; bindOpacity(floatInput); }
-          else { bindFill(floatInput, "text/primary"); }
+          if (isDisabled) { floatInput.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }]; floatInput.opacity = 0.5; bindOpacity(floatInput, opacityVarMapComp); }
+          else { bindFill(floatInput, "text/primary", colorVarMap); }
           field.appendChild(floatInput);
-          bindCompSpacing(field);
+          bindCompSpacing(field, spacingVarMapComp);
         }
 
         fieldWrapper.appendChild(field);
         field.layoutSizingHorizontal = "FILL";
 
         // Label — absolutely positioned over the field
-        var floatLbl = figma.createText();
+        const floatLbl = figma.createText();
         if (isDefault) {
           // Default: label looks like a placeholder, uses input font size
           if (inputStyle) {
@@ -439,10 +380,10 @@ export async function generateComponentsPage(msg) {
             floatLbl.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
           }
           floatLbl.characters = "Label";
-          bindFill(floatLbl, "focus/color");
+          bindFill(floatLbl, "focus/color", colorVarMap);
         } else {
           // Focused/Error/Disabled: small label at top
-          var flStyle = pickLabelStyle(ist.label);
+          const flStyle = pickLabelStyle(ist.label, labelStyle, labelStyleFocused, labelStyleError);
           if (flStyle) {
             await floatLbl.setTextStyleIdAsync(flStyle.id);
           } else {
@@ -451,9 +392,9 @@ export async function generateComponentsPage(msg) {
             floatLbl.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
           }
           floatLbl.characters = isError ? "Error Label" : "Label";
-          if (isError) { floatLbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(floatLbl, "error/color"); }
-          else { bindFill(floatLbl, "text/primary"); }
-          if (isDisabled) { floatLbl.opacity = 0.5; bindOpacity(floatLbl); }
+          if (isError) { floatLbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(floatLbl, "error/color", colorVarMap); }
+          else { bindFill(floatLbl, "text/primary", colorVarMap); }
+          if (isDisabled) { floatLbl.opacity = 0.5; bindOpacity(floatLbl, opacityVarMapComp); }
         }
         floatLbl.name = "label";
         fieldWrapper.appendChild(floatLbl);
@@ -470,8 +411,8 @@ export async function generateComponentsPage(msg) {
         // ── Label + Placeholder type: label above, then field with placeholder ──
         inputComp.itemSpacing = 6;
 
-        var lbl = figma.createText();
-        var lblSt = pickLabelStyle(ist.label);
+        const lbl = figma.createText();
+        const lblSt = pickLabelStyle(ist.label, labelStyle, labelStyleFocused, labelStyleError);
         if (lblSt) {
           await lbl.setTextStyleIdAsync(lblSt.id);
         } else {
@@ -480,22 +421,22 @@ export async function generateComponentsPage(msg) {
           lbl.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
         }
         lbl.characters = isError ? "Error Label" : "Label";
-        if (isError) { lbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(lbl, "error/color"); }
-        else { bindFill(lbl, "text/primary"); }
-        if (isDisabled) { lbl.opacity = 0.5; bindOpacity(lbl); }
+        if (isError) { lbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(lbl, "error/color", colorVarMap); }
+        else { bindFill(lbl, "text/primary", colorVarMap); }
+        if (isDisabled) { lbl.opacity = 0.5; bindOpacity(lbl, opacityVarMapComp); }
         inputComp.appendChild(lbl);
 
-        var inputField = figma.createFrame();
+        const inputField = figma.createFrame();
         inputField.name = "field";
         inputField.resize(260, 44);
         inputField.cornerRadius = defaultRadius;
-        bindRadius(inputField);
+        bindRadius(inputField, defaultRadiusVar);
         inputField.fills = [{ type: "SOLID", color: isDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-        if (!isDisabled) bindFill(inputField, "white");
+        if (!isDisabled) bindFill(inputField, "white", colorVarMap);
         inputField.strokes = [{ type: "SOLID", color: ist.borderColor }];
-        bindStroke(inputField, ist.borderVar);
+        bindStroke(inputField, ist.borderVar, colorVarMap);
         inputField.strokeWeight = ist.strokeW;
-        bindBorderWidth(inputField);
+        bindBorderWidth(inputField, borderVarMapComp);
         inputField.layoutMode = "HORIZONTAL";
         inputField.counterAxisAlignItems = "CENTER";
         inputField.paddingLeft = 14; inputField.paddingRight = 14;
@@ -503,7 +444,7 @@ export async function generateComponentsPage(msg) {
         inputField.primaryAxisSizingMode = "FIXED";
         inputField.counterAxisSizingMode = "FIXED";
 
-        var inputText = figma.createText();
+        const inputText = figma.createText();
         if (inputStyle) {
           await inputText.setTextStyleIdAsync(inputStyle.id);
         } else {
@@ -512,27 +453,27 @@ export async function generateComponentsPage(msg) {
           inputText.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
         }
         inputText.characters = isDisabled ? "Disabled" : "Placeholder text";
-        bindFill(inputText, "focus/color");
-        if (isDisabled) { inputText.opacity = 0.5; bindOpacity(inputText); }
+        bindFill(inputText, "focus/color", colorVarMap);
+        if (isDisabled) { inputText.opacity = 0.5; bindOpacity(inputText, opacityVarMapComp); }
         inputField.appendChild(inputText);
-        bindCompSpacing(inputField);
-        bindCompSpacing(inputComp);
+        bindCompSpacing(inputField, spacingVarMapComp);
+        bindCompSpacing(inputComp, spacingVarMapComp);
         inputComp.appendChild(inputField);
         inputField.layoutSizingHorizontal = "FILL";
 
       } else {
         // ── Placeholder only type: just field with placeholder, no label ──
-        var inputField2 = figma.createFrame();
+        const inputField2 = figma.createFrame();
         inputField2.name = "field";
         inputField2.resize(260, 44);
         inputField2.cornerRadius = defaultRadius;
-        bindRadius(inputField2);
+        bindRadius(inputField2, defaultRadiusVar);
         inputField2.fills = [{ type: "SOLID", color: isDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-        if (!isDisabled) bindFill(inputField2, "white");
+        if (!isDisabled) bindFill(inputField2, "white", colorVarMap);
         inputField2.strokes = [{ type: "SOLID", color: ist.borderColor }];
-        bindStroke(inputField2, ist.borderVar);
+        bindStroke(inputField2, ist.borderVar, colorVarMap);
         inputField2.strokeWeight = ist.strokeW;
-        bindBorderWidth(inputField2);
+        bindBorderWidth(inputField2, borderVarMapComp);
         inputField2.layoutMode = "HORIZONTAL";
         inputField2.counterAxisAlignItems = "CENTER";
         inputField2.paddingLeft = 14; inputField2.paddingRight = 14;
@@ -540,7 +481,7 @@ export async function generateComponentsPage(msg) {
         inputField2.primaryAxisSizingMode = "FIXED";
         inputField2.counterAxisSizingMode = "FIXED";
 
-        var inputText2 = figma.createText();
+        const inputText2 = figma.createText();
         if (inputStyle) {
           await inputText2.setTextStyleIdAsync(inputStyle.id);
         } else {
@@ -549,10 +490,10 @@ export async function generateComponentsPage(msg) {
           inputText2.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
         }
         inputText2.characters = isDisabled ? "Disabled" : "Placeholder text";
-        bindFill(inputText2, "focus/color");
-        if (isDisabled) { inputText2.opacity = 0.5; bindOpacity(inputText2); }
+        bindFill(inputText2, "focus/color", colorVarMap);
+        if (isDisabled) { inputText2.opacity = 0.5; bindOpacity(inputText2, opacityVarMapComp); }
         inputField2.appendChild(inputText2);
-        bindCompSpacing(inputField2);
+        bindCompSpacing(inputField2, spacingVarMapComp);
         inputComp.appendChild(inputField2);
         inputField2.layoutSizingHorizontal = "FILL";
       }
@@ -560,7 +501,7 @@ export async function generateComponentsPage(msg) {
       typeComps.push(inputComp);
     }
 
-    var typeSet = figma.combineAsVariants(typeComps, frame);
+    const typeSet = figma.combineAsVariants(typeComps, frame);
     typeSet.name = "Input / " + itype.type;
     typeSet.layoutMode = "HORIZONTAL";
     typeSet.itemSpacing = 24;
@@ -569,14 +510,14 @@ export async function generateComponentsPage(msg) {
     typeSet.primaryAxisSizingMode = "AUTO";
     typeSet.counterAxisSizingMode = "AUTO";
     typeSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    bindFill(typeSet, "white");
+    bindFill(typeSet, "white", colorVarMap);
     typeSet.cornerRadius = 12;
-    bindRadiusByValue(typeSet);
+    bindRadiusByValue(typeSet, radiusVarByValueComp);
     typeSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     typeSet.strokeWeight = 1;
-    bindBorderWidth(typeSet);
+    bindBorderWidth(typeSet, borderVarMapComp);
     // Make each variant fill equally
-    for (var vi = 0; vi < typeSet.children.length; vi++) {
+    for (let vi = 0; vi < typeSet.children.length; vi++) {
       typeSet.children[vi].layoutSizingHorizontal = "FILL";
     }
     typeSet.layoutSizingHorizontal = "FILL";
@@ -585,27 +526,27 @@ export async function generateComponentsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // LABELS (component set with State property)
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Labels");
-  var labelDefaultStyle = findStyle("label", "default");
-  var labelFocusedStyle = findStyle("label", "focused");
-  var labelErrorStyle   = findStyle("label", "error");
+  sectionTitle(frame, "Labels");
+  const labelDefaultStyle = findStyle("label", "default", localStyles);
+  const labelFocusedStyle = findStyle("label", "focused", localStyles);
+  const labelErrorStyle   = findStyle("label", "error", localStyles);
   if (labelDefaultStyle) {
-    var lblStates = [
+    const lblStates = [
       { label: "Default", text: "Label",       style: labelDefaultStyle },
       { label: "Focused", text: "Label",       style: labelFocusedStyle || labelDefaultStyle },
       { label: "Error",   text: "Error Label", style: labelErrorStyle   || labelDefaultStyle },
     ];
-    var allLblComps = [];
-    for (var li = 0; li < lblStates.length; li++) {
-      var ls = lblStates[li];
-      var lblComp = figma.createComponent();
+    const allLblComps = [];
+    for (let li = 0; li < lblStates.length; li++) {
+      const ls = lblStates[li];
+      const lblComp = figma.createComponent();
       lblComp.name = "State=" + ls.label;
       lblComp.layoutMode = "HORIZONTAL";
       lblComp.primaryAxisSizingMode = "AUTO";
       lblComp.counterAxisSizingMode = "AUTO";
       lblComp.fills = [];
 
-      var lblNode = figma.createText();
+      const lblNode = figma.createText();
       await lblNode.setTextStyleIdAsync(ls.style.id);
       lblNode.characters = ls.text;
       lblComp.appendChild(lblNode);
@@ -613,7 +554,7 @@ export async function generateComponentsPage(msg) {
       allLblComps.push(lblComp);
     }
 
-    var lblSet = figma.combineAsVariants(allLblComps, frame);
+    const lblSet = figma.combineAsVariants(allLblComps, frame);
     lblSet.name = "Label";
     lblSet.layoutMode = "HORIZONTAL";
     lblSet.itemSpacing = 24;
@@ -622,39 +563,39 @@ export async function generateComponentsPage(msg) {
     lblSet.primaryAxisSizingMode = "AUTO";
     lblSet.counterAxisSizingMode = "AUTO";
     lblSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    bindFill(lblSet, "white");
+    bindFill(lblSet, "white", colorVarMap);
     lblSet.cornerRadius = 12;
-    bindRadiusByValue(lblSet);
+    bindRadiusByValue(lblSet, radiusVarByValueComp);
     lblSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     lblSet.strokeWeight = 1;
-    bindBorderWidth(lblSet);
-    bindCompSpacing(lblSet);
+    bindBorderWidth(lblSet, borderVarMapComp);
+    bindCompSpacing(lblSet, spacingVarMapComp);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // DROPDOWN (component set with State property)
   // Same structure as Floating Label input but with a chevron arrow
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Dropdown");
-  var dropdownStates = [
+  sectionTitle(frame, "Dropdown");
+  const dropdownStates = [
     { label: "Default",  borderColor: { r: 0.8, g: 0.8, b: 0.8 }, strokeW: 1.5, borderVar: "border/default" },
     { label: "Focused",  borderColor: hexToFigma("#000000"), strokeW: 2, borderVar: "focus/border" },
     { label: "Error",    borderColor: hexToFigma("#E32E22"), strokeW: 1.5, borderVar: "error/border" },
     { label: "Disabled", borderColor: { r: 0.88, g: 0.88, b: 0.88 }, strokeW: 1, borderVar: "border/default" },
   ];
 
-  var chevronImageHash = figma.createImage(
+  const chevronImageHash = figma.createImage(
     figma.base64Decode("iVBORw0KGgoAAAANSUhEUgAAABEAAAAKCAMAAABlokWQAAAAUVBMVEUAAAAmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJibJjcPCAAAAGnRSTlMA12X77M24LBMG5INzXkgZ9M7FwKaZUU80D09PB/wAAABWSURBVAjXRchHDsAgAMTAJRBI79X/f2gUhMAna2TMrNJsjBx1k6FZcQpdobemC9Jj2dsIrWcJ/0wWH8ljJ8UuOCSdcCs1Qq8eRuUq2KAq8FOC0uCGdB+C4gRExbf0IwAAAABJRU5ErkJggg==")
   ).hash;
 
-  var allDropComps = [];
-  for (var dsi = 0; dsi < dropdownStates.length; dsi++) {
-    var dst = dropdownStates[dsi];
-    var dIsError = dst.label === "Error";
-    var dIsDisabled = dst.label === "Disabled";
+  const allDropComps = [];
+  for (let dsi = 0; dsi < dropdownStates.length; dsi++) {
+    const dst = dropdownStates[dsi];
+    const dIsError = dst.label === "Error";
+    const dIsDisabled = dst.label === "Disabled";
 
 
-    var dropComp = figma.createComponent();
+    const dropComp = figma.createComponent();
     dropComp.name = "State=" + dst.label;
     dropComp.resize(260, 44);
     dropComp.layoutMode = "VERTICAL";
@@ -664,7 +605,7 @@ export async function generateComponentsPage(msg) {
     dropComp.fills = [];
 
     // form-field wrapper
-    var dFormField = figma.createFrame();
+    const dFormField = figma.createFrame();
     dFormField.name = "form-field";
     dFormField.layoutMode = "VERTICAL";
     dFormField.primaryAxisSizingMode = "AUTO";
@@ -672,7 +613,7 @@ export async function generateComponentsPage(msg) {
     dFormField.fills = [];
 
     // field-wrapper
-    var dFieldWrapper = figma.createFrame();
+    const dFieldWrapper = figma.createFrame();
     dFieldWrapper.name = "field-wrapper";
     dFieldWrapper.layoutMode = "VERTICAL";
     dFieldWrapper.primaryAxisSizingMode = "AUTO";
@@ -680,7 +621,7 @@ export async function generateComponentsPage(msg) {
     dFieldWrapper.fills = [];
 
     // field — the styled select element
-    var dField = figma.createFrame();
+    const dField = figma.createFrame();
     dField.name = "field";
     dField.resize(260, 44);
     dField.layoutMode = "HORIZONTAL";
@@ -690,16 +631,16 @@ export async function generateComponentsPage(msg) {
     dField.paddingLeft = 14; dField.paddingRight = 14;
     dField.paddingTop = 10; dField.paddingBottom = 10;
     dField.cornerRadius = defaultRadius;
-    bindRadius(dField);
+    bindRadius(dField, defaultRadiusVar);
     dField.fills = [{ type: "SOLID", color: dIsDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-    if (!dIsDisabled) bindFill(dField, "white");
+    if (!dIsDisabled) bindFill(dField, "white", colorVarMap);
     dField.strokes = [{ type: "SOLID", color: dst.borderColor }];
-    bindStroke(dField, dst.borderVar);
+    bindStroke(dField, dst.borderVar, colorVarMap);
     dField.strokeWeight = dst.strokeW;
-    bindBorderWidth(dField);
+    bindBorderWidth(dField, borderVarMapComp);
 
     // Select text (placeholder)
-    var dText = figma.createText();
+    const dText = figma.createText();
     if (inputStyle) {
       await dText.setTextStyleIdAsync(inputStyle.id);
     } else {
@@ -708,21 +649,21 @@ export async function generateComponentsPage(msg) {
       dText.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
     }
     dText.characters = dIsDisabled ? "Disabled" : "Select option";
-    bindFill(dText, "focus/color");
-    if (dIsDisabled) { dText.opacity = 0.5; bindOpacity(dText); }
+    bindFill(dText, "focus/color", colorVarMap);
+    if (dIsDisabled) { dText.opacity = 0.5; bindOpacity(dText, opacityVarMapComp); }
     dField.appendChild(dText);
     dText.layoutSizingHorizontal = "FILL";
 
     // Chevron arrow (base64 PNG)
-    var chevron = figma.createRectangle();
+    const chevron = figma.createRectangle();
     chevron.name = "icon-chevron";
     chevron.resize(17, 10);
     chevron.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: chevronImageHash }];
     chevron.exportSettings = STANDARD_EXPORT_SETTINGS;
-    if (dIsDisabled) { chevron.opacity = 0.5; bindOpacity(chevron); }
+    if (dIsDisabled) { chevron.opacity = 0.5; bindOpacity(chevron, opacityVarMapComp); }
     dField.appendChild(chevron);
 
-    bindCompSpacing(dField);
+    bindCompSpacing(dField, spacingVarMapComp);
     dFieldWrapper.appendChild(dField);
     dField.layoutSizingHorizontal = "FILL";
 
@@ -735,7 +676,7 @@ export async function generateComponentsPage(msg) {
     allDropComps.push(dropComp);
   }
 
-  var dropSet = figma.combineAsVariants(allDropComps, frame);
+  const dropSet = figma.combineAsVariants(allDropComps, frame);
   dropSet.name = "Dropdown";
   dropSet.layoutMode = "HORIZONTAL";
   dropSet.itemSpacing = 24;
@@ -744,14 +685,14 @@ export async function generateComponentsPage(msg) {
   dropSet.primaryAxisSizingMode = "AUTO";
   dropSet.counterAxisSizingMode = "AUTO";
   dropSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-  bindFill(dropSet, "white");
+  bindFill(dropSet, "white", colorVarMap);
   dropSet.cornerRadius = 12;
-  bindRadiusByValue(dropSet);
+  bindRadiusByValue(dropSet, radiusVarByValueComp);
   dropSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   dropSet.strokeWeight = 1;
-  bindBorderWidth(dropSet);
-  bindCompSpacing(dropSet);
-  for (var dvi = 0; dvi < dropSet.children.length; dvi++) {
+  bindBorderWidth(dropSet, borderVarMapComp);
+  bindCompSpacing(dropSet, spacingVarMapComp);
+  for (let dvi = 0; dvi < dropSet.children.length; dvi++) {
     dropSet.children[dvi].layoutSizingHorizontal = "FILL";
   }
   dropSet.layoutSizingHorizontal = "FILL";
@@ -759,35 +700,35 @@ export async function generateComponentsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // IMAGE WRAPPERS (component set with Radius property)
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Images");
+  sectionTitle(frame, "Images");
 
   // Look up the Radius variable collection and build a name→variable map
-  var radiusCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) {
+  const radiusCols = (await figma.variables.getLocalVariableCollectionsAsync()).filter(function(c) {
     return c.name.toLowerCase().indexOf("radius") !== -1;
   });
-  var radiusVarMap = {};
+  const radiusVarMap = {};
   if (radiusCols.length > 0) {
-    var radiusCol = radiusCols[0];
-    var allRadiusVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) {
+    const radiusCol = radiusCols[0];
+    const allRadiusVars = (await figma.variables.getLocalVariablesAsync()).filter(function(v) {
       return v.variableCollectionId === radiusCol.id && v.resolvedType === "FLOAT";
     });
-    for (var rvi = 0; rvi < allRadiusVars.length; rvi++) {
-      var rv = allRadiusVars[rvi];
+    for (let rvi = 0; rvi < allRadiusVars.length; rvi++) {
+      const rv = allRadiusVars[rvi];
       // Use the last segment of the variable name as key (e.g. "radius/sm" → "sm")
-      var rvName = rv.name.split("/").pop();
+      const rvName = rv.name.split("/").pop();
       radiusVarMap[rvName] = rv;
     }
   }
 
   // Build radius entries from the variable map, falling back to radiusData config
-  var imgRadii = [];
-  var usedRadiusNames = {};
+  const imgRadii = [];
+  const usedRadiusNames = {};
   // Prefer variables (they carry the binding)
-  for (var rvk in radiusVarMap) {
+  for (const rvk in radiusVarMap) {
     if (radiusVarMap.hasOwnProperty(rvk)) {
-      var rvVal = 0;
+      let rvVal = 0;
       try {
-        var modeId = radiusCols[0].modes[0].modeId;
+        const modeId = radiusCols[0].modes[0].modeId;
         rvVal = parseFloat(radiusVarMap[rvk].valuesByMode[modeId]) || 0;
       } catch(e) {}
       imgRadii.push({ label: rvk, value: rvVal, variable: radiusVarMap[rvk] });
@@ -796,7 +737,7 @@ export async function generateComponentsPage(msg) {
   }
   // Fill in any from config that aren't already covered
   if (imgRadii.length === 0) {
-    for (var iri = 0; iri < radiusData.length; iri++) {
+    for (let iri = 0; iri < radiusData.length; iri++) {
       if (!usedRadiusNames[radiusData[iri].name]) {
         imgRadii.push({ label: radiusData[iri].name, value: parseFloat(radiusData[iri].value) || 0, variable: null });
       }
@@ -805,24 +746,24 @@ export async function generateComponentsPage(msg) {
   // Always add a "full" (circle) variant
   imgRadii.push({ label: "full", value: 9999, variable: null });
 
-  var placeholderHash = createPlaceholderImageHash(0xE8, 0xEB, 0xED);
-  var IMG_W = 240, IMG_H = 160;
+  const placeholderHash = createPlaceholderImageHash(0xE8, 0xEB, 0xED);
+  const IMG_W = 240, IMG_H = 160;
 
-  var allImgComps = [];
-  for (var imri = 0; imri < imgRadii.length; imri++) {
-    var imgR = imgRadii[imri];
+  const allImgComps = [];
+  for (let imri = 0; imri < imgRadii.length; imri++) {
+    const imgR = imgRadii[imri];
 
-    var isFull = imgR.label === "full";
-    var compW = isFull ? IMG_H : IMG_W; // square for "full" so it's a perfect circle
-    var compH = IMG_H;
+    const isFull = imgR.label === "full";
+    const compW = isFull ? IMG_H : IMG_W; // square for "full" so it's a perfect circle
+    const compH = IMG_H;
 
-    var imgComp = figma.createComponent();
+    const imgComp = figma.createComponent();
     imgComp.name = "Radius=" + imgR.label;
     imgComp.resize(compW, compH);
     imgComp.clipsContent = true;
     imgComp.fills = [];
 
-    var appliedR = isFull ? compH / 2 : imgR.value;
+    const appliedR = isFull ? compH / 2 : imgR.value;
     imgComp.cornerRadius = appliedR;
 
     // Bind corner radius to the Figma variable if available
@@ -836,7 +777,7 @@ export async function generateComponentsPage(msg) {
     }
 
     // Child rectangle with placeholder image — user replaces the image fill
-    var imgRect = figma.createRectangle();
+    const imgRect = figma.createRectangle();
     imgRect.name = "image";
     imgRect.resize(compW, compH);
     imgRect.x = 0; imgRect.y = 0;
@@ -849,7 +790,7 @@ export async function generateComponentsPage(msg) {
   }
 
   if (allImgComps.length > 0) {
-    var imgSet = figma.combineAsVariants(allImgComps, frame);
+    const imgSet = figma.combineAsVariants(allImgComps, frame);
     imgSet.name = "Image";
     imgSet.layoutMode = "HORIZONTAL";
     imgSet.itemSpacing = 24;
@@ -858,22 +799,22 @@ export async function generateComponentsPage(msg) {
     imgSet.primaryAxisSizingMode = "AUTO";
     imgSet.counterAxisSizingMode = "AUTO";
     imgSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    bindFill(imgSet, "white");
+    bindFill(imgSet, "white", colorVarMap);
     imgSet.cornerRadius = 12;
-    bindRadiusByValue(imgSet);
+    bindRadiusByValue(imgSet, radiusVarByValueComp);
     imgSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     imgSet.strokeWeight = 1;
-    bindBorderWidth(imgSet);
-    bindCompSpacing(imgSet);
+    bindBorderWidth(imgSet, borderVarMapComp);
+    bindCompSpacing(imgSet, spacingVarMapComp);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // BACKGROUND IMAGE COMPONENT
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Background Image");
+  sectionTitle(frame, "Background Image");
 
-  var bgImgPlaceholder = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
-  var bgImgComp = figma.createComponent();
+  const bgImgPlaceholder = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
+  const bgImgComp = figma.createComponent();
   bgImgComp.name = "Background Image";
   bgImgComp.setPluginData("role", "background-image");
   bgImgComp.resize(400, 300);

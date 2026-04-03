@@ -2,7 +2,7 @@
 
 // ── Color math (ES5) ─────────────────────────────────────────────────────────
 export function hexToRgb255(hex) {
-  var h = hex.replace("#", "");
+  let h = hex.replace("#", "");
   if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
   return {
     r: parseInt(h.slice(0,2), 16),
@@ -13,10 +13,10 @@ export function hexToRgb255(hex) {
 
 export function rgbToHsl(r, g, b) {
   r /= 255; g /= 255; b /= 255;
-  var max = Math.max(r, g, b), min = Math.min(r, g, b);
-  var h = 0, s = 0, l = (max + min) / 2;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
   if (max !== min) {
-    var d = max - min;
+    const d = max - min;
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
     if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
     else if (max === g) h = ((b - r) / d + 2) / 6;
@@ -27,11 +27,11 @@ export function rgbToHsl(r, g, b) {
 
 export function hslToRgb01(h, s, l) {
   h /= 360; s /= 100; l /= 100;
-  var r, g, b;
+  let r, g, b;
   if (s === 0) { r = g = b = l; }
   else {
-    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    var p = 2 * l - q;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
     r = hue2rgb(p, q, h + 1/3);
     g = hue2rgb(p, q, h);
     b = hue2rgb(p, q, h - 1/3);
@@ -53,23 +53,23 @@ export function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 // Generate 10-shade palette from a base hue/saturation
 // Lightness curve: 50=97, 100=93, 200=86, 300=75, 400=62, 500=50, 600=42, 700=33, 800=24, 900=15
 export function generateShadeScale(h, s, baseL) {
-  var SHADES = ["50","100","200","300","400","500","600","700","800","900"];
-  var TARGET_L = [97, 93, 86, 75, 62, 50, 42, 33, 24, 15];
+  const SHADES = ["50","100","200","300","400","500","600","700","800","900"];
+  const TARGET_L = [97, 93, 86, 75, 62, 50, 42, 33, 24, 15];
   // Shift curve so input lightness lands at shade 500
-  var delta = baseL - 50;
-  var SAT_CURVE = [0.3, 0.4, 0.55, 0.7, 0.85, 1.0, 0.95, 0.9, 0.85, 0.8];
-  var result = {};
-  for (var i = 0; i < SHADES.length; i++) {
-    var tl = clamp(TARGET_L[i] + delta * (1 - Math.abs(i - 5) / 5), 3, 98);
-    var ts = clamp(s * SAT_CURVE[i], 0, 100);
-    var rgb = hslToRgb01(h, ts, tl);
+  const delta = baseL - 50;
+  const SAT_CURVE = [0.3, 0.4, 0.55, 0.7, 0.85, 1.0, 0.95, 0.9, 0.85, 0.8];
+  const result = {};
+  for (let i = 0; i < SHADES.length; i++) {
+    const tl = clamp(TARGET_L[i] + delta * (1 - Math.abs(i - 5) / 5), 3, 98);
+    const ts = clamp(s * SAT_CURVE[i], 0, 100);
+    const rgb = hslToRgb01(h, ts, tl);
     result[SHADES[i]] = { "$type": "color", "$value": { colorSpace: "srgb", components: [rgb[0], rgb[1], rgb[2]], alpha: 1 } };
   }
   return result;
 }
 
 // ── Default palettes (Tailwind-inspired) ─────────────────────────────────────
-export var DEFAULT_PALETTES = {
+export const DEFAULT_PALETTES = {
   purple: { h: 271, s: 81, l: 56 },
   green:  { h: 142, s: 71, l: 45 },
   red:    { h: 0,   s: 84, l: 60 },
@@ -78,12 +78,12 @@ export var DEFAULT_PALETTES = {
 };
 
 function hexToHsl(hex) {
-  var rgb = hexToRgb255(hex);
+  const rgb = hexToRgb255(hex);
   return rgbToHsl(rgb.r, rgb.g, rgb.b);
 }
 
 export function generateColorTokens(colorOpts) {
-  var data = {};
+  const data = {};
 
   // User-defined brand colors (raw hex, no shades)
   data.primary = makeColorHex(colorOpts.primary);
@@ -91,21 +91,21 @@ export function generateColorTokens(colorOpts) {
   if (colorOpts.tertiary) data.tertiary = makeColorHex(colorOpts.tertiary);
 
   // Custom user-defined colors
-  if (colorOpts.custom && colorOpts.custom.length) {
-    for (var ci = 0; ci < colorOpts.custom.length; ci++) {
-      var cc = colorOpts.custom[ci];
+  if (colorOpts.custom?.length) {
+    for (let ci = 0; ci < colorOpts.custom.length; ci++) {
+      const cc = colorOpts.custom[ci];
       if (cc.name && cc.hex) {
-        var safeKey = cc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const safeKey = cc.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
         if (safeKey) data[safeKey] = makeColorHex(cc.hex);
       }
     }
   }
 
   // Auto-include defaults if not already defined by user
-  var hasCustom = function(name) {
+  const hasCustom = function(name) {
     if (!colorOpts.custom) return false;
-    for (var i = 0; i < colorOpts.custom.length; i++) {
-      var k = colorOpts.custom[i].name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    for (let i = 0; i < colorOpts.custom.length; i++) {
+      const k = colorOpts.custom[i].name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       if (k === name) return true;
     }
     return false;
@@ -134,20 +134,20 @@ function makeColor(r, g, b) {
 }
 
 function makeColorHex(hex) {
-  var c = hexToRgb255(hex);
+  const c = hexToRgb255(hex);
   return makeColor(c.r / 255, c.g / 255, c.b / 255);
 }
 
 function makeColorHSL(h, s, l) {
-  var rgb = hslToRgb01(h, s, l);
+  const rgb = hslToRgb01(h, s, l);
   return { "$type": "color", "$value": { colorSpace: "srgb", components: rgb, alpha: 1 } };
 }
 
 export function generateSemanticColors(colorOpts) {
-  var pri = hexToHsl(colorOpts.primary);
-  var h = pri.h, s = pri.s;
+  const pri = hexToHsl(colorOpts.primary);
+  const h = pri.h, s = pri.s;
 
-  var result = {
+  const result = {
     brand: {
       primary: makeColorHSL(h, s, 50)
     },
@@ -164,11 +164,11 @@ export function generateSemanticColors(colorOpts) {
 
   // Only include secondary/tertiary brand colors if user explicitly set them
   if (colorOpts.secondary) {
-    var sec = hexToHsl(colorOpts.secondary);
+    const sec = hexToHsl(colorOpts.secondary);
     result.brand.secondary = makeColorHSL(sec.h, sec.s, 55);
   }
   if (colorOpts.tertiary) {
-    var ter = hexToHsl(colorOpts.tertiary);
+    const ter = hexToHsl(colorOpts.tertiary);
     result.brand.accent = makeColorHSL(ter.h, ter.s, 50);
   }
 
@@ -176,9 +176,9 @@ export function generateSemanticColors(colorOpts) {
 }
 
 export function generateSpacingData(spacingList) {
-  var tokens = {};
-  for (var i = 0; i < spacingList.length; i++) {
-    var s = spacingList[i];
+  const tokens = {};
+  for (let i = 0; i < spacingList.length; i++) {
+    const s = spacingList[i];
     if (s.name) {
       tokens[s.name] = { "$type": "dimension", "$value": { value: parseFloat(s.value) || 0, unit: "px" } };
     }
@@ -187,9 +187,9 @@ export function generateSpacingData(spacingList) {
 }
 
 export function generateRadiusData(radiusList) {
-  var tokens = {};
-  for (var i = 0; i < radiusList.length; i++) {
-    var r = radiusList[i];
+  const tokens = {};
+  for (let i = 0; i < radiusList.length; i++) {
+    const r = radiusList[i];
     if (r.name) {
       tokens[r.name] = { "$type": "dimension", "$value": { value: parseFloat(r.value) || 0, unit: "px" } };
     }
@@ -198,9 +198,9 @@ export function generateRadiusData(radiusList) {
 }
 
 export function generateBorderData(bordersList) {
-  var tokens = {};
-  for (var i = 0; i < bordersList.length; i++) {
-    var b = bordersList[i];
+  const tokens = {};
+  for (let i = 0; i < bordersList.length; i++) {
+    const b = bordersList[i];
     if (b.name) {
       tokens[b.name] = { "$type": "dimension", "$value": { value: parseFloat(b.value) || 0, unit: "px" } };
     }
@@ -209,9 +209,9 @@ export function generateBorderData(bordersList) {
 }
 
 export function generateOpacityData() {
-  var tokens = {};
+  const tokens = {};
   tokens[0] = { "$type": "number", "$value": 0 };
-  for (var i = 5; i <= 95; i += 5) {
+  for (let i = 5; i <= 95; i += 5) {
     tokens[i] = { "$type": "number", "$value": i / 100 };
   }
   tokens[100] = { "$type": "number", "$value": 1 };
@@ -219,9 +219,9 @@ export function generateOpacityData() {
 }
 
 export function generateShadowsData(shadowsList) {
-  var tokens = {};
-  for (var i = 0; i < shadowsList.length; i++) {
-    var s = shadowsList[i];
+  const tokens = {};
+  for (let i = 0; i < shadowsList.length; i++) {
+    const s = shadowsList[i];
     if (s.name) {
       tokens[s.name] = { "$type": "string", "$value": s.value || "" };
     }
@@ -230,9 +230,9 @@ export function generateShadowsData(shadowsList) {
 }
 
 export function generateZIndexData(zindexList) {
-  var tokens = {};
-  for (var i = 0; i < zindexList.length; i++) {
-    var z = zindexList[i];
+  const tokens = {};
+  for (let i = 0; i < zindexList.length; i++) {
+    const z = zindexList[i];
     if (z.name) {
       tokens[z.name] = { "$type": "number", "$value": parseFloat(z.value) || 0 };
     }
@@ -255,15 +255,15 @@ export function generateGridData() {
   // sm: 8 cols, 16px gutter, 24px margin
   // md: 12 cols, 24px gutter, 32px margin
   // lg: 12 cols, 32px gutter, auto margin (0 = auto)
-  var data = {
+  const data = {
     "grid/columns":   { xs: 4,  sm: 8,  md: 12, lg: 12 },
     "grid/gutter":    { xs: 16, sm: 16, md: 24, lg: 32 },
     "grid/margin":    { xs: 16, sm: 24, md: 32, lg: 0 }
   };
   // Column span widths as percentages of container (span / totalCols * 100)
   // These represent the fractional width each span occupies
-  for (var span = 1; span <= 12; span++) {
-    var key = "grid/col-" + span;
+  for (let span = 1; span <= 12; span++) {
+    const key = "grid/col-" + span;
     data[key] = {
       xs: Math.round((span / 4)  * 10000) / 100,  // % of 4-col grid
       sm: Math.round((span / 8)  * 10000) / 100,  // % of 8-col grid
@@ -275,35 +275,35 @@ export function generateGridData() {
 }
 
 export function generateTypographyData(typo, fontFamilies) {
-  var t = { family: {}, size: {}, weight: {}, "line-height": {} };
+  const t = { family: {}, size: {}, weight: {}, "line-height": {} };
 
   // Font families from the text styles config (dynamic — supports any number)
-  var famKeys = Object.keys(fontFamilies || {});
-  for (var fki = 0; fki < famKeys.length; fki++) {
+  const famKeys = Object.keys(fontFamilies || {});
+  for (let fki = 0; fki < famKeys.length; fki++) {
     if (fontFamilies[famKeys[fki]]) t.family[famKeys[fki]] = { "$type": "fontFamily", "$value": fontFamilies[famKeys[fki]] };
   }
 
-  for (var i = 0; i < typo.sizes.length; i++) {
-    var s = typo.sizes[i];
+  for (let i = 0; i < typo.sizes.length; i++) {
+    const s = typo.sizes[i];
     if (s.name) t.size[s.name] = { "$type": "dimension", "$value": { value: parseFloat(s.value) || 0, unit: "px" } };
   }
-  for (var j = 0; j < typo.weights.length; j++) {
-    var w = typo.weights[j];
+  for (let j = 0; j < typo.weights.length; j++) {
+    const w = typo.weights[j];
     if (w.name) t.weight[w.name] = { "$type": "number", "$value": parseFloat(w.value) || 0 };
   }
-  for (var k = 0; k < typo.lineHeights.length; k++) {
-    var l = typo.lineHeights[k];
+  for (let k = 0; k < typo.lineHeights.length; k++) {
+    const l = typo.lineHeights[k];
     if (l.name) t["line-height"][l.name] = { "$type": "number", "$value": parseFloat(l.value) || 0 };
   }
   return t;
 }
 
 export function generateTextStylesData(textStyles) {
-  var data = {};
-  for (var i = 0; i < textStyles.length; i++) {
-    var s = textStyles[i];
-    var group = s.group || "body";
-    var name = s.name || "default";
+  const data = {};
+  for (let i = 0; i < textStyles.length; i++) {
+    const s = textStyles[i];
+    const group = s.group || "body";
+    const name = s.name || "default";
     if (!data[group]) data[group] = {};
     data[group][name] = {
       "$type": "textStyle",

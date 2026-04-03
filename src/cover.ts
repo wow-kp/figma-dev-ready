@@ -3,8 +3,8 @@ import { getAuditPages } from './utils';
 
 export async function generateCover(info) {
   // Find the cover page
-  var coverPage = null;
-  for (var i = 0; i < figma.root.children.length; i++) {
+  let coverPage = null;
+  for (let i = 0; i < figma.root.children.length; i++) {
     if (figma.root.children[i].name.toLowerCase().indexOf("cover") !== -1) {
       coverPage = figma.root.children[i]; break;
     }
@@ -23,26 +23,26 @@ export async function generateCover(info) {
   await figma.loadFontAsync({ family: "Inter", style: "Medium" });
 
   // Remove existing cover frame if regenerating
-  var existing = coverPage.children.filter(function(n) { return n.name === "Cover"; });
+  const existing = coverPage.children.filter(function(n) { return n.name === "Cover"; });
   existing.forEach(function(n) { try { n.remove(); } catch(e) {} });
 
   // Status colours
-  var STATUS_COLORS = {
+  const STATUS_COLORS = {
     "In Progress":       { bg: { r:0.988, g:0.886, b:0.686 }, text: { r:0.541, g:0.361, b:0.000 } },
     "Ready for Review":  { bg: { r:0.537, g:0.706, b:0.980 }, text: { r:0.067, g:0.251, b:0.620 } },
     "Dev Ready":         { bg: { r:0.651, g:0.890, b:0.631 }, text: { r:0.067, g:0.392, b:0.114 } },
   };
-  var statusCol = STATUS_COLORS[info.status] || STATUS_COLORS["In Progress"];
+  const statusCol = STATUS_COLORS[info.status] || STATUS_COLORS["In Progress"];
 
-  var W = 1440, H = 960;
-  var frame = figma.createFrame();
+  const W = 1440, H = 960;
+  const frame = figma.createFrame();
   frame.name = "cover";
   frame.resize(W, H);
   frame.fills = [{ type: "SOLID", color: { r: 0.067, g: 0.067, b: 0.094 } }];
   coverPage.appendChild(frame);
 
   // Accent bar (left edge)
-  var accent = figma.createRectangle();
+  const accent = figma.createRectangle();
   accent.name = "accent-bar";
   accent.resize(6, H);
   accent.x = 0; accent.y = 0;
@@ -50,7 +50,7 @@ export async function generateCover(info) {
   frame.appendChild(accent);
 
   // Logo placeholder
-  var logoFrame = figma.createFrame();
+  const logoFrame = figma.createFrame();
   logoFrame.name = "logo-placeholder";
   logoFrame.resize(80, 80);
   logoFrame.x = 80; logoFrame.y = 80;
@@ -60,7 +60,7 @@ export async function generateCover(info) {
   logoFrame.strokeWeight = 1.5;
   frame.appendChild(logoFrame);
 
-  var logoLabel = figma.createText();
+  const logoLabel = figma.createText();
   logoLabel.fontName = { family: "Inter", style: "Medium" };
   logoLabel.fontSize = 11;
   logoLabel.characters = "Logo";
@@ -70,7 +70,7 @@ export async function generateCover(info) {
   frame.appendChild(logoLabel);
 
   // Project name
-  var projectText = figma.createText();
+  const projectText = figma.createText();
   projectText.name = "project-name";
   projectText.fontName = { family: "Inter", style: "Bold" };
   projectText.fontSize = 72;
@@ -81,7 +81,7 @@ export async function generateCover(info) {
   frame.appendChild(projectText);
 
   // Divider line
-  var divider = figma.createRectangle();
+  const divider = figma.createRectangle();
   divider.name = "divider";
   divider.resize(W - 160, 1);
   divider.x = 80;
@@ -90,15 +90,15 @@ export async function generateCover(info) {
   frame.appendChild(divider);
 
   // Meta row: version, date, designers
-  var metaY = divider.y + 36;
-  var metaItems = [
+  const metaY = divider.y + 36;
+  const metaItems = [
     { label: "Version",      value: info.version   },
     { label: "Last Updated", value: info.date       },
     { label: "Designer(s)",  value: info.designers  },
   ];
-  var metaX = 80;
+  let metaX = 80;
   metaItems.forEach(function(item) {
-    var lbl = figma.createText();
+    const lbl = figma.createText();
     lbl.fontName = { family: "Inter", style: "Regular" };
     lbl.fontSize = 12;
     lbl.characters = item.label.toUpperCase();
@@ -107,7 +107,7 @@ export async function generateCover(info) {
     lbl.x = metaX; lbl.y = metaY;
     frame.appendChild(lbl);
 
-    var val = figma.createText();
+    const val = figma.createText();
     val.fontName = { family: "Inter", style: "Semi Bold" };
     val.fontSize = 20;
     val.characters = item.value;
@@ -119,9 +119,9 @@ export async function generateCover(info) {
   });
 
   // Status badge
-  var badgeW = 200, badgeH = 44, badgeX = W - 80 - badgeW, badgeY = metaY;
+  const badgeW = 200, badgeH = 44, badgeX = W - 80 - badgeW, badgeY = metaY;
 
-  var badgeBg = figma.createRectangle();
+  const badgeBg = figma.createRectangle();
   badgeBg.name = "status-badge-bg";
   badgeBg.resize(badgeW, badgeH);
   badgeBg.x = badgeX; badgeBg.y = badgeY;
@@ -129,7 +129,7 @@ export async function generateCover(info) {
   badgeBg.fills = [{ type: "SOLID", color: statusCol.bg }];
   frame.appendChild(badgeBg);
 
-  var badgeText = figma.createText();
+  const badgeText = figma.createText();
   badgeText.fontName = { family: "Inter", style: "Bold" };
   badgeText.fontSize = 14;
   badgeText.characters = info.status;
@@ -146,19 +146,19 @@ export async function generateCover(info) {
 export async function updateCoverStatus(msg) {
   try {
     await figma.loadFontAsync({ family: "Inter", style: "Bold" });
-    var STATUS_COLORS = {
+    const STATUS_COLORS = {
       "In Progress":       { bg: { r:0.988, g:0.886, b:0.686 }, text: { r:0.541, g:0.361, b:0.000 } },
       "Ready for Review":  { bg: { r:0.537, g:0.706, b:0.980 }, text: { r:0.067, g:0.251, b:0.620 } },
       "Dev Ready":         { bg: { r:0.651, g:0.890, b:0.631 }, text: { r:0.067, g:0.392, b:0.114 } },
     };
-    var statusCol = STATUS_COLORS[msg.status] || STATUS_COLORS["In Progress"];
-    var coverPage = figma.root.children.filter(function(p) {
+    const statusCol = STATUS_COLORS[msg.status] || STATUS_COLORS["In Progress"];
+    const coverPage = figma.root.children.filter(function(p) {
       return p.name.replace(/[^a-zA-Z]/g, "").toLowerCase().indexOf("cover") !== -1;
     })[0];
     if (coverPage) {
-      var coverFrame = coverPage.children.filter(function(n) { return n.name === "Cover"; })[0];
+      const coverFrame = coverPage.children.filter(function(n) { return n.name === "Cover"; })[0];
       if (coverFrame) {
-        var badgeBg = null, badgeText = null;
+        let badgeBg = null, badgeText = null;
         coverFrame.children.forEach(function(n) {
           if (n.name === "status-badge-bg") badgeBg = n;
           if (n.type === "TEXT" && n.characters && STATUS_COLORS[n.characters]) badgeText = n;
@@ -182,8 +182,8 @@ export async function updateCoverStatus(msg) {
       }
     }
     // Set Figma's built-in dev status on Desktop & Mobile top-level frames
-    var auditPages = getAuditPages();
-    var devStatus = msg.status === "Dev Ready" ? { type: "READY_FOR_DEV" } : null;
+    const auditPages = getAuditPages();
+    const devStatus = msg.status === "Dev Ready" ? { type: "READY_FOR_DEV" } : null;
     auditPages.forEach(function(pg) {
       pg.children.forEach(function(frame) {
         if (frame.type !== "FRAME" && frame.type !== "SECTION") return;

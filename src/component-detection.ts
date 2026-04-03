@@ -53,7 +53,7 @@ export interface ChunkData {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-var TYPE_MAP: { [k: string]: string } = {
+const TYPE_MAP: { [k: string]: string } = {
   FRAME: "F", TEXT: "T", RECTANGLE: "R", VECTOR: "V", INSTANCE: "I",
   GROUP: "G", SECTION: "S", ELLIPSE: "E", LINE: "L", POLYGON: "P",
   COMPONENT: "F", COMPONENT_SET: "F", STAR: "P", BOOLEAN_OPERATION: "F"
@@ -65,8 +65,8 @@ function nodeTypeCode(type: string): string {
 
 function firstSolidFillHex(node: SceneNode): string | null {
   if (!("fills" in node) || !Array.isArray(node.fills)) return null;
-  for (var i = 0; i < node.fills.length; i++) {
-    var fill = node.fills[i];
+  for (let i = 0; i < node.fills.length; i++) {
+    const fill = node.fills[i];
     if (fill.type === "SOLID" && fill.visible !== false) {
       return rgb01ToHex(fill.color.r, fill.color.g, fill.color.b);
     }
@@ -76,8 +76,8 @@ function firstSolidFillHex(node: SceneNode): string | null {
 
 function firstSolidStrokeHex(node: SceneNode): string | null {
   if (!("strokes" in node) || !Array.isArray(node.strokes)) return null;
-  for (var i = 0; i < node.strokes.length; i++) {
-    var stroke = node.strokes[i];
+  for (let i = 0; i < node.strokes.length; i++) {
+    const stroke = node.strokes[i];
     if (stroke.type === "SOLID" && stroke.visible !== false) {
       return rgb01ToHex(stroke.color.r, stroke.color.g, stroke.color.b);
     }
@@ -87,7 +87,7 @@ function firstSolidStrokeHex(node: SceneNode): string | null {
 
 function hasImageFill(node: SceneNode): boolean {
   if (!("fills" in node) || !Array.isArray(node.fills)) return false;
-  for (var i = 0; i < node.fills.length; i++) {
+  for (let i = 0; i < node.fills.length; i++) {
     if (node.fills[i].type === "IMAGE" && node.fills[i].visible !== false) return true;
   }
   return false;
@@ -95,8 +95,8 @@ function hasImageFill(node: SceneNode): boolean {
 
 function hasShadowEffect(node: SceneNode): boolean {
   if (!("effects" in node) || !node.effects) return false;
-  for (var i = 0; i < node.effects.length; i++) {
-    var t = node.effects[i].type;
+  for (let i = 0; i < node.effects.length; i++) {
+    const t = node.effects[i].type;
     if ((t === "DROP_SHADOW" || t === "INNER_SHADOW") && node.effects[i].visible !== false) return true;
   }
   return false;
@@ -125,8 +125,8 @@ function isFigmaDefaultName(name: string): boolean {
  * componentType is the detected component type (e.g., "button", "input", "card").
  */
 function semanticLayerName(node: SceneNode, componentType: string): string {
-  var name = node.name || "";
-  var nameLower = name.toLowerCase();
+  const name = node.name || "";
+  const nameLower = name.toLowerCase();
 
   // If already clean kebab-case and not a Figma default, keep it
   if (/^[a-z][a-z0-9-]*$/.test(name) && !isFigmaDefaultName(name)) {
@@ -148,12 +148,12 @@ function semanticLayerName(node: SceneNode, componentType: string): string {
     // Derive from component type
     if (componentType === "button") return "label";
     if (componentType === "input") {
-      var txt = (node as TextNode).characters || "";
+      const txt = (node as TextNode).characters || "";
       if (/enter|type|search|email|password/i.test(txt)) return "placeholder";
       return "label";
     }
     if (componentType === "card") {
-      var fs = typeof (node as TextNode).fontSize === "number" ? (node as TextNode).fontSize : 14;
+      const fs = typeof (node as TextNode).fontSize === "number" ? (node as TextNode).fontSize : 14;
       if (fs >= 18) return "title";
       return "description";
     }
@@ -177,15 +177,15 @@ function semanticLayerName(node: SceneNode, componentType: string): string {
     if (/background|bg/i.test(nameLower)) return "background";
     if ((node as any).width > (node as any).height * 5) return "divider";
     // Check if it has stroke but no fill → likely an outline/border element
-    var hasFill = firstSolidFillHex(node) !== null || hasImageFill(node);
-    var hasStroke = firstSolidStrokeHex(node) !== null;
+    const hasFill = firstSolidFillHex(node) !== null || hasImageFill(node);
+    const hasStroke = firstSolidStrokeHex(node) !== null;
     if (hasStroke && !hasFill) return "border";
     return "background";
   }
 
   // Frames/groups — use original name if meaningful, else derive from context
   if (!isFigmaDefaultName(name) && name.length > 0) {
-    var kebab = toKebab(name);
+    const kebab = toKebab(name);
     if (kebab.length > 0) return kebab;
   }
 
@@ -208,8 +208,8 @@ function renameComponentLayers(node: SceneNode, componentType: string, depth: nu
   }
 
   if ("children" in node && (node as any).children) {
-    var ch = (node as any).children as SceneNode[];
-    for (var ci = 0; ci < ch.length; ci++) {
+    const ch = (node as any).children as SceneNode[];
+    for (let ci = 0; ci < ch.length; ci++) {
       renameComponentLayers(ch[ci], componentType, depth + 1);
     }
   }
@@ -223,70 +223,70 @@ function applyResponsiveLayout(node: SceneNode, componentType: string, depth: nu
   // Only process frames (includes components)
   if (node.type !== "FRAME" && node.type !== "COMPONENT" && node.type !== "INSTANCE") return;
 
-  var frame = node as FrameNode;
+  const frame = node as FrameNode;
 
   // Skip if already has auto-layout — just recurse for child sizing
   if (frame.layoutMode !== "NONE") {
     if ("children" in frame) {
-      var ch = frame.children as SceneNode[];
-      for (var i = 0; i < ch.length; i++) {
+      const ch = frame.children as SceneNode[];
+      for (let i = 0; i < ch.length; i++) {
         applyResponsiveLayout(ch[i], componentType, depth + 1, varCache);
       }
     }
     return;
   }
 
-  var children = ("children" in frame) ? (frame.children as SceneNode[]).slice() : [];
+  let children = ("children" in frame) ? (frame.children as SceneNode[]).slice() : [];
   if (children.length === 0) return;
 
   // ── Record original geometry BEFORE any recursion changes child sizes ──
-  var frameW = (frame as any).width as number;
-  var frameH = (frame as any).height as number;
+  const frameW = (frame as any).width as number;
+  const frameH = (frame as any).height as number;
 
-  var originals: { node: SceneNode; x: number; y: number; w: number; h: number }[] = [];
-  for (var oi = 0; oi < children.length; oi++) {
-    var c = children[oi] as any;
+  const originals: { node: SceneNode; x: number; y: number; w: number; h: number }[] = [];
+  for (let oi = 0; oi < children.length; oi++) {
+    const c = children[oi] as any;
     originals.push({ node: children[oi], x: c.x, y: c.y, w: c.width || 0, h: c.height || 0 });
   }
 
   // ── Check if children can be converted to auto-layout ──
   // Children that overlap significantly should stay absolute-positioned
-  var canAutoLayout = childrenCanAutoLayout(originals);
+  const canAutoLayout = childrenCanAutoLayout(originals);
 
   if (!canAutoLayout) {
     // Keep absolute positioning — just recurse into child frames
-    for (var ri2 = 0; ri2 < children.length; ri2++) {
+    for (let ri2 = 0; ri2 < children.length; ri2++) {
       applyResponsiveLayout(children[ri2], componentType, depth + 1, varCache);
     }
     return;
   }
 
   // Recurse into children AFTER recording geometry (bottom-up)
-  for (var ri = 0; ri < children.length; ri++) {
+  for (let ri = 0; ri < children.length; ri++) {
     applyResponsiveLayout(children[ri], componentType, depth + 1, varCache);
   }
 
   // ── Infer direction from ORIGINAL positions ──
-  var direction = inferLayoutDirection(originals);
+  const direction = inferLayoutDirection(originals);
 
   // ── Sort children by position along the layout axis ──
-  var sortedOriginals = originals.slice().sort(function(a, b) {
+  const sortedOriginals = originals.slice().sort(function(a, b) {
     return direction === "VERTICAL" ? a.y - b.y : a.x - b.x;
   });
 
   // Reorder children in the frame to match spatial order
-  for (var so = 0; so < sortedOriginals.length; so++) {
+  for (let so = 0; so < sortedOriginals.length; so++) {
     try { frame.appendChild(sortedOriginals[so].node); } catch (e) {}
   }
   // Re-read children in new order
   children = (frame.children as SceneNode[]).slice();
 
   // ── Infer gap and padding from original positions ──
-  var gap = inferGap(sortedOriginals, direction);
-  var padding = inferPadding(sortedOriginals, frameW, frameH);
+  const gap = inferGap(sortedOriginals, direction);
+  const padding = inferPadding(sortedOriginals, frameW, frameH);
 
   // ── Infer alignment from original positions ──
-  var align = inferAlignment(originals, direction, frameW, frameH);
+  const align = inferAlignment(originals, direction, frameW, frameH);
 
   // ── Apply auto-layout ──
   frame.layoutMode = direction;
@@ -312,22 +312,22 @@ function applyResponsiveLayout(node: SceneNode, componentType: string, depth: nu
   }
 
   // ── Set child sizing intelligently based on original geometry ──
-  for (var si = 0; si < children.length; si++) {
-    var child = children[si];
-    var orig: { x: number; y: number; w: number; h: number } | null = null;
-    for (var fi = 0; fi < originals.length; fi++) {
+  for (let si = 0; si < children.length; si++) {
+    const child = children[si];
+    let orig: { x: number; y: number; w: number; h: number } | null = null;
+    for (let fi = 0; fi < originals.length; fi++) {
       if (originals[fi].node === child) { orig = originals[fi]; break; }
     }
     if (!orig) continue;
 
     try {
       if (child.type === "TEXT") {
-        var textSpansWidth = orig.w >= frameW * 0.8;
+        const textSpansWidth = orig.w >= frameW * 0.8;
         (child as any).layoutSizingHorizontal = textSpansWidth ? "FILL" : "HUG";
         (child as any).layoutSizingVertical = "HUG";
       } else if (child.type === "FRAME" || child.type === "COMPONENT" || child.type === "INSTANCE") {
-        var spansH = orig.w >= frameW * 0.8;
-        var spansV = orig.h >= frameH * 0.8;
+        const spansH = orig.w >= frameW * 0.8;
+        const spansV = orig.h >= frameH * 0.8;
         if (direction === "VERTICAL") {
           (child as any).layoutSizingHorizontal = spansH ? "FILL" : "HUG";
           (child as any).layoutSizingVertical = "HUG";
@@ -336,7 +336,7 @@ function applyResponsiveLayout(node: SceneNode, componentType: string, depth: nu
           (child as any).layoutSizingVertical = spansV ? "FILL" : "HUG";
         }
       } else if (child.type === "RECTANGLE") {
-        var isBackground = orig.w >= frameW * 0.9 && orig.h >= frameH * 0.9;
+        const isBackground = orig.w >= frameW * 0.9 && orig.h >= frameH * 0.9;
         if (isBackground) {
           (child as any).layoutSizingHorizontal = "FILL";
           (child as any).layoutSizingVertical = "FILL";
@@ -353,14 +353,14 @@ function childrenCanAutoLayout(originals: { x: number; y: number; w: number; h: 
   if (originals.length <= 1) return true;
 
   // Check for significant overlap between children
-  for (var i = 0; i < originals.length; i++) {
-    for (var j = i + 1; j < originals.length; j++) {
-      var a = originals[i], b = originals[j];
+  for (let i = 0; i < originals.length; i++) {
+    for (let j = i + 1; j < originals.length; j++) {
+      const a = originals[i], b = originals[j];
       // Calculate overlap area
-      var overlapX = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
-      var overlapY = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-      var overlapArea = overlapX * overlapY;
-      var smallerArea = Math.min(a.w * a.h, b.w * b.h);
+      const overlapX = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+      const overlapY = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+      const overlapArea = overlapX * overlapY;
+      const smallerArea = Math.min(a.w * a.h, b.w * b.h);
       // If overlap is more than 50% of the smaller element, can't auto-layout
       if (smallerArea > 0 && overlapArea > smallerArea * 0.5) return false;
     }
@@ -374,15 +374,15 @@ function inferPadding(
   frameW: number,
   frameH: number
 ): { top: number; right: number; bottom: number; left: number } {
-  var minChildX = Infinity, minChildY = Infinity;
-  var maxChildR = -Infinity, maxChildB = -Infinity;
+  let minChildX = Infinity, minChildY = Infinity;
+  let maxChildR = -Infinity, maxChildB = -Infinity;
 
-  for (var i = 0; i < sortedOriginals.length; i++) {
-    var o = sortedOriginals[i];
+  for (let i = 0; i < sortedOriginals.length; i++) {
+    const o = sortedOriginals[i];
     if (o.x < minChildX) minChildX = o.x;
     if (o.y < minChildY) minChildY = o.y;
-    var r = o.x + o.w;
-    var b = o.y + o.h;
+    const r = o.x + o.w;
+    const b = o.y + o.h;
     if (r > maxChildR) maxChildR = r;
     if (b > maxChildB) maxChildB = b;
   }
@@ -397,17 +397,17 @@ function inferPadding(
 
 /** Bind a spacing property to an existing variable, or create a new one */
 function bindSpacingVar(frame: FrameNode, prop: string, cache: VarCache): void {
-  var val = (frame as any)[prop];
+  const val = (frame as any)[prop];
   if (typeof val !== "number" || val <= 0) return;
-  var bv = frame.boundVariables && (frame.boundVariables as any)[prop];
+  const bv = (frame.boundVariables as any)?.[prop];
   if (bv) return;
-  var existing = findNearestFloatCached(val, cache.spacing);
+  const existing = findNearestFloatCached(val, cache.spacing);
   if (existing) {
     try { frame.setBoundVariable(prop as any, existing); } catch (e) {}
     return;
   }
   // Create a new spacing variable
-  var newVar = createSpacingVariable(Math.round(val), cache);
+  const newVar = createSpacingVariable(Math.round(val), cache);
   if (newVar) {
     try { frame.setBoundVariable(prop as any, newVar); } catch (e) {}
   }
@@ -417,14 +417,14 @@ function bindSpacingVar(frame: FrameNode, prop: string, cache: VarCache): void {
 function createSpacingVariable(value: number, cache: VarCache): Variable | null {
   if (!cache.spacingCollection) return null;
   try {
-    var modeId = cache.spacingCollection.modes[0] ? cache.spacingCollection.modes[0].modeId : null;
+    const modeId = cache.spacingCollection.modes[0]?.modeId ?? null;
     if (!modeId) return null;
-    var varName = "spacing/" + value;
+    const varName = "spacing/" + value;
     // Check if this exact name already exists (avoid duplicates)
-    for (var i = 0; i < cache.spacing.length; i++) {
+    for (let i = 0; i < cache.spacing.length; i++) {
       if (cache.spacing[i].value === value) return cache.spacing[i].variable;
     }
-    var newVar = figma.variables.createVariable(varName, cache.spacingCollection, "FLOAT");
+    const newVar = figma.variables.createVariable(varName, cache.spacingCollection, "FLOAT");
     newVar.setValueForMode(modeId, value);
     cache.spacing.push({ variable: newVar, value: value });
     return newVar;
@@ -437,16 +437,16 @@ function createSpacingVariable(value: number, cache: VarCache): Variable | null 
 function inferLayoutDirection(originals: { x: number; y: number; w: number; h: number }[]): "HORIZONTAL" | "VERTICAL" {
   if (originals.length < 2) return "VERTICAL";
 
-  var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (var i = 0; i < originals.length; i++) {
-    var o = originals[i];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < originals.length; i++) {
+    const o = originals[i];
     if (o.x < minX) minX = o.x;
     if (o.x + o.w > maxX) maxX = o.x + o.w;
     if (o.y < minY) minY = o.y;
     if (o.y + o.h > maxY) maxY = o.y + o.h;
   }
-  var xRange = maxX - minX;
-  var yRange = maxY - minY;
+  const xRange = maxX - minX;
+  const yRange = maxY - minY;
 
   return yRange > xRange ? "VERTICAL" : "HORIZONTAL";
 }
@@ -455,15 +455,15 @@ function inferLayoutDirection(originals: { x: number; y: number; w: number; h: n
 function inferGap(originals: { x: number; y: number; w: number; h: number }[], direction: "HORIZONTAL" | "VERTICAL"): number {
   if (originals.length < 2) return 0;
 
-  var sorted = originals.slice().sort(function(a, b) {
+  const sorted = originals.slice().sort(function(a, b) {
     return direction === "VERTICAL" ? a.y - b.y : a.x - b.x;
   });
 
-  var gaps: number[] = [];
-  for (var i = 1; i < sorted.length; i++) {
-    var prev = sorted[i - 1];
-    var curr = sorted[i];
-    var gap: number;
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    let gap: number;
     if (direction === "VERTICAL") {
       gap = curr.y - (prev.y + prev.h);
     } else {
@@ -474,13 +474,13 @@ function inferGap(originals: { x: number; y: number; w: number; h: number }[], d
 
   if (gaps.length === 0) return 0;
   // Use the most common gap (mode)
-  var gapCounts: { [g: number]: number } = {};
-  for (var gi = 0; gi < gaps.length; gi++) {
+  const gapCounts: { [g: number]: number } = {};
+  for (let gi = 0; gi < gaps.length; gi++) {
     gapCounts[gaps[gi]] = (gapCounts[gaps[gi]] || 0) + 1;
   }
-  var bestGap = 0, bestCount = 0;
-  var gapKeys = Object.keys(gapCounts);
-  for (var gk = 0; gk < gapKeys.length; gk++) {
+  let bestGap = 0, bestCount = 0;
+  const gapKeys = Object.keys(gapCounts);
+  for (let gk = 0; gk < gapKeys.length; gk++) {
     if (gapCounts[Number(gapKeys[gk])] > bestCount) {
       bestCount = gapCounts[Number(gapKeys[gk])];
       bestGap = Number(gapKeys[gk]);
@@ -501,27 +501,27 @@ function inferAlignment(
   if (originals.length === 0) return { primary: "MIN", counter: "MIN" };
 
   // Check counter-axis alignment: are children centered, left-aligned, or right-aligned?
-  var counterAligns: number[] = [];
-  for (var i = 0; i < originals.length; i++) {
-    var o = originals[i];
+  const counterAligns: number[] = [];
+  for (let i = 0; i < originals.length; i++) {
+    const o = originals[i];
     if (direction === "VERTICAL") {
       // Counter axis is horizontal: check how each child is positioned within frame width
-      var centerOffset = (o.x + o.w / 2) - frameW / 2;
+      const centerOffset = (o.x + o.w / 2) - frameW / 2;
       counterAligns.push(centerOffset);
     } else {
       // Counter axis is vertical: check how each child is positioned within frame height
-      var centerOffsetV = (o.y + o.h / 2) - frameH / 2;
+      const centerOffsetV = (o.y + o.h / 2) - frameH / 2;
       counterAligns.push(centerOffsetV);
     }
   }
 
   // Average offset from center — if near 0, they're centered
-  var avgOffset = 0;
-  for (var ai = 0; ai < counterAligns.length; ai++) avgOffset += counterAligns[ai];
+  let avgOffset = 0;
+  for (let ai = 0; ai < counterAligns.length; ai++) avgOffset += counterAligns[ai];
   avgOffset /= counterAligns.length;
 
-  var crossSize = direction === "VERTICAL" ? frameW : frameH;
-  var counter: "MIN" | "CENTER" | "MAX" = "MIN";
+  const crossSize = direction === "VERTICAL" ? frameW : frameH;
+  let counter: "MIN" | "CENTER" | "MAX" = "MIN";
   if (Math.abs(avgOffset) < crossSize * 0.1) {
     counter = "CENTER";
   } else if (avgOffset > crossSize * 0.1) {
@@ -529,21 +529,21 @@ function inferAlignment(
   }
 
   // Primary axis: check if children are centered along the main axis
-  var primaryAligns: number[] = [];
-  for (var pi = 0; pi < originals.length; pi++) {
-    var op = originals[pi];
+  const primaryAligns: number[] = [];
+  for (let pi = 0; pi < originals.length; pi++) {
+    const op = originals[pi];
     if (direction === "VERTICAL") {
       primaryAligns.push((op.y + op.h / 2) - frameH / 2);
     } else {
       primaryAligns.push((op.x + op.w / 2) - frameW / 2);
     }
   }
-  var avgPrimary = 0;
-  for (var ap = 0; ap < primaryAligns.length; ap++) avgPrimary += primaryAligns[ap];
+  let avgPrimary = 0;
+  for (let ap = 0; ap < primaryAligns.length; ap++) avgPrimary += primaryAligns[ap];
   avgPrimary /= primaryAligns.length;
 
-  var mainSize = direction === "VERTICAL" ? frameH : frameW;
-  var primary: "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN" = "MIN";
+  const mainSize = direction === "VERTICAL" ? frameH : frameW;
+  let primary: "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN" = "MIN";
   if (Math.abs(avgPrimary) < mainSize * 0.1) {
     primary = "CENTER";
   }
@@ -568,7 +568,7 @@ function serializeNode(node: SceneNode, depth: number, maxDepth: number): Serial
     };
   }
 
-  var sn: SerializedNode = {
+  const sn: SerializedNode = {
     id: node.id,
     t: nodeTypeCode(node.type),
     n: (node.name || "").substring(0, 40),
@@ -579,9 +579,9 @@ function serializeNode(node: SceneNode, depth: number, maxDepth: number): Serial
   };
 
   // Visual properties
-  var fillHex = firstSolidFillHex(node);
+  const fillHex = firstSolidFillHex(node);
   if (fillHex) sn.f = fillHex;
-  var strokeHex = firstSolidStrokeHex(node);
+  const strokeHex = firstSolidStrokeHex(node);
   if (strokeHex) sn.s = strokeHex;
   if ("strokeWeight" in node && typeof node.strokeWeight === "number" && node.strokeWeight > 0) sn.sw = Math.round(node.strokeWeight);
   if ("cornerRadius" in node && typeof node.cornerRadius === "number" && node.cornerRadius > 0) sn.r = Math.round(node.cornerRadius);
@@ -589,12 +589,12 @@ function serializeNode(node: SceneNode, depth: number, maxDepth: number): Serial
 
   // Layout
   if ("layoutMode" in node && (node as FrameNode).layoutMode !== "NONE") {
-    var frame = node as FrameNode;
+    const frame = node as FrameNode;
     if (frame.layoutMode === "HORIZONTAL") sn.l = "H";
     else if (frame.layoutMode === "VERTICAL") sn.l = "V";
     if (frame.layoutWrap === "WRAP") sn.l = "W";
-    var padT = Math.round(frame.paddingTop || 0), padR = Math.round(frame.paddingRight || 0);
-    var padB = Math.round(frame.paddingBottom || 0), padL = Math.round(frame.paddingLeft || 0);
+    const padT = Math.round(frame.paddingTop || 0), padR = Math.round(frame.paddingRight || 0);
+    const padB = Math.round(frame.paddingBottom || 0), padL = Math.round(frame.paddingLeft || 0);
     if (padT || padR || padB || padL) sn.p = [padT, padR, padB, padL];
     if (frame.itemSpacing > 0) sn.g = Math.round(frame.itemSpacing);
     if (frame.primaryAxisAlignItems && frame.primaryAxisAlignItems !== "MIN") sn.ax = frame.primaryAxisAlignItems;
@@ -603,12 +603,12 @@ function serializeNode(node: SceneNode, depth: number, maxDepth: number): Serial
 
   // Text
   if (node.type === "TEXT") {
-    var tn = node as TextNode;
+    const tn = node as TextNode;
     if (tn.characters) sn.txt = tn.characters.substring(0, 60);
     if (typeof tn.fontSize === "number") sn.fs = tn.fontSize;
     if (typeof tn.fontWeight === "number") sn.fw = tn.fontWeight;
     else if (tn.fontName && typeof tn.fontName === "object" && "style" in tn.fontName) {
-      var style = (tn.fontName.style || "").toLowerCase();
+      const style = (tn.fontName.style || "").toLowerCase();
       if (style.indexOf("bold") !== -1) sn.fw = 700;
       else if (style.indexOf("semibold") !== -1 || style.indexOf("semi bold") !== -1) sn.fw = 600;
       else if (style.indexOf("medium") !== -1) sn.fw = 500;
@@ -628,18 +628,18 @@ function serializeNode(node: SceneNode, depth: number, maxDepth: number): Serial
 
   // Children — hard depth cap
   if (depth < maxDepth && "children" in node && (node as any).children) {
-    var children = (node as any).children as SceneNode[];
-    var serializedChildren: SerializedNode[] = [];
-    for (var i = 0; i < children.length; i++) {
+    const children = (node as any).children as SceneNode[];
+    const serializedChildren: SerializedNode[] = [];
+    for (let i = 0; i < children.length; i++) {
       if (children[i].visible === false) continue;
-      var child = serializeNode(children[i], depth + 1, maxDepth);
+      const child = serializeNode(children[i], depth + 1, maxDepth);
       if (child) serializedChildren.push(child);
     }
     if (serializedChildren.length > 0) sn.c = serializedChildren;
   } else if ("children" in node && (node as any).children) {
-    var vc = 0;
-    var ch = (node as any).children as SceneNode[];
-    for (var j = 0; j < ch.length; j++) { if (ch[j].visible !== false) vc++; }
+    let vc = 0;
+    const ch = (node as any).children as SceneNode[];
+    for (let j = 0; j < ch.length; j++) { if (ch[j].visible !== false) vc++; }
     if (vc > 0) sn.cc = vc;
   }
 
@@ -651,20 +651,20 @@ function serializeNode(node: SceneNode, depth: number, maxDepth: number): Serial
 // Serialize one frame at a time via message handler. This avoids freezing
 // because each frame is a separate message handler invocation.
 
-var _pendingFrames: { page: string; frameId: string; frameName: string }[] = [];
-var _collectedChunks: ChunkData[] = [];
+let _pendingFrames: { page: string; frameId: string; frameName: string }[] = [];
+let _collectedChunks: ChunkData[] = [];
 
 export async function startChunkedSerialization(): Promise<void> {
   _pendingFrames = [];
   _collectedChunks = [];
 
-  var pageHints = ["desktop", "mobile"];
-  for (var pi = 0; pi < pageHints.length; pi++) {
-    var page = findPageByHint(pageHints[pi]);
+  const pageHints = ["desktop", "mobile"];
+  for (let pi = 0; pi < pageHints.length; pi++) {
+    const page = findPageByHint(pageHints[pi]);
     if (!page) continue;
     await page.loadAsync();
-    for (var fi = 0; fi < page.children.length; fi++) {
-      var frame = page.children[fi];
+    for (let fi = 0; fi < page.children.length; fi++) {
+      const frame = page.children[fi];
       if (frame.visible === false) continue;
       _pendingFrames.push({ page: pageHints[pi], frameId: frame.id, frameName: frame.name });
     }
@@ -690,9 +690,9 @@ export async function serializeNextFrame(): Promise<void> {
     return;
   }
 
-  var total = _pendingFrames.length + _collectedChunks.length;
-  var current = _collectedChunks.length;
-  var entry = _pendingFrames.shift()!;
+  const total = _pendingFrames.length + _collectedChunks.length;
+  const current = _collectedChunks.length;
+  const entry = _pendingFrames.shift()!;
 
   figma.ui.postMessage({
     type: "routeb-components-progress",
@@ -701,9 +701,9 @@ export async function serializeNextFrame(): Promise<void> {
   });
 
   try {
-    var node = await figma.getNodeByIdAsync(entry.frameId);
+    const node = await figma.getNodeByIdAsync(entry.frameId);
     if (node && node.type !== "PAGE") {
-      var tree = serializeNode(node as SceneNode, 0, 3);
+      const tree = serializeNode(node as SceneNode, 0, 3);
       if (tree) {
         _collectedChunks.push({
           page: entry.page,
@@ -734,6 +734,7 @@ interface ComponentSpec {
   type: string;
   description: string;
   variants: VariantSpec[];
+  inputTextRole?: "label" | "placeholder"; // for input-type: which text role to normalize
 }
 
 interface ComponentCreationResult {
@@ -744,15 +745,15 @@ interface ComponentCreationResult {
 }
 
 // Persistent state for chunked creation
-var _createPending: ComponentSpec[] = [];
-var _createResult: ComponentCreationResult = { componentsCreated: 0, variantsCreated: 0, instancesSwapped: 0, errors: [] };
-var _createVarCache: VarCache | null = null;
-var _createComponentsPage: PageNode | null = null;
-var _createYOffset: number = 0;
+let _createPending: ComponentSpec[] = [];
+let _createResult: ComponentCreationResult = { componentsCreated: 0, variantsCreated: 0, instancesSwapped: 0, errors: [] };
+let _createVarCache: VarCache | null = null;
+let _createComponentsPage: PageNode | null = null;
+let _createYOffset: number = 0;
 // Accumulated swap map: filled during creation, used during swap phase
-var _pendingSwaps: { originalId: string; variant: ComponentNode; associatedIds?: string[] }[] = [];
+let _pendingSwaps: { originalId: string; variant: ComponentNode; associatedIds?: string[] }[] = [];
 // ID-only version for persistence (sent to UI in stats, survives plugin restart)
-var _pendingSwapIds: { originalId: string; variantNodeId: string; associatedIds?: string[] }[] = [];
+let _pendingSwapIds: { originalId: string; variantNodeId: string; associatedIds?: string[] }[] = [];
 
 /**
  * Step 1: Store components, load the Components page, then bounce to step 2.
@@ -765,7 +766,7 @@ export async function startComponentCreation(components: ComponentSpec[]): Promi
   _pendingSwaps = [];
   _pendingSwapIds = [];
 
-  var componentsPage = findPageByHint("components");
+  const componentsPage = findPageByHint("components");
   if (!componentsPage) {
     figma.ui.postMessage({ type: "routeb-components-error", error: "Components page not found" });
     return;
@@ -774,16 +775,16 @@ export async function startComponentCreation(components: ComponentSpec[]): Promi
 
   // Load ALL pages we'll need: Components (target) + Desktop/Mobile (source nodes to clone)
   await componentsPage.loadAsync();
-  var desktopPage = findPageByHint("desktop");
+  const desktopPage = findPageByHint("desktop");
   if (desktopPage) await desktopPage.loadAsync();
-  var mobilePage = findPageByHint("mobile");
+  const mobilePage = findPageByHint("mobile");
   if (mobilePage) await mobilePage.loadAsync();
 
   // Calculate starting Y offset below existing content on Components page
   _createYOffset = 0;
-  for (var ci = 0; ci < componentsPage.children.length; ci++) {
-    var child = componentsPage.children[ci];
-    var bottom = child.y + (child as any).height;
+  for (let ci = 0; ci < componentsPage.children.length; ci++) {
+    const child = componentsPage.children[ci];
+    const bottom = child.y + (child as any).height;
     if (bottom > _createYOffset) _createYOffset = bottom;
   }
   if (_createYOffset > 0) _createYOffset += 80; // gap from existing content
@@ -797,22 +798,57 @@ export async function startComponentCreation(components: ComponentSpec[]): Promi
  */
 export async function loadVarsAndStartCreation(): Promise<void> {
   figma.ui.postMessage({ type: "routeb-components-progress", phase: "Loading variables…", percent: 5 });
-  var allVars = await figma.variables.getLocalVariablesAsync();
-  var allCols = await figma.variables.getLocalVariableCollectionsAsync();
+  const allVars = await figma.variables.getLocalVariablesAsync();
+  const allCols = await figma.variables.getLocalVariableCollectionsAsync();
 
-  var colorVars = allVars.filter(function(v) { return v.resolvedType === "COLOR"; });
-  var floatVars = allVars.filter(function(v) { return v.resolvedType === "FLOAT"; });
-  var colMap: { [id: string]: string } = {};
-  for (var ci = 0; ci < allCols.length; ci++) {
+  const colorVars = allVars.filter(function(v) { return v.resolvedType === "COLOR"; });
+  const floatVars = allVars.filter(function(v) { return v.resolvedType === "FLOAT"; });
+  const colMap: { [id: string]: string } = {};
+  for (let ci = 0; ci < allCols.length; ci++) {
     colMap[allCols[ci].id] = allCols[ci].name.toLowerCase();
   }
-  var spacingVars = floatVars.filter(function(v) { return (colMap[v.variableCollectionId] || "").indexOf("spacing") !== -1; });
-  var radiusVars = floatVars.filter(function(v) { return (colMap[v.variableCollectionId] || "").indexOf("radius") !== -1; });
-  var borderVars = floatVars.filter(function(v) { return (colMap[v.variableCollectionId] || "").indexOf("border") !== -1; });
+  const spacingVars = floatVars.filter(function(v) { return (colMap[v.variableCollectionId] || "").indexOf("spacing") !== -1; });
+  const radiusVars = floatVars.filter(function(v) { return (colMap[v.variableCollectionId] || "").indexOf("radius") !== -1; });
+  const borderVars = floatVars.filter(function(v) { return (colMap[v.variableCollectionId] || "").indexOf("border") !== -1; });
   _createVarCache = buildVarCacheSync(colorVars, spacingVars, radiusVars, borderVars, allCols);
 
   // Now start per-component ping-pong
   figma.ui.postMessage({ type: "routeb-create-next" });
+}
+
+/**
+ * After component creation, replace design-specific text in input-type components
+ * with a generic placeholder so instances can override with their own label/placeholder.
+ * role = "label"      → set text to "Label"
+ * role = "placeholder" → set text to "Placeholder"
+ */
+async function normalizeComponentTextPlaceholders(comp: ComponentNode, role: "label" | "placeholder"): Promise<void> {
+  const genericText = role === "placeholder" ? "Placeholder" : "Label";
+  const textNodes: { node: TextNode; name: string }[] = [];
+  collectTextNodesNamed(comp, textNodes);
+  if (textNodes.length === 0) return;
+
+  // For inputs: the first "label" or "placeholder" named text node gets normalized.
+  // If none found by name, normalize the first text node.
+  let targetIdx = -1;
+  for (let i = 0; i < textNodes.length; i++) {
+    const nLower = textNodes[i].name.toLowerCase();
+    if (nLower === role || nLower === "label" || nLower === "placeholder") {
+      targetIdx = i;
+      break;
+    }
+  }
+  if (targetIdx < 0) targetIdx = 0;
+
+  const tn = textNodes[targetIdx].node;
+  if (tn.characters === genericText) return; // already normalized
+
+  try {
+    await loadTextNodeFont(tn);
+    tn.characters = genericText;
+    // Also rename the layer to match the role
+    tn.name = role;
+  } catch (e) { /* skip if font unavailable */ }
 }
 
 /**
@@ -828,9 +864,9 @@ export async function createNextComponent(): Promise<void> {
     return;
   }
 
-  var totalComponents = _createPending.length + _createResult.componentsCreated + _createResult.errors.length;
-  var currentIdx = _createResult.componentsCreated + _createResult.errors.length;
-  var compSpec = _createPending.shift()!;
+  const totalComponents = _createPending.length + _createResult.componentsCreated + _createResult.errors.length;
+  const currentIdx = _createResult.componentsCreated + _createResult.errors.length;
+  const compSpec = _createPending.shift()!;
 
   figma.ui.postMessage({
     type: "routeb-components-progress",
@@ -839,14 +875,14 @@ export async function createNextComponent(): Promise<void> {
   });
 
   try {
-    var variantComps: ComponentNode[] = [];
-    var swapMap: { originalId: string; variant: ComponentNode; associatedIds: string[] }[] = [];
+    const variantComps: ComponentNode[] = [];
+    const swapMap: { originalId: string; variant: ComponentNode; associatedIds: string[] }[] = [];
 
-    for (var vIdx = 0; vIdx < compSpec.variants.length; vIdx++) {
-      var varSpec = compSpec.variants[vIdx];
+    for (let vIdx = 0; vIdx < compSpec.variants.length; vIdx++) {
+      const varSpec = compSpec.variants[vIdx];
       if (!varSpec.nodeIds || varSpec.nodeIds.length === 0) continue;
 
-      var repNode = await figma.getNodeByIdAsync(varSpec.nodeIds[0]);
+      const repNode = await figma.getNodeByIdAsync(varSpec.nodeIds[0]);
       if (!repNode) {
         _createResult.errors.push("Node not found: " + varSpec.nodeIds[0]);
         continue;
@@ -854,28 +890,28 @@ export async function createNextComponent(): Promise<void> {
 
       // Clone the node and convert directly to a component — preserves all
       // children, layout, fills, strokes, effects, etc. without manual transfer.
-      var cloned = (repNode as SceneNode).clone();
+      let cloned = (repNode as SceneNode).clone();
 
       // If there are associated nodes (e.g., text labels not nested inside the frame),
       // wrap everything in a frame preserving relative positions from the original design.
-      var repId = varSpec.nodeIds[0];
-      var assocIds = (varSpec.associatedNodeIds && varSpec.associatedNodeIds[repId]) || [];
+      const repId = varSpec.nodeIds[0];
+      const assocIds = (varSpec.associatedNodeIds && varSpec.associatedNodeIds[repId]) || [];
       if (assocIds.length > 0) {
         // Collect absolute bounding boxes of the main frame + all associated nodes
-        var repScene = repNode as SceneNode;
-        var repAbs = (repScene as any).absoluteBoundingBox as { x: number; y: number; width: number; height: number } | null;
+        const repScene = repNode as SceneNode;
+        let repAbs = (repScene as any).absoluteBoundingBox as { x: number; y: number; width: number; height: number } | null;
         if (!repAbs) repAbs = { x: 0, y: 0, width: (repScene as any).width || 100, height: (repScene as any).height || 40 };
 
         // Gather all nodes' absolute bounds to compute the overall bounding box
-        var allBounds: { x: number; y: number; w: number; h: number; node: SceneNode | null; isMain: boolean }[] = [];
+        const allBounds: { x: number; y: number; w: number; h: number; node: SceneNode | null; isMain: boolean }[] = [];
         allBounds.push({ x: repAbs.x, y: repAbs.y, w: repAbs.width, h: repAbs.height, node: null, isMain: true });
 
-        var assocNodes: SceneNode[] = [];
-        for (var ai = 0; ai < assocIds.length; ai++) {
-          var assocNode = await figma.getNodeByIdAsync(assocIds[ai]);
+        const assocNodes: SceneNode[] = [];
+        for (let ai = 0; ai < assocIds.length; ai++) {
+          const assocNode = await figma.getNodeByIdAsync(assocIds[ai]);
           if (assocNode && assocNode.type !== "PAGE" && assocNode.type !== "DOCUMENT") {
-            var aScene = assocNode as SceneNode;
-            var aAbs = (aScene as any).absoluteBoundingBox as { x: number; y: number; width: number; height: number } | null;
+            const aScene = assocNode as SceneNode;
+            const aAbs = (aScene as any).absoluteBoundingBox as { x: number; y: number; width: number; height: number } | null;
             if (aAbs) {
               allBounds.push({ x: aAbs.x, y: aAbs.y, w: aAbs.width, h: aAbs.height, node: aScene, isMain: false });
               assocNodes.push(aScene);
@@ -884,9 +920,9 @@ export async function createNextComponent(): Promise<void> {
         }
 
         // Compute bounding box encompassing everything
-        var minX = allBounds[0].x, minY = allBounds[0].y;
-        var maxX = allBounds[0].x + allBounds[0].w, maxY = allBounds[0].y + allBounds[0].h;
-        for (var bi = 1; bi < allBounds.length; bi++) {
+        let minX = allBounds[0].x, minY = allBounds[0].y;
+        let maxX = allBounds[0].x + allBounds[0].w, maxY = allBounds[0].y + allBounds[0].h;
+        for (let bi = 1; bi < allBounds.length; bi++) {
           if (allBounds[bi].x < minX) minX = allBounds[bi].x;
           if (allBounds[bi].y < minY) minY = allBounds[bi].y;
           if (allBounds[bi].x + allBounds[bi].w > maxX) maxX = allBounds[bi].x + allBounds[bi].w;
@@ -894,7 +930,7 @@ export async function createNextComponent(): Promise<void> {
         }
 
         // Create wrapper with no auto-layout — use absolute positioning
-        var wrapper = figma.createFrame();
+        const wrapper = figma.createFrame();
         wrapper.name = cloned.name;
         wrapper.resize(Math.max(1, Math.round(maxX - minX)), Math.max(1, Math.round(maxY - minY)));
         wrapper.fills = [];
@@ -906,9 +942,9 @@ export async function createNextComponent(): Promise<void> {
         cloned.y = Math.round(repAbs.y - minY);
 
         // Clone and place associated nodes at their relative positions
-        for (var ai2 = 0; ai2 < allBounds.length; ai2++) {
+        for (let ai2 = 0; ai2 < allBounds.length; ai2++) {
           if (allBounds[ai2].isMain) continue;
-          var assocCloned = (allBounds[ai2].node as SceneNode).clone();
+          const assocCloned = (allBounds[ai2].node as SceneNode).clone();
           wrapper.appendChild(assocCloned);
           assocCloned.x = Math.round(allBounds[ai2].x - minX);
           assocCloned.y = Math.round(allBounds[ai2].y - minY);
@@ -917,7 +953,7 @@ export async function createNextComponent(): Promise<void> {
         cloned = wrapper as any;
       }
 
-      var comp = figma.createComponentFromNode(cloned);
+      const comp = figma.createComponentFromNode(cloned);
 
       // Rename inner layers to clean, purpose-based kebab-case names
       renameComponentLayers(comp, compSpec.type, 0);
@@ -925,9 +961,15 @@ export async function createNextComponent(): Promise<void> {
       // Convert to responsive auto-layout with HUG/FILL sizing, bind/create spacing vars
       applyResponsiveLayout(comp, compSpec.type, 0, _createVarCache);
 
-      var propParts: string[] = [];
-      var propKeys = Object.keys(varSpec.properties);
-      for (var pk = 0; pk < propKeys.length; pk++) {
+      // For input-type components: normalize the label/placeholder text to a generic value
+      // so each swapped instance can independently override it with the design-specific text
+      if (compSpec.type === "input" && compSpec.inputTextRole) {
+        await normalizeComponentTextPlaceholders(comp, compSpec.inputTextRole);
+      }
+
+      const propParts: string[] = [];
+      const propKeys = Object.keys(varSpec.properties);
+      for (let pk = 0; pk < propKeys.length; pk++) {
         propParts.push(propKeys[pk] + "=" + varSpec.properties[propKeys[pk]]);
       }
       comp.name = propParts.join(", ") || varSpec.name;
@@ -935,17 +977,17 @@ export async function createNextComponent(): Promise<void> {
       variantComps.push(comp);
       _createResult.variantsCreated++;
 
-      for (var ni = 0; ni < varSpec.nodeIds.length; ni++) {
-        var swapAssoc = (varSpec.associatedNodeIds && varSpec.associatedNodeIds[varSpec.nodeIds[ni]]) || [];
+      for (let ni = 0; ni < varSpec.nodeIds.length; ni++) {
+        const swapAssoc = (varSpec.associatedNodeIds && varSpec.associatedNodeIds[varSpec.nodeIds[ni]]) || [];
         swapMap.push({ originalId: varSpec.nodeIds[ni], variant: comp, associatedIds: swapAssoc });
       }
     }
 
     if (variantComps.length > 0) {
       // Ensure unique variant names
-      var usedNames: { [key: string]: number } = {};
-      for (var un = 0; un < variantComps.length; un++) {
-        var vName = variantComps[un].name;
+      const usedNames: { [key: string]: number } = {};
+      for (let un = 0; un < variantComps.length; un++) {
+        const vName = variantComps[un].name;
         if (usedNames[vName]) {
           usedNames[vName]++;
           variantComps[un].name = vName + " " + usedNames[vName];
@@ -955,13 +997,13 @@ export async function createNextComponent(): Promise<void> {
       }
 
       // Move to Components page
-      for (var mp = 0; mp < variantComps.length; mp++) {
+      for (let mp = 0; mp < variantComps.length; mp++) {
         _createComponentsPage!.appendChild(variantComps[mp]);
       }
 
       // Combine as variant set
       try {
-        var compSet = figma.combineAsVariants(variantComps, _createComponentsPage!);
+        const compSet = figma.combineAsVariants(variantComps, _createComponentsPage!);
         compSet.name = compSpec.name;
         compSet.layoutMode = "HORIZONTAL";
         compSet.itemSpacing = 24;
@@ -985,12 +1027,12 @@ export async function createNextComponent(): Promise<void> {
       _createResult.componentsCreated++;
 
       // Bind variables (synchronous)
-      for (var bvi = 0; bvi < variantComps.length; bvi++) {
+      for (let bvi = 0; bvi < variantComps.length; bvi++) {
         bindVariablesOnNode(variantComps[bvi], _createVarCache!);
       }
 
       // Accumulate swaps for the separate swap phase (store IDs for persistence)
-      for (var si = 0; si < swapMap.length; si++) {
+      for (let si = 0; si < swapMap.length; si++) {
         _pendingSwaps.push(swapMap[si]);
         _pendingSwapIds.push({ originalId: swapMap[si].originalId, variantNodeId: swapMap[si].variant.id, associatedIds: swapMap[si].associatedIds });
       }
@@ -1005,18 +1047,18 @@ export async function createNextComponent(): Promise<void> {
 
 // ── Swap Phase (separate step) ──────────────────────────────────────────────
 
-var _swapPending: { originalId: string; variant: ComponentNode; associatedIds?: string[] }[] = [];
-var _swapResult: { instancesSwapped: number; errors: string[] } = { instancesSwapped: 0, errors: [] };
+let _swapPending: { originalId: string; variant: ComponentNode; associatedIds?: string[] }[] = [];
+let _swapResult: { instancesSwapped: number; errors: string[] } = { instancesSwapped: 0, errors: [] };
 
 export async function startSwapInstances(swapMapFromUI?: { originalId: string; variantNodeId: string; associatedIds?: string[] }[]): Promise<void> {
   _swapResult = { instancesSwapped: 0, errors: [] };
 
   // Load Desktop/Mobile pages for node access
-  var desktopPage = findPageByHint("desktop");
+  const desktopPage = findPageByHint("desktop");
   if (desktopPage) await desktopPage.loadAsync();
-  var mobilePage = findPageByHint("mobile");
+  const mobilePage = findPageByHint("mobile");
   if (mobilePage) await mobilePage.loadAsync();
-  var componentsPage = findPageByHint("components");
+  const componentsPage = findPageByHint("components");
   if (componentsPage) await componentsPage.loadAsync();
 
   // Use in-memory swaps if available, otherwise reconstruct from persisted IDs
@@ -1024,9 +1066,9 @@ export async function startSwapInstances(swapMapFromUI?: { originalId: string; v
     _swapPending = _pendingSwaps.slice();
   } else if (swapMapFromUI && swapMapFromUI.length > 0) {
     _swapPending = [];
-    for (var i = 0; i < swapMapFromUI.length; i++) {
-      var entry = swapMapFromUI[i];
-      var variantNode = await figma.getNodeByIdAsync(entry.variantNodeId);
+    for (let i = 0; i < swapMapFromUI.length; i++) {
+      const entry = swapMapFromUI[i];
+      const variantNode = await figma.getNodeByIdAsync(entry.variantNodeId);
       if (variantNode && variantNode.type === "COMPONENT") {
         _swapPending.push({ originalId: entry.originalId, variant: variantNode as ComponentNode, associatedIds: (entry as any).associatedIds });
       }
@@ -1040,15 +1082,150 @@ export async function startSwapInstances(swapMapFromUI?: { originalId: string; v
   figma.ui.postMessage({ type: "routeb-swap-next" });
 }
 
+/**
+ * After all swaps are done, scan each design page and group instances that sit
+ * at the same Y-coordinate (within 4px) in the same parent into "form-row" frames.
+ * This handles forms where multiple input instances belong on the same visual row.
+ */
+async function groupFormRowsOnPages(): Promise<void> {
+  const pageHints = ["desktop", "mobile"];
+  for (let pi = 0; pi < pageHints.length; pi++) {
+    const page = findPageByHint(pageHints[pi]);
+    if (!page) continue;
+    groupFormRowsInContainer(page);
+  }
+}
+
+function groupFormRowsInContainer(container: ChildrenMixin): void {
+  if (!("children" in container)) return;
+  let children = (container as any).children as SceneNode[];
+
+  // Recurse into non-instance frames first
+  for (let ci = 0; ci < children.length; ci++) {
+    const child = children[ci];
+    if (child.type === "FRAME" && child.name !== "form-row") {
+      groupFormRowsInContainer(child as FrameNode);
+    }
+  }
+
+  // Re-read children after recursion (they may have changed)
+  children = (container as any).children as SceneNode[];
+
+  // Find all INSTANCE children (swapped form fields)
+  const instances: { node: InstanceNode; y: number; x: number }[] = [];
+  for (let ii = 0; ii < children.length; ii++) {
+    if (children[ii].type === "INSTANCE") {
+      const inst = children[ii] as InstanceNode;
+      instances.push({ node: inst, y: Math.round((inst as any).y || 0), x: Math.round((inst as any).x || 0) });
+    }
+  }
+
+  if (instances.length < 2) return;
+
+  // Group by Y position (within 4px tolerance)
+  const rows: { y: number; items: { node: InstanceNode; x: number }[] }[] = [];
+  for (let ij = 0; ij < instances.length; ij++) {
+    const inst2 = instances[ij];
+    let placed = false;
+    for (let rk = 0; rk < rows.length; rk++) {
+      if (Math.abs(rows[rk].y - inst2.y) <= 4) {
+        rows[rk].items.push({ node: inst2.node, x: inst2.x });
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) rows.push({ y: inst2.y, items: [{ node: inst2.node, x: inst2.x }] });
+  }
+
+  // Only group rows that have 2+ instances
+  for (let ri = 0; ri < rows.length; ri++) {
+    if (rows[ri].items.length < 2) continue;
+
+    // Sort items by X position (left to right)
+    rows[ri].items.sort(function(a, b) { return a.x - b.x; });
+
+    // Check parent layout mode — skip grouping if already in auto-layout
+    // (auto-layout parent already handles the row correctly)
+    const parentFrame = container as any;
+    if (parentFrame.layoutMode && parentFrame.layoutMode !== "NONE") continue;
+
+    const rowItems = rows[ri].items;
+
+    // Calculate bounding box for this row
+    const rowMinX = rowItems[0].x;
+    const rowMinY = rows[ri].y;
+    let rowMaxX = rowMinX;
+    let rowMaxH = 0;
+    for (let ki = 0; ki < rowItems.length; ki++) {
+      const itemNode = rowItems[ki].node as any;
+      const itemRight = rowItems[ki].x + (itemNode.width || 0);
+      const itemH = itemNode.height || 0;
+      if (itemRight > rowMaxX) rowMaxX = itemRight;
+      if (itemH > rowMaxH) rowMaxH = itemH;
+    }
+
+    // Find insert index (position of first item in parent)
+    const firstChild = rowItems[0].node;
+    const parentChildren = (container as any).children as SceneNode[];
+    let insertIdx = 0;
+    for (let qi = 0; qi < parentChildren.length; qi++) {
+      if (parentChildren[qi].id === firstChild.id) { insertIdx = qi; break; }
+    }
+
+    // Create form-row frame
+    try {
+      const rowFrame = figma.createFrame();
+      rowFrame.name = "form-row";
+      rowFrame.fills = [];
+      rowFrame.clipsContent = false;
+      rowFrame.resize(Math.max(1, rowMaxX - rowMinX), Math.max(1, rowMaxH));
+      rowFrame.x = rowMinX;
+      rowFrame.y = rowMinY;
+
+      // Move instances into row frame, adjusting to local coordinates
+      for (let mi = 0; mi < rowItems.length; mi++) {
+        const moveNode = rowItems[mi].node as any;
+        const localX = rowItems[mi].x - rowMinX;
+        const localY = (moveNode.y || 0) - rowMinY;
+        (container as any).insertChild(insertIdx, rowFrame); // ensure frame is in parent
+        rowFrame.appendChild(moveNode);
+        moveNode.x = localX;
+        moveNode.y = localY;
+      }
+
+      // Apply horizontal auto-layout to the row frame
+      rowFrame.layoutMode = "HORIZONTAL";
+      rowFrame.itemSpacing = rowItems.length > 1
+        ? Math.max(0, Math.round((rowItems[1].x - rowItems[0].x - ((rowItems[0].node as any).width || 0))))
+        : 8;
+      rowFrame.paddingLeft = 0;
+      rowFrame.paddingRight = 0;
+      rowFrame.paddingTop = 0;
+      rowFrame.paddingBottom = 0;
+      rowFrame.primaryAxisSizingMode = "AUTO";
+      rowFrame.counterAxisSizingMode = "AUTO";
+      rowFrame.counterAxisAlignItems = "CENTER";
+
+      // Insert at the correct position (replace the existing insertion)
+      (container as any).insertChild(insertIdx, rowFrame);
+    } catch (e) { /* skip row grouping if it fails */ }
+  }
+}
+
 export async function swapNextInstance(): Promise<void> {
   if (_swapPending.length === 0) {
+    // All swaps done — run form-row grouping on design pages
+    try {
+      figma.ui.postMessage({ type: "routeb-components-progress", phase: "Grouping form rows…", percent: 97 });
+      await groupFormRowsOnPages();
+    } catch (e) { /* non-critical */ }
     figma.ui.postMessage({ type: "routeb-swap-completed", stats: _swapResult });
     return;
   }
 
-  var total = _swapPending.length + _swapResult.instancesSwapped;
-  var current = _swapResult.instancesSwapped;
-  var entry = _swapPending.shift()!;
+  const total = _swapPending.length + _swapResult.instancesSwapped;
+  const current = _swapResult.instancesSwapped;
+  const entry = _swapPending.shift()!;
 
   figma.ui.postMessage({
     type: "routeb-components-progress",
@@ -1057,14 +1234,14 @@ export async function swapNextInstance(): Promise<void> {
   });
 
   try {
-    var swapped = await swapSingleNode(entry.originalId, entry.variant);
+    const swapped = await swapSingleNode(entry.originalId, entry.variant);
     if (swapped) {
       _swapResult.instancesSwapped++;
       // Remove associated nodes (text/icons that were merged into the component)
       if (entry.associatedIds && entry.associatedIds.length > 0) {
-        for (var ri = 0; ri < entry.associatedIds.length; ri++) {
+        for (let ri = 0; ri < entry.associatedIds.length; ri++) {
           try {
-            var assocNode = await figma.getNodeByIdAsync(entry.associatedIds[ri]);
+            const assocNode = await figma.getNodeByIdAsync(entry.associatedIds[ri]);
             if (assocNode && assocNode.type !== "PAGE" && assocNode.type !== "DOCUMENT") {
               (assocNode as SceneNode).remove();
             }
@@ -1097,20 +1274,20 @@ function colorDist(a: { r: number; g: number; b: number }, b: { r: number; g: nu
 }
 
 function findNearestColorCached(color: { r: number; g: number; b: number }, cache: ResolvedColorVar[]): Variable | null {
-  var best: Variable | null = null, bestDist = 0.04;
-  for (var i = 0; i < cache.length; i++) {
-    var d = colorDist(color, cache[i]);
+  let best: Variable | null = null, bestDist = 0.04;
+  for (let i = 0; i < cache.length; i++) {
+    const d = colorDist(color, cache[i]);
     if (d < bestDist) { bestDist = d; best = cache[i].variable; }
   }
   return best;
 }
 
 function findNearestFloatCached(value: number, cache: ResolvedFloatVar[]): Variable | null {
-  var best: Variable | null = null, bestDist = Infinity;
-  for (var i = 0; i < cache.length; i++) {
-    var fv = cache[i].value;
-    var d = Math.abs(fv - value);
-    var threshold = Math.max(fv * 0.1, 1);
+  let best: Variable | null = null, bestDist = Infinity;
+  for (let i = 0; i < cache.length; i++) {
+    const fv = cache[i].value;
+    const d = Math.abs(fv - value);
+    const threshold = Math.max(fv * 0.1, 1);
     if (d < threshold && d < bestDist) { bestDist = d; best = cache[i].variable; }
   }
   return best;
@@ -1120,10 +1297,10 @@ function buildVarCacheSync(
   colorVars: Variable[], spacingVars: Variable[], radiusVars: Variable[], borderVars: Variable[],
   collections: VariableCollection[]
 ): VarCache {
-  var cache: VarCache = { colors: [], spacing: [], radius: [], borders: [] };
+  const cache: VarCache = { colors: [], spacing: [], radius: [], borders: [] };
 
   // Find the spacing collection for creating new variables
-  for (var sci = 0; sci < collections.length; sci++) {
+  for (let sci = 0; sci < collections.length; sci++) {
     if (collections[sci].name.toLowerCase().indexOf("spacing") !== -1) {
       cache.spacingCollection = collections[sci];
       break;
@@ -1131,19 +1308,19 @@ function buildVarCacheSync(
   }
 
   // Build collection lookup: id → first modeId
-  var modeMap: { [colId: string]: string } = {};
-  for (var ci = 0; ci < collections.length; ci++) {
-    if (collections[ci].modes && collections[ci].modes.length > 0) {
+  const modeMap: { [colId: string]: string } = {};
+  for (let ci = 0; ci < collections.length; ci++) {
+    if (collections[ci].modes?.length > 0) {
       modeMap[collections[ci].id] = collections[ci].modes[0].modeId;
     }
   }
 
   // Resolve colors
-  for (var i = 0; i < colorVars.length; i++) {
+  for (let i = 0; i < colorVars.length; i++) {
     try {
-      var modeId = modeMap[colorVars[i].variableCollectionId];
+      const modeId = modeMap[colorVars[i].variableCollectionId];
       if (!modeId) continue;
-      var cv = colorVars[i].valuesByMode[modeId];
+      const cv = colorVars[i].valuesByMode[modeId];
       if (cv && typeof cv === "object" && "r" in cv) {
         cache.colors.push({ variable: colorVars[i], r: (cv as any).r, g: (cv as any).g, b: (cv as any).b });
       }
@@ -1152,12 +1329,12 @@ function buildVarCacheSync(
 
   // Resolve floats
   function resolveFloats(vars: Variable[]): ResolvedFloatVar[] {
-    var out: ResolvedFloatVar[] = [];
-    for (var j = 0; j < vars.length; j++) {
+    const out: ResolvedFloatVar[] = [];
+    for (let j = 0; j < vars.length; j++) {
       try {
-        var mid = modeMap[vars[j].variableCollectionId];
+        const mid = modeMap[vars[j].variableCollectionId];
         if (!mid) continue;
-        var fv = vars[j].valuesByMode[mid];
+        const fv = vars[j].valuesByMode[mid];
         if (typeof fv === "number" && fv > 0) out.push({ variable: vars[j], value: fv });
       } catch (e) {}
     }
@@ -1174,14 +1351,14 @@ function buildVarCacheSync(
 function bindVariablesOnNode(node: SceneNode, cache: VarCache): void {
   // Bind fills
   if ("fills" in node && Array.isArray(node.fills)) {
-    var changed = false;
-    var newFills: Paint[] = [];
-    for (var fi = 0; fi < node.fills.length; fi++) {
-      var fill = node.fills[fi];
+    let changed = false;
+    const newFills: Paint[] = [];
+    for (let fi = 0; fi < node.fills.length; fi++) {
+      const fill = node.fills[fi];
       if (fill.type !== "SOLID" || fill.visible === false) { newFills.push(fill); continue; }
-      var bv = node.boundVariables && node.boundVariables.fills && node.boundVariables.fills[fi];
+      const bv = node.boundVariables?.fills?.[fi];
       if (bv) { newFills.push(fill); continue; }
-      var nearest = findNearestColorCached((fill as SolidPaint).color, cache.colors);
+      const nearest = findNearestColorCached((fill as SolidPaint).color, cache.colors);
       if (nearest) {
         try { newFills.push(figma.variables.setBoundVariableForPaint(fill, "color", nearest)); changed = true; continue; } catch (e) {}
       }
@@ -1192,14 +1369,14 @@ function bindVariablesOnNode(node: SceneNode, cache: VarCache): void {
 
   // Bind strokes
   if ("strokes" in node && Array.isArray(node.strokes)) {
-    var sChanged = false;
-    var newStrokes: Paint[] = [];
-    for (var si = 0; si < node.strokes.length; si++) {
-      var stroke = node.strokes[si];
+    let sChanged = false;
+    const newStrokes: Paint[] = [];
+    for (let si = 0; si < node.strokes.length; si++) {
+      const stroke = node.strokes[si];
       if (stroke.type !== "SOLID" || stroke.visible === false) { newStrokes.push(stroke); continue; }
-      var bvs = node.boundVariables && node.boundVariables.strokes && node.boundVariables.strokes[si];
+      const bvs = node.boundVariables?.strokes?.[si];
       if (bvs) { newStrokes.push(stroke); continue; }
-      var nearestS = findNearestColorCached((stroke as SolidPaint).color, cache.colors);
+      const nearestS = findNearestColorCached((stroke as SolidPaint).color, cache.colors);
       if (nearestS) {
         try { newStrokes.push(figma.variables.setBoundVariableForPaint(stroke, "color", nearestS)); sChanged = true; continue; } catch (e) {}
       }
@@ -1210,20 +1387,20 @@ function bindVariablesOnNode(node: SceneNode, cache: VarCache): void {
 
   // Bind spacing (find existing or create new variable)
   if ("layoutMode" in node && (node as FrameNode).layoutMode !== "NONE") {
-    var fn = node as FrameNode;
-    var spacingProps = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing"];
-    for (var spi = 0; spi < spacingProps.length; spi++) {
-      var prop = spacingProps[spi];
-      var val = (fn as any)[prop];
+    const fn = node as FrameNode;
+    const spacingProps = ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing"];
+    for (let spi = 0; spi < spacingProps.length; spi++) {
+      const prop = spacingProps[spi];
+      const val = (fn as any)[prop];
       if (typeof val !== "number" || val <= 0) continue;
-      var bvSp = fn.boundVariables && (fn.boundVariables as any)[prop];
+      const bvSp = (fn.boundVariables as any)?.[prop];
       if (bvSp) continue;
-      var nearSp = findNearestFloatCached(val, cache.spacing);
+      const nearSp = findNearestFloatCached(val, cache.spacing);
       if (nearSp) {
         try { fn.setBoundVariable(prop as any, nearSp); } catch (e) {}
       } else {
         // No matching variable — create a new spacing variable
-        var newSpVar = createSpacingVariable(Math.round(val), cache);
+        const newSpVar = createSpacingVariable(Math.round(val), cache);
         if (newSpVar) { try { fn.setBoundVariable(prop as any, newSpVar); } catch (e) {} }
       }
     }
@@ -1231,26 +1408,26 @@ function bindVariablesOnNode(node: SceneNode, cache: VarCache): void {
 
   // Bind radius
   if ("cornerRadius" in node && typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
-    var bvR = node.boundVariables && (node.boundVariables.cornerRadius || node.boundVariables.topLeftRadius);
+    const bvR = node.boundVariables?.cornerRadius || node.boundVariables?.topLeftRadius;
     if (!bvR) {
-      var nearR = findNearestFloatCached(node.cornerRadius, cache.radius);
+      const nearR = findNearestFloatCached(node.cornerRadius, cache.radius);
       if (nearR) { try { (node as any).setBoundVariable("cornerRadius", nearR); } catch (e) {} }
     }
   }
 
   // Bind border width
   if ("strokeWeight" in node && typeof node.strokeWeight === "number" && node.strokeWeight > 0) {
-    var bvBw = node.boundVariables && node.boundVariables.strokeWeight;
+    const bvBw = node.boundVariables?.strokeWeight;
     if (!bvBw) {
-      var nearBw = findNearestFloatCached(node.strokeWeight as number, cache.borders);
+      const nearBw = findNearestFloatCached(node.strokeWeight as number, cache.borders);
       if (nearBw) { try { (node as any).setBoundVariable("strokeWeight", nearBw); } catch (e) {} }
     }
   }
 
   // Recurse into children — fully synchronous now
   if ("children" in node && (node as any).children) {
-    var ch = (node as any).children as SceneNode[];
-    for (var i = 0; i < ch.length; i++) {
+    const ch = (node as any).children as SceneNode[];
+    for (let i = 0; i < ch.length; i++) {
       bindVariablesOnNode(ch[i], cache);
     }
   }
@@ -1259,34 +1436,36 @@ function bindVariablesOnNode(node: SceneNode, cache: VarCache): void {
 // ── Instance Swapping ────────────────────────────────────────────────────────
 
 async function swapSingleNode(originalId: string, variant: ComponentNode): Promise<boolean> {
-  var original = await figma.getNodeByIdAsync(originalId);
+  const original = await figma.getNodeByIdAsync(originalId);
   if (!original || !original.parent) return false;
 
   // Don't swap if it's already an instance
   if (original.type === "INSTANCE") return false;
 
-  var parent = original.parent;
-  var idx = -1;
+  const parent = original.parent;
+  let idx = -1;
   if ("children" in parent) {
-    var siblings = (parent as any).children as SceneNode[];
-    for (var i = 0; i < siblings.length; i++) {
+    const siblings = (parent as any).children as SceneNode[];
+    for (let i = 0; i < siblings.length; i++) {
       if (siblings[i].id === original.id) { idx = i; break; }
     }
   }
   if (idx < 0) return false;
 
   try {
-    var instance = variant.createInstance();
+    const instance = variant.createInstance();
 
-    // Copy position and size
+    // Copy position and size — force FIXED sizing so component auto-layout doesn't override
     instance.x = (original as any).x || 0;
     instance.y = (original as any).y || 0;
+    const origW = Math.max(1, Math.round((original as any).width || 100));
+    const origH = Math.max(1, Math.round((original as any).height || 40));
     try {
-      instance.resize(
-        Math.max(1, Math.round((original as any).width || 100)),
-        Math.max(1, Math.round((original as any).height || 40))
-      );
-    } catch (e) { /* auto-layout parent may control size */ }
+      // Set FIXED sizing before resize so HUG/FILL on the instance doesn't override dimensions
+      if ("primaryAxisSizingMode" in instance) (instance as any).primaryAxisSizingMode = "FIXED";
+      if ("counterAxisSizingMode" in instance) (instance as any).counterAxisSizingMode = "FIXED";
+      instance.resize(origW, origH);
+    } catch (e) { /* parent auto-layout may control size — best effort */ }
 
     // Copy layout sizing if parent uses auto-layout
     if ("layoutMode" in parent && (parent as any).layoutMode !== "NONE") {
@@ -1316,40 +1495,89 @@ async function swapSingleNode(originalId: string, variant: ComponentNode): Promi
   }
 }
 
-async function copyTextContent(source: SceneNode, target: SceneNode): Promise<void> {
-  // Collect text nodes from both trees by DFS order
-  var sourceTexts: TextNode[] = [];
-  var targetTexts: TextNode[] = [];
-  collectTextNodes(source, sourceTexts);
-  collectTextNodes(target, targetTexts);
-
-  // Match by index and copy characters
-  var count = Math.min(sourceTexts.length, targetTexts.length);
-  for (var i = 0; i < count; i++) {
-    if (sourceTexts[i].characters !== targetTexts[i].characters) {
-      try {
-        // Load all fonts used in the target text node (handles mixed fonts)
-        var targetFonts = targetTexts[i].getRangeAllFontNames(0, targetTexts[i].characters.length);
-        for (var fi = 0; fi < targetFonts.length; fi++) {
-          await figma.loadFontAsync(targetFonts[fi]);
-        }
-        targetTexts[i].characters = sourceTexts[i].characters;
-      } catch (e) {
-        // Font loading failed — skip text update
+async function loadTextNodeFont(tn: TextNode): Promise<void> {
+  // Strategy 1: getRangeAllFontNames (works for inline font overrides)
+  try {
+    if (tn.characters.length > 0) {
+      const rangeFonts = tn.getRangeAllFontNames(0, tn.characters.length);
+      for (let ri = 0; ri < rangeFonts.length; ri++) {
+        await figma.loadFontAsync(rangeFonts[ri]);
       }
+    }
+  } catch (e) {}
+  // Strategy 2: fontName property (works for text-style nodes where getRangeAllFontNames returns empty)
+  try {
+    const fn = tn.fontName;
+    if (fn && typeof fn === "object" && "family" in fn) {
+      await figma.loadFontAsync(fn as FontName);
+    }
+  } catch (e) {}
+}
+
+async function copyTextContent(source: SceneNode, target: SceneNode): Promise<void> {
+  // Collect text nodes from both trees; match by semantic layer name first, then by DFS index
+  const sourceTexts: { node: TextNode; name: string }[] = [];
+  const targetTexts: { node: TextNode; name: string }[] = [];
+  collectTextNodesNamed(source, sourceTexts);
+  collectTextNodesNamed(target, targetTexts);
+
+  // Build name→index map for targets for fast semantic matching
+  const targetByName: { [name: string]: number } = {};
+  for (let ti = 0; ti < targetTexts.length; ti++) {
+    const tname = targetTexts[ti].name.toLowerCase();
+    if (!(tname in targetByName)) targetByName[tname] = ti;
+  }
+
+  const usedTargetIndices: { [idx: number]: boolean } = {};
+
+  for (let si = 0; si < sourceTexts.length; si++) {
+    const srcEntry = sourceTexts[si];
+    const srcChars = srcEntry.node.characters;
+
+    // Skip empty source text
+    if (!srcChars) continue;
+
+    // Find matching target: prefer semantic name match, fall back to same index
+    let matchIdx = -1;
+    const snameLower = srcEntry.name.toLowerCase();
+    if (snameLower in targetByName && !usedTargetIndices[targetByName[snameLower]]) {
+      matchIdx = targetByName[snameLower];
+    } else if (si < targetTexts.length && !usedTargetIndices[si]) {
+      matchIdx = si;
+    }
+    if (matchIdx < 0) continue;
+
+    const tgtEntry = targetTexts[matchIdx];
+    if (tgtEntry.node.characters === srcChars) {
+      usedTargetIndices[matchIdx] = true;
+      continue; // already correct
+    }
+
+    try {
+      await loadTextNodeFont(tgtEntry.node);
+      tgtEntry.node.characters = srcChars;
+      usedTargetIndices[matchIdx] = true;
+    } catch (e) {
+      // If setting with target font fails, try loading source font then applying
+      try {
+        await loadTextNodeFont(srcEntry.node);
+        tgtEntry.node.characters = srcChars;
+        usedTargetIndices[matchIdx] = true;
+      } catch (e2) { /* give up on this text node */ }
     }
   }
 }
 
-function collectTextNodes(node: SceneNode, out: TextNode[]): void {
+function collectTextNodesNamed(node: SceneNode, out: { node: TextNode; name: string }[]): void {
   if (node.type === "TEXT") {
-    out.push(node as TextNode);
+    out.push({ node: node as TextNode, name: node.name || "" });
     return;
   }
   if ("children" in node && (node as any).children) {
-    var ch = (node as any).children as SceneNode[];
-    for (var i = 0; i < ch.length; i++) {
-      collectTextNodes(ch[i], out);
+    const ch = (node as any).children as SceneNode[];
+    for (let i = 0; i < ch.length; i++) {
+      collectTextNodesNamed(ch[i], out);
     }
   }
 }
+

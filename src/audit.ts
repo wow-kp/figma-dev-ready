@@ -2,42 +2,42 @@
 import { rgb01ToHex, resolveChain, hexToFigma, getAuditPages } from './utils';
 
 export async function pushDebugData() {
-  var sel = figma.currentPage.selection;
+  const sel = figma.currentPage.selection;
   if (sel.length === 1) figma.ui.postMessage({ type:"debug-data", data:await buildDebugData(sel[0]) });
   else figma.ui.postMessage({ type:"debug-data", data:null, selCount:sel.length });
 }
 
 export async function buildDebugData(node) {
-  var bv=node.boundVariables||{},groups=[];
-  function getGroup(name,icon){for(var i=0;i<groups.length;i++){if(groups[i].name===name)return groups[i];}var g={name:name,icon:icon,props:[]};groups.push(g);return g;}
+  const bv=node.boundVariables||{},groups=[];
+  function getGroup(name,icon){for(let i=0;i<groups.length;i++){if(groups[i].name===name)return groups[i];}const g={name:name,icon:icon,props:[]};groups.push(g);return g;}
   async function addBound(gn,icon,label,varId){getGroup(gn,icon).props.push({label:label,chain:await resolveChain(varId),unbound:false,isStyle:false});}
   function addUnbound(gn,icon,label,rawVal){getGroup(gn,icon).props.push({label:label,chain:null,unbound:true,rawValue:rawVal,isStyle:false});}
   function addStyle(gn,icon,label,styleName){getGroup(gn,icon).props.push({label:label,chain:null,unbound:false,isStyle:true,styleName:styleName});}
-  if("fills" in node&&Array.isArray(node.fills)){for(var _fi=0;_fi<node.fills.length;_fi++){var fill=node.fills[_fi];if(fill.visible===false)continue;var lbl=node.fills.length>1?"Fill "+(_fi+1):"Fill";var fbv=bv.fills&&bv.fills[_fi];if(fbv&&fbv.id)await addBound("Color","🎨",lbl,fbv.id);else if(fill.type==="SOLID")addUnbound("Color","🎨",lbl,rgb01ToHex(fill.color.r,fill.color.g,fill.color.b));else if(fill.type.indexOf("GRADIENT")!==-1)addUnbound("Color","🎨",lbl,"Gradient");else if(fill.type==="IMAGE")addUnbound("Color","🎨",lbl,"Image fill");}}
-  if("strokes" in node&&Array.isArray(node.strokes)&&(node.strokeWeight||0)>0){for(var _si=0;_si<node.strokes.length;_si++){var stroke=node.strokes[_si];if(stroke.visible===false)continue;var slbl=node.strokes.length>1?"Stroke "+(_si+1):"Stroke";var sbv=bv.strokes&&bv.strokes[_si];if(sbv&&sbv.id)await addBound("Color","🎨",slbl,sbv.id);else if(stroke.type==="SOLID")addUnbound("Color","🎨",slbl,rgb01ToHex(stroke.color.r,stroke.color.g,stroke.color.b));}}
-  if("opacity" in node&&node.opacity<1&&node.opacity>=0){if(bv.opacity&&bv.opacity.id)await addBound("Color","🎨","Opacity",bv.opacity.id);else addUnbound("Color","🎨","Opacity",Math.round(node.opacity*100)+"%");}
-  if("cornerRadius" in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){if(bv.cornerRadius&&bv.cornerRadius.id)await addBound("Shape","⬜","Corner Radius",bv.cornerRadius.id);else addUnbound("Shape","⬜","Corner Radius",node.cornerRadius+"px");}
-  else{var corners=[["topLeftRadius","↖ TL"],["topRightRadius","↗ TR"],["bottomRightRadius","↘ BR"],["bottomLeftRadius","↙ BL"]];for(var _ci=0;_ci<corners.length;_ci++){var c=corners[_ci];if(!(c[0] in node)||!node[c[0]]||node[c[0]]===figma.mixed)continue;if(bv[c[0]]&&bv[c[0]].id)await addBound("Shape","⬜","Radius "+c[1],bv[c[0]].id);else if(node[c[0]]>0)addUnbound("Shape","⬜","Radius "+c[1],node[c[0]]+"px");}}
-  if(bv.width&&bv.width.id)await addBound("Size","📏","Width",bv.width.id);
-  if(bv.height&&bv.height.id)await addBound("Size","📏","Height",bv.height.id);
-  if("layoutMode" in node&&node.layoutMode!=="NONE"){var sps=[["paddingLeft","Pad Left"],["paddingRight","Pad Right"],["paddingTop","Pad Top"],["paddingBottom","Pad Bottom"],["itemSpacing","Gap"]];for(var _spi=0;_spi<sps.length;_spi++){var sp=sps[_spi];if(!(sp[0] in node)||node[sp[0]]===figma.mixed)continue;if(bv[sp[0]]&&bv[sp[0]].id)await addBound("Spacing","📐",sp[1],bv[sp[0]].id);else if(node[sp[0]]>0)addUnbound("Spacing","📐",sp[1],node[sp[0]]+"px");}}
-  if(node.type==="TEXT"){if(node.textStyleId&&node.textStyleId!==figma.mixed){var ts=await figma.getStyleByIdAsync(node.textStyleId);if(ts)addStyle("Typography","✏️","Text Style",ts.name);}else addUnbound("Typography","✏️","Text Style","None — raw values");var tps=[["fontSize","Font Size"],["fontFamily","Font Family"],["fontWeight","Font Weight"],["lineHeight","Line Height"],["letterSpacing","Letter Spacing"]];for(var _tpi=0;_tpi<tps.length;_tpi++){var tp=tps[_tpi];if(bv[tp[0]]&&bv[tp[0]].id)await addBound("Typography","✏️",tp[1],bv[tp[0]].id);}}
-  if("effectStyleId" in node&&node.effectStyleId){var es=await figma.getStyleByIdAsync(node.effectStyleId);if(es)addStyle("Effects","✨","Effect Style",es.name);}
-  else if("effects" in node&&node.effects&&node.effects.length>0)addUnbound("Effects","✨",node.effects.length+" effect"+(node.effects.length>1?"s":""),"No style bound");
-  var totalBound=0,totalUnbound=0,totalBroken=0;
+  if("fills" in node&&Array.isArray(node.fills)){for(let _fi=0;_fi<node.fills.length;_fi++){const fill=node.fills[_fi];if(fill.visible===false)continue;const lbl=node.fills.length>1?"Fill "+(_fi+1):"Fill";const fbv=bv.fills?.[_fi];if(fbv?.id)await addBound("Color","🎨",lbl,fbv.id);else if(fill.type==="SOLID")addUnbound("Color","🎨",lbl,rgb01ToHex(fill.color.r,fill.color.g,fill.color.b));else if(fill.type.indexOf("GRADIENT")!==-1)addUnbound("Color","🎨",lbl,"Gradient");else if(fill.type==="IMAGE")addUnbound("Color","🎨",lbl,"Image fill");}}
+  if("strokes" in node&&Array.isArray(node.strokes)&&(node.strokeWeight||0)>0){for(let _si=0;_si<node.strokes.length;_si++){const stroke=node.strokes[_si];if(stroke.visible===false)continue;const slbl=node.strokes.length>1?"Stroke "+(_si+1):"Stroke";const sbv=bv.strokes?.[_si];if(sbv?.id)await addBound("Color","🎨",slbl,sbv.id);else if(stroke.type==="SOLID")addUnbound("Color","🎨",slbl,rgb01ToHex(stroke.color.r,stroke.color.g,stroke.color.b));}}
+  if("opacity" in node&&node.opacity<1&&node.opacity>=0){if(bv.opacity?.id)await addBound("Color","🎨","Opacity",bv.opacity.id);else addUnbound("Color","🎨","Opacity",Math.round(node.opacity*100)+"%");}
+  if("cornerRadius" in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){if(bv.cornerRadius?.id)await addBound("Shape","⬜","Corner Radius",bv.cornerRadius.id);else addUnbound("Shape","⬜","Corner Radius",node.cornerRadius+"px");}
+  else{const corners=[["topLeftRadius","↖ TL"],["topRightRadius","↗ TR"],["bottomRightRadius","↘ BR"],["bottomLeftRadius","↙ BL"]];for(let _ci=0;_ci<corners.length;_ci++){const c=corners[_ci];if(!(c[0] in node)||!node[c[0]]||node[c[0]]===figma.mixed)continue;if(bv[c[0]]?.id)await addBound("Shape","⬜","Radius "+c[1],bv[c[0]].id);else if(node[c[0]]>0)addUnbound("Shape","⬜","Radius "+c[1],node[c[0]]+"px");}}
+  if(bv.width?.id)await addBound("Size","📏","Width",bv.width.id);
+  if(bv.height?.id)await addBound("Size","📏","Height",bv.height.id);
+  if("layoutMode" in node&&node.layoutMode!=="NONE"){const sps=[["paddingLeft","Pad Left"],["paddingRight","Pad Right"],["paddingTop","Pad Top"],["paddingBottom","Pad Bottom"],["itemSpacing","Gap"]];for(let _spi=0;_spi<sps.length;_spi++){const sp=sps[_spi];if(!(sp[0] in node)||node[sp[0]]===figma.mixed)continue;if(bv[sp[0]]?.id)await addBound("Spacing","📐",sp[1],bv[sp[0]].id);else if(node[sp[0]]>0)addUnbound("Spacing","📐",sp[1],node[sp[0]]+"px");}}
+  if(node.type==="TEXT"){if(node.textStyleId&&node.textStyleId!==figma.mixed){const ts=await figma.getStyleByIdAsync(node.textStyleId);if(ts)addStyle("Typography","✏️","Text Style",ts.name);}else addUnbound("Typography","✏️","Text Style","None — raw values");const tps=[["fontSize","Font Size"],["fontFamily","Font Family"],["fontWeight","Font Weight"],["lineHeight","Line Height"],["letterSpacing","Letter Spacing"]];for(let _tpi=0;_tpi<tps.length;_tpi++){const tp=tps[_tpi];if(bv[tp[0]]?.id)await addBound("Typography","✏️",tp[1],bv[tp[0]].id);}}
+  if("effectStyleId" in node&&node.effectStyleId){const es=await figma.getStyleByIdAsync(node.effectStyleId);if(es)addStyle("Effects","✨","Effect Style",es.name);}
+  else if("effects" in node&&node.effects?.length>0)addUnbound("Effects","✨",node.effects.length+" effect"+(node.effects.length>1?"s":""),"No style bound");
+  let totalBound=0,totalUnbound=0,totalBroken=0;
   groups.forEach(function(g){g.props.forEach(function(p){if(p.isStyle)return;if(!p.chain){totalUnbound++;return;}if(p.chain.some(function(s){return s.broken;}))totalBroken++;else totalBound++;});});
   return {id:node.id,name:node.name,type:node.type,groups:groups,totalBound:totalBound,totalUnbound:totalUnbound,totalBroken:totalBroken};
 }
 
-export var DEFAULT_NAME_RE=/^(Frame|Rectangle|Ellipse|Polygon|Star|Vector|Line|Arrow|Text|Group|Component|Instance|Image|Section|Slice)(\s+\d+)?$/i;
+export const DEFAULT_NAME_RE=/^(Frame|Rectangle|Ellipse|Polygon|Star|Vector|Line|Arrow|Text|Group|Component|Instance|Image|Section|Slice)(\s+\d+)?$/i;
 
 export function isDefaultName(n){return DEFAULT_NAME_RE.test(n.trim());}
 
 function rgbToHex(c){return "#"+[c.r,c.g,c.b].map(function(v){return Math.round(v*255).toString(16).padStart(2,"0");}).join("");}
 
-export function getPath(node){var parts=[],n=node.parent;while(n&&n.type!=="PAGE"&&n.type!=="DOCUMENT"){parts.unshift(n.name);n=n.parent;}if(n&&n.type==="PAGE")parts.unshift("📄 "+n.name);return parts.length?parts.join(" › "):"Page root";}
+export function getPath(node){const parts=[];let n=node.parent;while(n&&n.type!=="PAGE"&&n.type!=="DOCUMENT"){parts.unshift(n.name);n=n.parent;}if(n&&n.type==="PAGE")parts.unshift("📄 "+n.name);return parts.length?parts.join(" › "):"Page root";}
 
-export function trunc(s,l){l=l||38;return s&&s.length>l?s.slice(0,l)+"…":(s||"");}
+export function trunc(s,l){l=l||38;return s?.length>l?s.slice(0,l)+"…":(s||"");}
 
 // ── Kebab-case helpers ────────────────────────────────────────────────────────
 // Convert any string to kebab-case (preserves slash hierarchy for components)
@@ -62,7 +62,7 @@ export function toKebab(str) {
 // Returns the violation type string, or null if name is valid
 // Components (COMPONENT/INSTANCE) use Title/Pascal slash segments — skip them
 export function getKebabViolation(node) {
-  var name = node.name;
+  const name = node.name;
   if (isDefaultName(name)) return null;                // default names handled by separate check
   if (node.type === "COMPONENT" || node.type === "INSTANCE") return null; // components have own convention
   if (node.type === "SECTION") return null;            // Figma sections are org tools, relax rule
@@ -73,13 +73,13 @@ export function getKebabViolation(node) {
   // normalizing newlines to spaces and truncating. Collapse all whitespace before comparing
   // so newline vs space differences don't cause false positives.
   if (node.type === "TEXT" && node.characters) {
-    var normName  = node.name.trim().replace(/\s+/g, " ");
-    var normChars = node.characters.trim().replace(/\s+/g, " ");
+    const normName  = node.name.trim().replace(/\s+/g, " ");
+    const normChars = node.characters.trim().replace(/\s+/g, " ");
     if (normChars.startsWith(normName)) return null;
   }
-  var segments = name.split("/");
-  for (var i = 0; i < segments.length; i++) {
-    var seg = segments[i];
+  const segments = name.split("/");
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
     if (!seg) return "empty segment";
     if (/[A-Z]/.test(seg) && /^[A-Z]/.test(seg)) return "PascalCase";
     if (/[A-Z]/.test(seg)) return "camelCase or mixed caps";
@@ -92,7 +92,7 @@ export function getKebabViolation(node) {
 
 // Serialize a node's context for AI naming — compact representation (~100-150 tokens)
 export function serializeNodeForNaming(node) {
-  var result: any = {
+  const result: any = {
     id: node.id,
     type: node.type,
     currentName: node.name,
@@ -111,20 +111,20 @@ export function serializeNodeForNaming(node) {
 
   // Sibling names (hints at list/grid context)
   if (node.parent && "children" in node.parent && node.parent.children.length > 1) {
-    var sibs = [];
-    for (var si = 0; si < node.parent.children.length && sibs.length < 5; si++) {
-      var sib = node.parent.children[si];
+    const sibs = [];
+    for (let si = 0; si < node.parent.children.length && sibs.length < 5; si++) {
+      const sib = node.parent.children[si];
       if (sib.id !== node.id) sibs.push(sib.name);
     }
     if (sibs.length) result.siblings = sibs;
   }
 
   // Children (first level only, up to 8)
-  if ("children" in node && node.children && node.children.length) {
+  if ("children" in node && node.children?.length) {
     result.children = [];
-    for (var ci = 0; ci < node.children.length && ci < 8; ci++) {
-      var c = node.children[ci];
-      var child: any = { type: c.type };
+    for (let ci = 0; ci < node.children.length && ci < 8; ci++) {
+      const c = node.children[ci];
+      const child: any = { type: c.type };
       if (c.name && !isDefaultName(c.name)) child.name = c.name;
       if (c.type === "TEXT" && c.characters) {
         child.text = c.characters.trim().substring(0, 32);
@@ -152,15 +152,15 @@ export function serializeNodeForNaming(node) {
 
 // Suggest a proper kebab-case name based on layer content, structure and context
 export function generateName(node) {
-  var parentIsPage = node.parent && node.parent.type === "PAGE";
-  var parentName   = node.parent && node.parent.name ? toKebab(node.parent.name.split("/")[0]) : "";
+  const parentIsPage = node.parent?.type === "PAGE";
+  const parentName   = node.parent?.name ? toKebab(node.parent.name.split("/")[0]) : "";
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   // Collect ALL text content in a subtree, shortest first (most likely labels)
   function collectTexts(n, out, depth) {
     if (!out) out = []; if (!depth) depth = 0; if (depth > 4) return out;
     if (n.type === "TEXT" && n.characters && n.characters.trim()) {
-      var t = n.characters.trim().replace(/\s+/g, " ");
+      const t = n.characters.trim().replace(/\s+/g, " ");
       if (t.length <= 32) out.push(t);
     }
     if ("children" in n && n.children) {
@@ -172,15 +172,15 @@ export function generateName(node) {
   // over long body copy
   function bestText(texts) {
     if (!texts || !texts.length) return null;
-    var sorted = texts.slice().sort(function(a, b) { return a.length - b.length; });
+    const sorted = texts.slice().sort(function(a, b) { return a.length - b.length; });
     return sorted[0];
   }
   // Convert text content to a kebab prefix, stripping punctuation noise
   function textToPrefix(str) {
     if (!str) return null;
-    var k = toKebab(str.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim());
+    const k = toKebab(str.replace(/[^a-zA-Z0-9\s-]/g, " ").replace(/\s+/g, " ").trim());
     // Truncate to max 3 meaningful words
-    var parts = k.split("-").filter(function(p) { return p.length > 1; });
+    const parts = k.split("-").filter(function(p) { return p.length > 1; });
     return parts.slice(0, 3).join("-") || null;
   }
   // Check if any node in subtree has an image fill
@@ -191,7 +191,7 @@ export function generateName(node) {
   }
   // Count child types at direct level
   function childTypes(n) {
-    var t = {};
+    const t = {};
     if ("children" in n && n.children) n.children.forEach(function(c) { t[c.type] = (t[c.type] || 0) + 1; });
     return t;
   }
@@ -201,11 +201,11 @@ export function generateName(node) {
 
   // ── TEXT node ─────────────────────────────────────────────────────────────
   if (node.type === "TEXT") {
-    var chars = node.characters && node.characters.trim();
+    const chars = node.characters?.trim();
     if (chars) {
-      var fs = node.fontSize !== figma.mixed ? node.fontSize : null;
-      var fw = node.fontWeight !== figma.mixed ? node.fontWeight : null;
-      var prefix = textToPrefix(chars);
+      const fs = node.fontSize !== figma.mixed ? node.fontSize : null;
+      const fw = node.fontWeight !== figma.mixed ? node.fontWeight : null;
+      const prefix = textToPrefix(chars);
       if (fs >= 36 || fw >= 700) return (prefix || "heading") + "-heading";
       if (fs >= 24)              return (prefix || "subheading") + "-subheading";
       if (fs >= 16)              return (prefix || "body") + "-text";
@@ -233,20 +233,20 @@ export function generateName(node) {
     return parentIsPage ? "section" : "container";
   }
 
-  var texts   = collectTexts(node);
-  var best    = bestText(texts);
-  var prefix  = textToPrefix(best);
-  var types   = childTypes(node);
-  var dom     = dominant(types);
-  var kids    = node.children.length;
-  var isHoriz = node.layoutMode === "HORIZONTAL";
-  var isVert  = node.layoutMode === "VERTICAL";
-  var w       = node.width  || 0;
-  var h       = node.height || 0;
-  var hasImg  = hasImageFill(node);
-  var hasVec  = types.VECTOR > 0 || types.BOOLEAN_OPERATION > 0;
-  var hasText = types.TEXT > 0 || texts.length > 0;
-  var hasInst = types.INSTANCE > 0;
+  const texts   = collectTexts(node);
+  const best    = bestText(texts);
+  const prefix  = textToPrefix(best);
+  const types   = childTypes(node);
+  const dom     = dominant(types);
+  const kids    = node.children.length;
+  const isHoriz = node.layoutMode === "HORIZONTAL";
+  const isVert  = node.layoutMode === "VERTICAL";
+  const w       = node.width  || 0;
+  const h       = node.height || 0;
+  const hasImg  = hasImageFill(node);
+  const hasVec  = types.VECTOR > 0 || types.BOOLEAN_OPERATION > 0;
+  const hasText = types.TEXT > 0 || texts.length > 0;
+  const hasInst = types.INSTANCE > 0;
 
   // ── Top-level page section ────────────────────────────────────────────────
   if (parentIsPage && node.type === "FRAME") {
@@ -263,7 +263,7 @@ export function generateName(node) {
   // Small frame, 1–3 children, has text, optionally an icon, not too tall
   if (kids <= 3 && hasText && h <= 64 && w <= 320) {
     // Check if the only children are text + optional icon
-    var nonTextKids = kids - (types.TEXT || 0);
+    const nonTextKids = kids - (types.TEXT || 0);
     if (nonTextKids <= 1 && (!nonTextKids || hasVec || hasInst)) {
       return (prefix || "btn") + "-btn";
     }
@@ -285,9 +285,9 @@ export function generateName(node) {
   // ── Input field ──────────────────────────────────────────────────────────
   // Has a text layer with short content like "Email", "Password", "Search"
   if (hasText && kids <= 5 && h <= 60) {
-    var inputHints = ["email","password","search","name","phone","username","url","enter","type","write"];
-    var lowerBest = best ? best.toLowerCase() : "";
-    for (var ii = 0; ii < inputHints.length; ii++) {
+    const inputHints = ["email","password","search","name","phone","username","url","enter","type","write"];
+    const lowerBest = best ? best.toLowerCase() : "";
+    for (let ii = 0; ii < inputHints.length; ii++) {
       if (lowerBest.indexOf(inputHints[ii]) !== -1) {
         return "input-" + inputHints[ii];
       }
@@ -329,12 +329,12 @@ export function generateName(node) {
   // ── Parent-name-informed fallback ─────────────────────────────────────────
   if (parentName && !isDefaultName(parentName) && parentName !== "root") {
     // strip common suffixes before re-appending a role
-    var stripped = parentName.replace(/-(section|wrapper|container|card|list|group)$/, "");
+    const stripped = parentName.replace(/-(section|wrapper|container|card|list|group)$/, "");
     return stripped + "-item";
   }
 
   // ── Last resort type fallback ─────────────────────────────────────────────
-  var typeMap = {
+  const typeMap = {
     FRAME:     "container",
     GROUP:     "group",
     COMPONENT: "component",
@@ -345,25 +345,25 @@ export function generateName(node) {
   return typeMap[node.type] || node.type.toLowerCase();
 }
 
-export async function getVarColor(v){var col=await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(!val||typeof val!=="object"||val.type==="VARIABLE_ALIAS")return null;return val;}
+export async function getVarColor(v){const col=await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);if(!col?.modes?.length)return null;const val=v.valuesByMode[col.modes[0].modeId];if(!val||typeof val!=="object"||val.type==="VARIABLE_ALIAS")return null;return val;}
 
-export function colorDist(a,b){var dr=a.r-b.r,dg=a.g-b.g,db=a.b-b.b;return Math.sqrt(dr*dr+dg*dg+db*db);}
+export function colorDist(a,b){const dr=a.r-b.r,dg=a.g-b.g,db=a.b-b.b;return Math.sqrt(dr*dr+dg*dg+db*db);}
 
-export async function findNearestColorVar(color,vars){var best=null,bestDist=0.04;for(var i=0;i<vars.length;i++){var vc=await getVarColor(vars[i]);if(!vc)continue;var d=colorDist(color,vc);if(d<bestDist){bestDist=d;best=vars[i];}}return best;}
+export async function findNearestColorVar(color,vars){let best=null,bestDist=0.04;for(let i=0;i<vars.length;i++){const vc=await getVarColor(vars[i]);if(!vc)continue;const d=colorDist(color,vc);if(d<bestDist){bestDist=d;best=vars[i];}}return best;}
 
 // Get the first-mode float value from a FLOAT variable
-export async function getVarFloat(v){var col=await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);if(!col||!col.modes||!col.modes.length)return null;var val=v.valuesByMode[col.modes[0].modeId];if(typeof val==="number")return val;return null;}
+export async function getVarFloat(v){const col=await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);if(!col?.modes?.length)return null;const val=v.valuesByMode[col.modes[0].modeId];if(typeof val==="number")return val;return null;}
 
 // Find nearest FLOAT variable to a given value (within 10% tolerance)
 export async function findNearestFloatVar(value,vars){
   if(!value||value<=0)return null;
-  var best=null,bestDist=Infinity;
-  for(var i=0;i<vars.length;i++){
-    var fv=await getVarFloat(vars[i]);
+  let best=null,bestDist=Infinity;
+  for(let i=0;i<vars.length;i++){
+    const fv=await getVarFloat(vars[i]);
     if(fv===null||fv<=0)continue;
-    var d=Math.abs(fv-value);
+    const d=Math.abs(fv-value);
     // Must be within 10% or 1px, whichever is larger
-    var threshold=Math.max(fv*0.1,1);
+    const threshold=Math.max(fv*0.1,1);
     if(d<threshold&&d<bestDist){bestDist=d;best=vars[i];}
   }
   return best;
@@ -374,9 +374,9 @@ function mk(label,desc,icon,group){return{label:label,description:desc,icon:icon
 // getAuditPages imported from utils
 
 export async function runAudit(){
-  var auditPages=getAuditPages();
+  const auditPages=getAuditPages();
   if(!auditPages.length) return{checks:{},totalNodes:0,totalIssues:0,score:100,fixable:{},noPages:true};
-  var checks={
+  const checks={
     naming:        mk("Default Layer Names",     "Layers using Figma auto-generated names",                   "🏷",  "Naming & Structure"),
     namingFormat:  mk("Naming Convention",       "Names not in kebab-case (spaces, caps, underscores)",       "📝",  "Naming & Structure"),
     deepNesting:   mk("Deep Nesting",            "Frames or groups nested 6+ levels deep",                    "🪆",  "Naming & Structure"),
@@ -395,44 +395,44 @@ export async function runAudit(){
     unsavedStyles: mk("Unsaved Effect Styles", "Shadows/blurs not saved as an effect style",        "✨",  "Hygiene"),
   };
   // Pre-load all variables for suggestions and binding checks
-  var allLocalVars = [];
+  let allLocalVars = [];
   try { allLocalVars = await figma.variables.getLocalVariablesAsync(); } catch(e) {}
-  var colorVars = allLocalVars.filter(function(v){ return v.resolvedType === "COLOR"; });
-  var floatVars = allLocalVars.filter(function(v){ return v.resolvedType === "FLOAT"; });
+  const colorVars = allLocalVars.filter(function(v){ return v.resolvedType === "COLOR"; });
+  const floatVars = allLocalVars.filter(function(v){ return v.resolvedType === "FLOAT"; });
   // Separate opacity vars (store percentage values) from other float vars
-  var allCols = [];
+  let allCols = [];
   try { allCols = await figma.variables.getLocalVariableCollectionsAsync(); } catch(e) {}
-  var _colNameMap = {};
-  for (var _ci = 0; _ci < allCols.length; _ci++) { _colNameMap[allCols[_ci].id] = allCols[_ci].name.toLowerCase(); }
-  var opacityVars = floatVars.filter(function(v){ return (_colNameMap[v.variableCollectionId] || "").indexOf("opacity") !== -1; });
-  var nonOpacityFloatVars = floatVars.filter(function(v){ return (_colNameMap[v.variableCollectionId] || "").indexOf("opacity") === -1; });
+  const _colNameMap = {};
+  for (let _ci = 0; _ci < allCols.length; _ci++) { _colNameMap[allCols[_ci].id] = allCols[_ci].name.toLowerCase(); }
+  const opacityVars = floatVars.filter(function(v){ return (_colNameMap[v.variableCollectionId] || "").indexOf("opacity") !== -1; });
+  const nonOpacityFloatVars = floatVars.filter(function(v){ return (_colNameMap[v.variableCollectionId] || "").indexOf("opacity") === -1; });
   // Build serializable var info for UI suggestions
   async function varInfo(v) {
     if (!v) return null;
-    var col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
-    return { id: v.id, name: v.name, collection: col ? col.name : "" };
+    const col = await figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId);
+    return { id: v.id, name: v.name, collection: col?.name || "" };
   }
   // Pre-load spacing variable values for inconsistent spacing check
-  var spacingVarValues = [];
-  for (var svi = 0; svi < floatVars.length; svi++) {
-    var svCol = await figma.variables.getVariableCollectionByIdAsync(floatVars[svi].variableCollectionId);
-    if (svCol && svCol.name === "Spacing") {
-      var svVal = await getVarFloat(floatVars[svi]);
+  const spacingVarValues = [];
+  for (let svi = 0; svi < floatVars.length; svi++) {
+    const svCol = await figma.variables.getVariableCollectionByIdAsync(floatVars[svi].variableCollectionId);
+    if (svCol?.name === "Spacing") {
+      const svVal = await getVarFloat(floatVars[svi]);
       if (svVal !== null && svVal > 0) spacingVarValues.push(svVal);
     }
   }
   // Pre-load text styles for suggestions
-  var localTextStyles = [];
+  let localTextStyles = [];
   try { localTextStyles = await figma.getLocalTextStylesAsync(); } catch(e) {}
   function findNearestTextStyle(node) {
     if (!localTextStyles.length) return null;
-    var fs = node.fontSize !== figma.mixed ? node.fontSize : null;
-    var fn = node.fontName !== figma.mixed ? node.fontName : null;
+    const fs = node.fontSize !== figma.mixed ? node.fontSize : null;
+    const fn = node.fontName !== figma.mixed ? node.fontName : null;
     if (!fs) return null;
-    var best = null, bestScore = 0;
-    for (var tsi = 0; tsi < localTextStyles.length; tsi++) {
-      var ts = localTextStyles[tsi];
-      var score = 0;
+    let best = null, bestScore = 0;
+    for (let tsi = 0; tsi < localTextStyles.length; tsi++) {
+      const ts = localTextStyles[tsi];
+      let score = 0;
       // Exact font size match = 10 points, close = 5
       if (ts.fontSize === fs) score += 10;
       else if (Math.abs(ts.fontSize - fs) <= 1) score += 5;
@@ -447,29 +447,29 @@ export async function runAudit(){
     if (!ts) return null;
     return { id: ts.id, name: ts.name };
   }
-  var totalNodes=0;
+  let totalNodes=0;
 
   // For nodes inside instances, find the corresponding main component node to check its bindings
   function getComponentNode(node) {
     if (!node || !node.parent) return null;
     // Walk up to find the nearest INSTANCE ancestor
-    var cur = node;
-    var path = [];
+    let cur = node;
+    const path = [];
     while (cur && cur.type !== "INSTANCE") {
       if (cur.parent && "children" in cur.parent) {
-        for (var ci = 0; ci < cur.parent.children.length; ci++) {
+        for (let ci = 0; ci < cur.parent.children.length; ci++) {
           if (cur.parent.children[ci].id === cur.id) { path.unshift(ci); break; }
         }
       }
       cur = cur.parent;
     }
     if (!cur || cur.type !== "INSTANCE") return null;
-    var comp = null;
+    let comp = null;
     try { comp = cur.mainComponent; } catch(e) {}
     if (!comp) return null;
     // Walk down the component tree using the same child indices
-    var target = comp;
-    for (var pi = 0; pi < path.length; pi++) {
+    let target = comp;
+    for (let pi = 0; pi < path.length; pi++) {
       if (!target || !("children" in target) || path[pi] >= target.children.length) return null;
       target = target.children[path[pi]];
     }
@@ -478,16 +478,16 @@ export async function runAudit(){
 
   // Get bound variables — check node first, fall back to main component node
   function getBV(node, insideInst) {
-    var bv = node.boundVariables || {};
+    const bv = node.boundVariables || {};
     if (!insideInst) return bv;
     // Merge: if instance child has no binding, check the component source
-    var compNode = getComponentNode(node);
+    const compNode = getComponentNode(node);
     if (!compNode) return bv;
-    var cbv = compNode.boundVariables || {};
-    var merged = {};
-    var allKeys = Object.keys(bv).concat(Object.keys(cbv));
-    for (var ki = 0; ki < allKeys.length; ki++) {
-      var k = allKeys[ki];
+    const cbv = compNode.boundVariables || {};
+    const merged = {};
+    const allKeys = Object.keys(bv).concat(Object.keys(cbv));
+    for (let ki = 0; ki < allKeys.length; ki++) {
+      const k = allKeys[ki];
       if (!merged[k]) merged[k] = bv[k] || cbv[k];
     }
     return merged;
@@ -495,32 +495,32 @@ export async function runAudit(){
 
   // Get text style ID — check node first, fall back to main component node
   function getTsId(node, insideInst) {
-    var tsId = node.textStyleId;
+    const tsId = node.textStyleId;
     if (tsId && tsId !== "") return tsId;
     if (!insideInst) return tsId;
-    var compNode = getComponentNode(node);
-    return compNode && compNode.type === "TEXT" ? compNode.textStyleId : tsId;
+    const compNode = getComponentNode(node);
+    return compNode?.type === "TEXT" ? compNode.textStyleId : tsId;
   }
 
   // Get effect style ID — check node first, fall back to main component node
   function getEffectStyleId(node, insideInst) {
-    var esId = node.effectStyleId;
+    const esId = node.effectStyleId;
     if (esId && esId !== "") return esId;
     if (!insideInst) return esId;
-    var compNode = getComponentNode(node);
-    return compNode ? compNode.effectStyleId : esId;
+    const compNode = getComponentNode(node);
+    return compNode?.effectStyleId ?? esId;
   }
 
   async function walk(node, depth, insideInst) {
     // Skip component definitions on audit pages — they belong to the component system, not page content
     if(node.type==="COMPONENT_SET"||(!insideInst && node.type==="COMPONENT"))return;
     totalNodes++;
-    var path=getPath(node);
-    var isInst = insideInst || node.type === "INSTANCE";
+    const path=getPath(node);
+    const isInst = insideInst || node.type === "INSTANCE";
     // ── Naming (skip text nodes, skip inside instances) ─────────────────
     if(node.type!=="TEXT" && !insideInst){
       if(isDefaultName(node.name))checks.naming.issues.push({id:node.id,label:node.type+': "'+node.name+'"',path:path,suggestedName:generateName(node)});
-      var violation = getKebabViolation(node);
+      const violation = getKebabViolation(node);
       if(violation)checks.namingFormat.issues.push({id:node.id,label:'"'+trunc(node.name)+'\" — '+violation,path:path,suggestedName:toKebab(node.name)});
     }
     // ── Deep nesting (skip inside instances — component internals don't count) ──
@@ -528,7 +528,7 @@ export async function runAudit(){
     if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT"||node.type==="GROUP")&&("layoutMode"in node?node.layoutMode==="NONE":true)&&"children"in node&&node.children.length>=2)checks.autoLayout.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.children.length+' children',path:path});
     // ── Fixed sizing: flag layout containers with FIXED width/height inside auto-layout parents ──
     if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT"||node.type==="INSTANCE") && node.parent && "layoutMode" in node.parent && node.parent.layoutMode !== "NONE") {
-      var isSmallByName = node.name && /button|btn|icon|img|image|input|field|logo|close|chevron|arrow|label|dropdown|badge|tag|chip|avatar|dot|indicator|separator|divider/i.test(node.name);
+      const isSmallByName = node.name && /button|btn|icon|img|image|input|field|logo|close|chevron|arrow|label|dropdown|badge|tag|chip|avatar|dot|indicator|separator|divider/i.test(node.name);
       // Check horizontal sizing
       if (!isSmallByName && "layoutSizingHorizontal" in node && node.layoutSizingHorizontal === "FIXED") {
         checks.fixedSize.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — fixed width '+Math.round(node.width)+'px',path:path});
@@ -539,43 +539,43 @@ export async function runAudit(){
       }
     }
     // ── Variables & styles (resolve from component when inside instance) ──
-    var bv=getBV(node, insideInst);
-    if("fills"in node&&Array.isArray(node.fills)){for(var _fi2=0;_fi2<node.fills.length;_fi2++){var fill=node.fills[_fi2];if(fill.type==="SOLID"&&fill.visible!==false){var b=bv.fills&&bv.fills[_fi2];if(!b){var nv=await findNearestColorVar(fill.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" fill: '+rgbToHex(fill.color),path:path,suggestedVar:await varInfo(nv),rawValue:rgbToHex(fill.color),bindType:"fill",bindIndex:_fi2});}}}}
-    if("strokes"in node&&Array.isArray(node.strokes)){for(var _si2=0;_si2<node.strokes.length;_si2++){var stroke=node.strokes[_si2];if(stroke.type==="SOLID"&&stroke.visible!==false&&(node.strokeWeight||0)>0){var b=bv.strokes&&bv.strokes[_si2];if(!b){var nv=await findNearestColorVar(stroke.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" stroke: '+rgbToHex(stroke.color),path:path,suggestedVar:await varInfo(nv),rawValue:rgbToHex(stroke.color),bindType:"stroke",bindIndex:_si2});}}}}
-    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode!=="NONE"){var unboundProps=[];var firstSpVal=0;var _spProps=["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];for(var _spi2=0;_spi2<_spProps.length;_spi2++){var prop=_spProps[_spi2];if(!(prop in node))continue;var val=node[prop];if(val===figma.mixed||!val||val<=0)continue;var b=bv[prop];if(!b){unboundProps.push(prop.replace(/([A-Z])/g," $1").toLowerCase());if(!firstSpVal)firstSpVal=val;}}if(unboundProps.length){var nv=await findNearestFloatVar(firstSpVal,nonOpacityFloatVars);checks.spacingVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+unboundProps.join(", "),path:path,suggestedVar:await varInfo(nv),rawValue:firstSpVal,bindType:"spacing"});}}
-    if("cornerRadius"in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){var b=bv.cornerRadius||bv.topLeftRadius||bv.topRightRadius||bv.bottomLeftRadius||bv.bottomRightRadius;if(!b){var nv=await findNearestFloatVar(node.cornerRadius,nonOpacityFloatVars);checks.radiusVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.cornerRadius+'px',path:path,suggestedVar:await varInfo(nv),rawValue:node.cornerRadius,bindType:"radius"});}}
-    if("opacity"in node&&node.opacity<1&&node.opacity>0){var b=bv.opacity;if(!b){var opaPct=Math.round(node.opacity*100);var nv=await findNearestFloatVar(opaPct,opacityVars);checks.opacityVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+opaPct+'%',path:path,suggestedVar:await varInfo(nv),rawValue:opaPct,bindType:"opacity"});}}
-    if(node.type==="TEXT"){var tsId=getTsId(node, insideInst);if(tsId===figma.mixed)checks.mixedText.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"',path:path});else if(!tsId){var nts=findNearestTextStyle(node);var fSize=node.fontSize!==figma.mixed?node.fontSize:null;var fName=node.fontName!==figma.mixed?node.fontName:null;var fontDesc=(fName?fName.family+" "+fName.style:"")+(fSize?" / "+fSize+"px":"");checks.textStyles.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"'+(fontDesc?" — "+fontDesc:""),path:path,suggestedStyle:tsInfo(nts),fontDesc:fontDesc,bindType:"textStyle"});}}
-    if("effects"in node&&node.effects&&node.effects.length>0){var esId=getEffectStyleId(node,insideInst);if(!esId)checks.unsavedStyles.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.effects.length+' effect(s)',path:path});}
+    const bv=getBV(node, insideInst);
+    if("fills"in node&&Array.isArray(node.fills)){for(let _fi2=0;_fi2<node.fills.length;_fi2++){const fill=node.fills[_fi2];if(fill.type==="SOLID"&&fill.visible!==false){const b=bv.fills?.[_fi2];if(!b){const nv=await findNearestColorVar(fill.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" fill: '+rgbToHex(fill.color),path:path,suggestedVar:await varInfo(nv),rawValue:rgbToHex(fill.color),bindType:"fill",bindIndex:_fi2});}}}}
+    if("strokes"in node&&Array.isArray(node.strokes)){for(let _si2=0;_si2<node.strokes.length;_si2++){const stroke=node.strokes[_si2];if(stroke.type==="SOLID"&&stroke.visible!==false&&(node.strokeWeight||0)>0){const b=bv.strokes?.[_si2];if(!b){const nv=await findNearestColorVar(stroke.color,colorVars);checks.colors.issues.push({id:node.id,label:'"'+trunc(node.name)+'" stroke: '+rgbToHex(stroke.color),path:path,suggestedVar:await varInfo(nv),rawValue:rgbToHex(stroke.color),bindType:"stroke",bindIndex:_si2});}}}}
+    if(!insideInst && (node.type==="FRAME"||node.type==="COMPONENT")&&node.layoutMode!=="NONE"){const unboundProps=[];let firstSpVal=0;const _spProps=["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];for(let _spi2=0;_spi2<_spProps.length;_spi2++){const prop=_spProps[_spi2];if(!(prop in node))continue;const val=node[prop];if(val===figma.mixed||!val||val<=0)continue;const b=bv[prop];if(!b){unboundProps.push(prop.replace(/([A-Z])/g," $1").toLowerCase());if(!firstSpVal)firstSpVal=val;}}if(unboundProps.length){const nv=await findNearestFloatVar(firstSpVal,nonOpacityFloatVars);checks.spacingVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+unboundProps.join(", "),path:path,suggestedVar:await varInfo(nv),rawValue:firstSpVal,bindType:"spacing"});}}
+    if("cornerRadius"in node&&node.cornerRadius!==figma.mixed&&node.cornerRadius>0){const b=bv.cornerRadius||bv.topLeftRadius||bv.topRightRadius||bv.bottomLeftRadius||bv.bottomRightRadius;if(!b){const nv=await findNearestFloatVar(node.cornerRadius,nonOpacityFloatVars);checks.radiusVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.cornerRadius+'px',path:path,suggestedVar:await varInfo(nv),rawValue:node.cornerRadius,bindType:"radius"});}}
+    if("opacity"in node&&node.opacity<1&&node.opacity>0){const b=bv.opacity;if(!b){const opaPct=Math.round(node.opacity*100);const nv=await findNearestFloatVar(opaPct,opacityVars);checks.opacityVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+opaPct+'%',path:path,suggestedVar:await varInfo(nv),rawValue:opaPct,bindType:"opacity"});}}
+    if(node.type==="TEXT"){const tsId=getTsId(node, insideInst);if(tsId===figma.mixed)checks.mixedText.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"',path:path});else if(!tsId){const nts=findNearestTextStyle(node);const fSize=node.fontSize!==figma.mixed?node.fontSize:null;const fName=node.fontName!==figma.mixed?node.fontName:null;const fontDesc=(fName?fName.family+" "+fName.style:"")+(fSize?" / "+fSize+"px":"");checks.textStyles.issues.push({id:node.id,label:'"'+trunc(node.characters||node.name,42)+'"'+(fontDesc?" — "+fontDesc:""),path:path,suggestedStyle:tsInfo(nts),fontDesc:fontDesc,bindType:"textStyle"});}}
+    if("effects"in node&&node.effects?.length>0){const esId=getEffectStyleId(node,insideInst);if(!esId)checks.unsavedStyles.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.effects.length+' effect(s)',path:path});}
     // ── Border width variable check (only when node has visible strokes) ──
-    if("strokes"in node&&Array.isArray(node.strokes)&&node.strokes.some(function(s){return s.visible!==false;})&&"strokeWeight"in node&&node.strokeWeight!==figma.mixed&&node.strokeWeight>0){var rawBV=node.boundVariables||{};var bwBound=rawBV.strokeWeight||rawBV.strokeTopWeight||rawBV.strokeBottomWeight||rawBV.strokeLeftWeight||rawBV.strokeRightWeight||bv.strokeWeight||bv.strokeTopWeight||bv.strokeBottomWeight||bv.strokeLeftWeight||bv.strokeRightWeight;if(!bwBound){var nv=await findNearestFloatVar(node.strokeWeight,nonOpacityFloatVars);checks.borderVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.strokeWeight+'px',path:path,suggestedVar:await varInfo(nv),rawValue:node.strokeWeight,bindType:"borderWidth"});}}
+    if("strokes"in node&&Array.isArray(node.strokes)&&node.strokes.some(function(s){return s.visible!==false;})&&"strokeWeight"in node&&node.strokeWeight!==figma.mixed&&node.strokeWeight>0){const rawBV=node.boundVariables||{};const bwBound=rawBV.strokeWeight||rawBV.strokeTopWeight||rawBV.strokeBottomWeight||rawBV.strokeLeftWeight||rawBV.strokeRightWeight||bv.strokeWeight||bv.strokeTopWeight||bv.strokeBottomWeight||bv.strokeLeftWeight||bv.strokeRightWeight;if(!bwBound){const nv=await findNearestFloatVar(node.strokeWeight,nonOpacityFloatVars);checks.borderVars.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+node.strokeWeight+'px',path:path,suggestedVar:await varInfo(nv),rawValue:node.strokeWeight,bindType:"borderWidth"});}}
     // ── Inconsistent spacing check (raw values not in spacing scale) ──
-    if(!insideInst&&spacingVarValues.length>0&&"layoutMode"in node&&node.layoutMode!=="NONE"){var spacingProps=["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];for(var spi2=0;spi2<spacingProps.length;spi2++){var sp2=spacingProps[spi2];if(!(sp2 in node))continue;var sv2=node[sp2];if(sv2===figma.mixed||!sv2||sv2<=0)continue;var spBound=bv[sp2];if(spBound)continue;var matchesScale=false;for(var sci2=0;sci2<spacingVarValues.length;sci2++){if(Math.abs(spacingVarValues[sci2]-sv2)<0.5){matchesScale=true;break;}}if(!matchesScale)checks.inconsistentSpacing.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+sp2.replace(/([A-Z])/g," $1").toLowerCase()+': '+sv2+'px',path:path});}}
+    if(!insideInst&&spacingVarValues.length>0&&"layoutMode"in node&&node.layoutMode!=="NONE"){const spacingProps=["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing"];for(let spi2=0;spi2<spacingProps.length;spi2++){const sp2=spacingProps[spi2];if(!(sp2 in node))continue;const sv2=node[sp2];if(sv2===figma.mixed||!sv2||sv2<=0)continue;const spBound=bv[sp2];if(spBound)continue;let matchesScale=false;for(let sci2=0;sci2<spacingVarValues.length;sci2++){if(Math.abs(spacingVarValues[sci2]-sv2)<0.5){matchesScale=true;break;}}if(!matchesScale)checks.inconsistentSpacing.issues.push({id:node.id,label:'"'+trunc(node.name)+'" — '+sp2.replace(/([A-Z])/g," $1").toLowerCase()+': '+sv2+'px',path:path});}}
     if(node.visible===false)checks.hidden.issues.push({id:node.id,label:node.type+': "'+trunc(node.name)+'"',path:path});
     if((node.type==="FRAME"||node.type==="GROUP")&&"children"in node&&node.children.length===0)checks.empty.issues.push({id:node.id,label:node.type+': "'+trunc(node.name)+'"',path:path});
-    if("children"in node&&node.children){for(var _wci=0;_wci<node.children.length;_wci++){await walk(node.children[_wci],depth+1,isInst);}}
+    if("children"in node&&node.children){for(let _wci=0;_wci<node.children.length;_wci++){await walk(node.children[_wci],depth+1,isInst);}}
   }
-  for(var _api=0;_api<auditPages.length;_api++){var pg=auditPages[_api];for(var _apci=0;_apci<pg.children.length;_apci++){await walk(pg.children[_apci],0,false);}}
-  var WEIGHTS={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,borderVars:3,inconsistentSpacing:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
-  function issuePenalty(count,weight){if(!count)return 0;var s=count<=2?.12:count<=5?.30:count<=10?.52:count<=20?.72:.95;return s*weight;}
-  var keys=Object.keys(checks);
-  var totalWeight=keys.reduce(function(s,k){return s+(WEIGHTS[k]||1);},0);
-  var totalPenalty=keys.reduce(function(s,k){return s+issuePenalty(checks[k].issues.length,WEIGHTS[k]||1);},0);
-  var score=Math.max(0,Math.round(100-(totalPenalty/totalWeight)*100));
-  var totalIssues=keys.reduce(function(s,k){return s+checks[k].issues.length;},0);
-  var hasColorVars=colorVars.length>0;
-  var hasFloatVars=floatVars.length>0;
-  var hasTextStyles=localTextStyles.length>0;
-  var allTextStylesList=localTextStyles.map(function(ts){return tsInfo(ts);});
-  var fixable={naming:checks.naming.issues.length,empty:checks.empty.issues.length,hidden:checks.hidden.issues.length,colors:checks.colors.issues.length,spacingVars:checks.spacingVars.issues.length,radiusVars:checks.radiusVars.issues.length,opacityVars:checks.opacityVars.issues.length,borderVars:checks.borderVars.issues.length,textStyles:checks.textStyles.issues.length,hasColorVars:hasColorVars,hasFloatVars:hasFloatVars,hasTextStyles:hasTextStyles,allTextStyles:allTextStylesList};
+  for(let _api=0;_api<auditPages.length;_api++){const pg=auditPages[_api];for(let _apci=0;_apci<pg.children.length;_apci++){await walk(pg.children[_apci],0,false);}}
+  const WEIGHTS={autoLayout:5,fixedSize:4,colors:5,textStyles:5,spacingVars:5,naming:5,namingFormat:4,mixedText:4,radiusVars:4,borderVars:3,inconsistentSpacing:3,deepNesting:3,unsavedStyles:3,opacityVars:2,hidden:2,empty:1};
+  function issuePenalty(count,weight){if(!count)return 0;const s=count<=2?.12:count<=5?.30:count<=10?.52:count<=20?.72:.95;return s*weight;}
+  const keys=Object.keys(checks);
+  const totalWeight=keys.reduce(function(s,k){return s+(WEIGHTS[k]||1);},0);
+  const totalPenalty=keys.reduce(function(s,k){return s+issuePenalty(checks[k].issues.length,WEIGHTS[k]||1);},0);
+  const score=Math.max(0,Math.round(100-(totalPenalty/totalWeight)*100));
+  const totalIssues=keys.reduce(function(s,k){return s+checks[k].issues.length;},0);
+  const hasColorVars=colorVars.length>0;
+  const hasFloatVars=floatVars.length>0;
+  const hasTextStyles=localTextStyles.length>0;
+  const allTextStylesList=localTextStyles.map(function(ts){return tsInfo(ts);});
+  const fixable={naming:checks.naming.issues.length,empty:checks.empty.issues.length,hidden:checks.hidden.issues.length,colors:checks.colors.issues.length,spacingVars:checks.spacingVars.issues.length,radiusVars:checks.radiusVars.issues.length,opacityVars:checks.opacityVars.issues.length,borderVars:checks.borderVars.issues.length,textStyles:checks.textStyles.issues.length,hasColorVars:hasColorVars,hasFloatVars:hasFloatVars,hasTextStyles:hasTextStyles,allTextStyles:allTextStylesList};
   return{checks:checks,totalNodes:totalNodes,totalIssues:totalIssues,score:score,fixable:fixable};
 }
 
 // ── Fixes (bulk, kept for compat) ─────────────────────────────────────────────
 export async function runFixes(fixes){
-  var auditPages=getAuditPages();
-  var stats={naming:0,empty:0,hidden:0,colors:0};
-  var allNodes=[];
+  const auditPages=getAuditPages();
+  const stats={naming:0,empty:0,hidden:0,colors:0};
+  let allNodes=[];
   function collect(node){allNodes.push(node);if("children"in node&&node.children)node.children.forEach(function(c){collect(c);});}
   auditPages.forEach(function(pg){pg.children.forEach(function(n){collect(n);});});
   function recollect(){allNodes=[];auditPages.forEach(function(pg){pg.children.forEach(function(n){collect(n);});});}
@@ -584,8 +584,8 @@ export async function runFixes(fixes){
   if(fixes.indexOf("naming")!==-1){allNodes.forEach(function(node){
     if(node.type==="TEXT")return;
     if(isDefaultName(node.name)){try{node.name=generateName(node);stats.naming++;}catch(e){}}
-    else{var v=getKebabViolation(node);if(v){try{node.name=toKebab(node.name);stats.naming++;}catch(e){}}}
+    else{const v=getKebabViolation(node);if(v){try{node.name=toKebab(node.name);stats.naming++;}catch(e){}}}
   });}
-  if(fixes.indexOf("colors")!==-1){var allVarsForColors=await figma.variables.getLocalVariablesAsync();var colorVars=allVarsForColors.filter(function(v){return v.resolvedType==="COLOR";});if(colorVars.length>0){for(var _fni=0;_fni<allNodes.length;_fni++){var node=allNodes[_fni];if(!("fills"in node)||!Array.isArray(node.fills))continue;var changed=false;var newFills=[];for(var _ffi=0;_ffi<node.fills.length;_ffi++){var fill=node.fills[_ffi];if(fill.type!=="SOLID"||fill.visible===false){newFills.push(fill);continue;}var bv=node.boundVariables&&node.boundVariables.fills&&node.boundVariables.fills[_ffi];if(bv){newFills.push(fill);continue;}var nearest=await findNearestColorVar(fill.color,colorVars);if(nearest){try{var f=figma.variables.setBoundVariableForPaint(fill,"color",nearest);stats.colors++;changed=true;newFills.push(f);}catch(e){newFills.push(fill);}}else{newFills.push(fill);}}if(changed){try{node.fills=newFills;}catch(e){}}}}}
+  if(fixes.indexOf("colors")!==-1){const allVarsForColors=await figma.variables.getLocalVariablesAsync();const colorVars=allVarsForColors.filter(function(v){return v.resolvedType==="COLOR";});if(colorVars.length>0){for(let _fni=0;_fni<allNodes.length;_fni++){const node=allNodes[_fni];if(!("fills"in node)||!Array.isArray(node.fills))continue;let changed=false;const newFills=[];for(let _ffi=0;_ffi<node.fills.length;_ffi++){const fill=node.fills[_ffi];if(fill.type!=="SOLID"||fill.visible===false){newFills.push(fill);continue;}const bv=node.boundVariables?.fills?.[_ffi];if(bv){newFills.push(fill);continue;}const nearest=await findNearestColorVar(fill.color,colorVars);if(nearest){try{const f=figma.variables.setBoundVariableForPaint(fill,"color",nearest);stats.colors++;changed=true;newFills.push(f);}catch(e){newFills.push(fill);}}else{newFills.push(fill);}}if(changed){try{node.fills=newFills;}catch(e){}}}}}
   return stats;
 }

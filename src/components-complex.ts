@@ -1,36 +1,37 @@
 // components-complex.ts — Complex Components page generator (reads directly from Figma variables)
 import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, createPlaceholderImageHash, cxResolveVar, cxColorToHex, cxFindCol, cxGetFloats } from './utils';
 import { DESKTOP_WIDTH, PAGE_PADDING, STANDARD_EXPORT_SETTINGS } from './constants';
+import { bindFill, bindStroke, bindRadius, bindCompSpacing, bindBorderWidth, bindRadiusByValue, bindOpacity, sectionTitle, findStyle, pickLabelStyle } from './component-helpers';
 
 export async function generateComponentsPageComplex() {
-  var allVars = await figma.variables.getLocalVariablesAsync();
-  var allCols = await figma.variables.getLocalVariableCollectionsAsync();
-  var localTextStyles = await figma.getLocalTextStylesAsync();
+  const allVars = await figma.variables.getLocalVariablesAsync();
+  const allCols = await figma.variables.getLocalVariableCollectionsAsync();
+  const localTextStyles = await figma.getLocalTextStylesAsync();
 
-  var page = findPageByHint("components");
+  const page = findPageByHint("components");
   if (!page) return;
   await figma.setCurrentPageAsync(page);
 
   // Load Inter
-  var compW = [400, 500, 600, 700];
-  for (var cw = 0; cw < compW.length; cw++) await loadFontWithFallback("Inter", compW[cw]);
+  const compW = [400, 500, 600, 700];
+  for (let cw = 0; cw < compW.length; cw++) await loadFontWithFallback("Inter", compW[cw]);
 
   // Load user fonts from text styles + Typography STRING vars
-  var loadedFams = {};
-  for (var tsi = 0; tsi < localTextStyles.length; tsi++) {
-    var fam = localTextStyles[tsi].fontName.family;
+  const loadedFams = {};
+  for (let tsi = 0; tsi < localTextStyles.length; tsi++) {
+    const fam = localTextStyles[tsi].fontName.family;
     if (!loadedFams[fam] && fam !== "Inter") {
       loadedFams[fam] = true;
-      for (var cwi = 0; cwi < compW.length; cwi++) await loadFontWithFallback(fam, compW[cwi]);
+      for (let cwi = 0; cwi < compW.length; cwi++) await loadFontWithFallback(fam, compW[cwi]);
     }
   }
 
   // Remove existing
-  var existing = page.children.filter(function(n) { return n.name === "Components"; });
+  const existing = page.children.filter(function(n) { return n.name === "Components"; });
   existing.forEach(function(n) { try { n.remove(); } catch(e) {} });
 
-  var W = DESKTOP_WIDTH, PAD = PAGE_PADDING, SECTION_GAP = 80;
-  var frame = figma.createFrame();
+  const W = DESKTOP_WIDTH, PAD = PAGE_PADDING, SECTION_GAP = 80;
+  const frame = figma.createFrame();
   frame.name = "components";
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
   frame.layoutMode = "VERTICAL";
@@ -41,162 +42,106 @@ export async function generateComponentsPageComplex() {
   frame.paddingLeft = PAD; frame.paddingRight = PAD;
   frame.itemSpacing = 24;
   page.appendChild(frame);
-  // Note: bindCompSpacing(frame) called after helpers are defined (see below)
+  // Note: bindCompSpacing(frame, spacingVarMap) called after helpers are defined (see below)
 
   // Detect brand color
-  var brandHex = "#3B82F6";
-  var colorCol = null;
-  for (var ci = 0; ci < allCols.length; ci++) { if (allCols[ci].name === "Colors") { colorCol = allCols[ci]; break; } }
+  let brandHex = "#3B82F6";
+  let colorCol = null;
+  for (let ci = 0; ci < allCols.length; ci++) { if (allCols[ci].name === "Colors") { colorCol = allCols[ci]; break; } }
   if (colorCol) {
-    var cMid = colorCol.modes[0].modeId;
-    for (var bvi = 0; bvi < allVars.length; bvi++) {
+    const cMid = colorCol.modes[0].modeId;
+    for (let bvi = 0; bvi < allVars.length; bvi++) {
       if (allVars[bvi].variableCollectionId === colorCol.id && allVars[bvi].name === "brand/primary") {
-        var bVal = await cxResolveVar(allVars[bvi], cMid, allCols);
-        var bh = cxColorToHex(bVal); if (bh) brandHex = bh; break;
+        const bVal = await cxResolveVar(allVars[bvi], cMid, allCols);
+        const bh = cxColorToHex(bVal); if (bh) brandHex = bh; break;
       }
     }
   }
-  var brandColor = hexToFigma(brandHex);
+  const brandColor = hexToFigma(brandHex);
 
   // Color variable binding helpers
   if (!colorCol) {
     colorCol = figma.variables.createVariableCollection("Colors");
   }
-  var colorVarMap = {};
+  const colorVarMap = {};
   // Re-read vars to pick up essential colors created by ensureEssentialColors()
-  var cvarsAll = await figma.variables.getLocalVariablesAsync();
-  var cvars = cvarsAll.filter(function(v) { return v.variableCollectionId === colorCol.id && v.resolvedType === "COLOR"; });
-  for (var cvi = 0; cvi < cvars.length; cvi++) colorVarMap[cvars[cvi].name] = cvars[cvi];
+  const cvarsAll = await figma.variables.getLocalVariablesAsync();
+  const cvars = cvarsAll.filter(function(v) { return v.variableCollectionId === colorCol.id && v.resolvedType === "COLOR"; });
+  for (let cvi = 0; cvi < cvars.length; cvi++) colorVarMap[cvars[cvi].name] = cvars[cvi];
 
-  function bindFill(node, varName) {
-    var v = colorVarMap[varName]; if (!v) return;
-    try { node.fills = [figma.variables.setBoundVariableForPaint(node.fills[0], "color", v)]; } catch(e) {}
-  }
-  function bindStroke(node, varName) {
-    var v = colorVarMap[varName]; if (!v) return;
-    try { node.strokes = [figma.variables.setBoundVariableForPaint(node.strokes[0], "color", v)]; } catch(e) {}
-  }
-
-  function sectionTitle(title) {
-    createSpecText(frame, title, 0, 0, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
-    var div = figma.createRectangle();
-    div.resize(100, 1);
-    div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
-    frame.appendChild(div);
-    div.layoutSizingHorizontal = "FILL";
-  }
-
-  function findStyle(group, name) {
-    var sn = group + "/" + name;
-    for (var i = 0; i < localTextStyles.length; i++) { if (localTextStyles[i].name === sn) return localTextStyles[i]; }
-    return null;
-  }
 
   // Radius
-  var defaultRadius = 8;
-  var defaultRadiusVar = null;
-  var radiusCol = cxFindCol(allCols, "radius");
+  let defaultRadius = 8;
+  let defaultRadiusVar = null;
+  const radiusCol = cxFindCol(allCols, "radius");
   if (radiusCol) {
-    var rVars = await cxGetFloats(radiusCol, allVars, allCols);
-    for (var rvi = 0; rvi < rVars.length; rvi++) {
+    const rVars = await cxGetFloats(radiusCol, allVars, allCols);
+    for (let rvi = 0; rvi < rVars.length; rvi++) {
       if (rVars[rvi].name === "md" || rVars[rvi].name === "default") {
         defaultRadius = rVars[rvi].value; defaultRadiusVar = rVars[rvi].variable; break;
       }
     }
   }
-  function bindRadius(node) {
-    if (!defaultRadiusVar) return;
-    try { node.setBoundVariable("cornerRadius", defaultRadiusVar); } catch(e) {}
-  }
 
   // Spacing variable binding
-  var spacingCol = cxFindCol(allCols, "spacing");
-  var spacingVarMap = {};
+  const spacingCol = cxFindCol(allCols, "spacing");
+  const spacingVarMap = {};
   if (spacingCol) {
-    var spVars = allVars.filter(function(v) { return v.variableCollectionId === spacingCol.id && v.resolvedType === "FLOAT"; });
-    var spMid = spacingCol.modes[0].modeId;
-    for (var svi = 0; svi < spVars.length; svi++) {
+    const spVars = allVars.filter(function(v) { return v.variableCollectionId === spacingCol.id && v.resolvedType === "FLOAT"; });
+    const spMid = spacingCol.modes[0].modeId;
+    for (let svi = 0; svi < spVars.length; svi++) {
       try {
-        var spv = await cxResolveVar(spVars[svi], spMid, allCols);
+        const spv = await cxResolveVar(spVars[svi], spMid, allCols);
         if (typeof spv === "number") spacingVarMap[spv] = spVars[svi];
       } catch(e) {}
     }
   }
-  function bindCompSpacing(fr) {
-    var props = ["paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing","counterAxisSpacing"];
-    for (var pi = 0; pi < props.length; pi++) {
-      if (!(props[pi] in fr)) continue;
-      var val = fr[props[pi]]; if (val === undefined || val === null) continue;
-      var sv = spacingVarMap[val];
-      if (sv) { try { fr.setBoundVariable(props[pi], sv); } catch(e) {} }
-    }
-  }
 
   // ── Look up border width variables for binding ──
-  var borderCol = cxFindCol(allCols, "border");
+  let borderCol = cxFindCol(allCols, "border");
   if (!borderCol) borderCol = cxFindCol(allCols, "border width");
-  var borderVarMap = {};
+  const borderVarMap = {};
   if (borderCol) {
-    var bwVars = allVars.filter(function(v) { return v.variableCollectionId === borderCol.id && v.resolvedType === "FLOAT"; });
-    var bwModeId = borderCol.modes[0].modeId;
-    for (var bwi = 0; bwi < bwVars.length; bwi++) {
+    const bwVars = allVars.filter(function(v) { return v.variableCollectionId === borderCol.id && v.resolvedType === "FLOAT"; });
+    const bwModeId = borderCol.modes[0].modeId;
+    for (let bwi = 0; bwi < bwVars.length; bwi++) {
       try {
-        var bwVal = await cxResolveVar(bwVars[bwi], bwModeId, allCols);
+        const bwVal = await cxResolveVar(bwVars[bwi], bwModeId, allCols);
         if (typeof bwVal === "number") borderVarMap[bwVal] = bwVars[bwi];
       } catch(e) {}
     }
   }
-  function bindBorderWidth(node) {
-    if (!("strokeWeight" in node)) return;
-    var val = node.strokeWeight;
-    if (val === undefined || val === null || typeof val !== "number") return;
-    var bv = borderVarMap[val];
-    if (bv) { try { node.setBoundVariable("strokeWeight", bv); } catch(e) {} }
-  }
 
   // ── Look up radius variables by value for binding ──
-  var radiusVarByValue = {};
+  const radiusVarByValue = {};
   if (radiusCol) {
-    var rvars2 = allVars.filter(function(v) { return v.variableCollectionId === radiusCol.id && v.resolvedType === "FLOAT"; });
-    var rvModeId = radiusCol.modes[0].modeId;
-    for (var rvi3 = 0; rvi3 < rvars2.length; rvi3++) {
+    const rvars2 = allVars.filter(function(v) { return v.variableCollectionId === radiusCol.id && v.resolvedType === "FLOAT"; });
+    const rvModeId = radiusCol.modes[0].modeId;
+    for (let rvi3 = 0; rvi3 < rvars2.length; rvi3++) {
       try {
-        var rvv = await cxResolveVar(rvars2[rvi3], rvModeId, allCols);
+        const rvv = await cxResolveVar(rvars2[rvi3], rvModeId, allCols);
         if (typeof rvv === "number") radiusVarByValue[rvv] = rvars2[rvi3];
       } catch(e) {}
     }
   }
-  function bindRadiusByValue(node) {
-    if (!("cornerRadius" in node)) return;
-    var val = node.cornerRadius;
-    if (val === undefined || val === null || typeof val !== "number") return;
-    var rv = radiusVarByValue[val];
-    if (rv) { try { node.setBoundVariable("cornerRadius", rv); } catch(e) {} }
-  }
 
   // ── Look up opacity variables for binding ──
-  var opacityCol = cxFindCol(allCols, "opacity");
-  var opacityVarMapComp = {};
-  var opacityPctModeIdCx = null;  // Percentage mode for Figma "Opacity" binding
+  const opacityCol = cxFindCol(allCols, "opacity");
+  const opacityVarMapComp = {};
+  let opacityPctModeIdCx = null;  // Percentage mode for Figma "Opacity" binding
   if (opacityCol) {
-    var opModesCx = opacityCol.modes || [];
-    for (var omi = 0; omi < opModesCx.length; omi++) {
+    const opModesCx = opacityCol.modes || [];
+    for (let omi = 0; omi < opModesCx.length; omi++) {
       if (opModesCx[omi].name === "Percentage") { opacityPctModeIdCx = opModesCx[omi].modeId; break; }
     }
-    var opVars = allVars.filter(function(v) { return v.variableCollectionId === opacityCol.id && v.resolvedType === "FLOAT"; });
-    var opModeId = opacityCol.modes[0].modeId;
-    for (var opi = 0; opi < opVars.length; opi++) {
+    const opVars = allVars.filter(function(v) { return v.variableCollectionId === opacityCol.id && v.resolvedType === "FLOAT"; });
+    const opModeId = opacityCol.modes[0].modeId;
+    for (let opi = 0; opi < opVars.length; opi++) {
       try {
-        var opVal = await cxResolveVar(opVars[opi], opModeId, allCols);
+        const opVal = await cxResolveVar(opVars[opi], opModeId, allCols);
         if (typeof opVal === "number") opacityVarMapComp[Math.round(opVal * 100)] = opVars[opi];
       } catch(e) {}
     }
-  }
-  function bindOpacity(node) {
-    if (!("opacity" in node)) return;
-    var pct = Math.round(node.opacity * 100);
-    var ov = opacityVarMapComp[pct];
-    if (ov) { try { node.setBoundVariable("opacity", ov); } catch(e) {} }
   }
   // Figma's "Opacity" property uses percentage values — set Percentage mode on main frame
   if (opacityCol && opacityPctModeIdCx) {
@@ -204,49 +149,49 @@ export async function generateComponentsPageComplex() {
   }
 
   // Bind the main frame spacing now that helpers are defined
-  bindCompSpacing(frame);
+  bindCompSpacing(frame, spacingVarMap);
 
   // ══════════════════════════════════════════════════════════════════════════
   // BUTTONS (component set with Variant + Size properties)
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Buttons");
-  var btnSizes = [
+  sectionTitle(frame, "Buttons");
+  const btnSizes = [
     { label: "Large",   style: "lg" },
     { label: "Default", style: "default" },
     { label: "Small",   style: "sm" }
   ];
-  var btnVariants = [
+  const btnVariants = [
     { label: "Primary",   filled: true },
     { label: "Secondary", filled: false },
   ];
 
-  var allBtnComps = [];
-  for (var bvi2 = 0; bvi2 < btnVariants.length; bvi2++) {
-    var variant = btnVariants[bvi2];
-    for (var bsi = 0; bsi < btnSizes.length; bsi++) {
-      var bs = btnSizes[bsi];
-      var ts = findStyle("buttons", bs.style);
-      var padH = bs.style === "lg" ? 16 : (bs.style === "sm" ? 8 : 12);
-      var padW = bs.style === "lg" ? 32 : (bs.style === "sm" ? 16 : 24);
+  const allBtnComps = [];
+  for (let bvi2 = 0; bvi2 < btnVariants.length; bvi2++) {
+    const variant = btnVariants[bvi2];
+    for (let bsi = 0; bsi < btnSizes.length; bsi++) {
+      const bs = btnSizes[bsi];
+      const ts = findStyle("buttons", bs.style, localTextStyles);
+      const padH = bs.style === "lg" ? 16 : (bs.style === "sm" ? 8 : 12);
+      const padW = bs.style === "lg" ? 32 : (bs.style === "sm" ? 16 : 24);
 
-      var btnComp = figma.createComponent();
+      const btnComp = figma.createComponent();
       btnComp.name = "Variant=" + variant.label + ", Size=" + bs.label;
       btnComp.cornerRadius = defaultRadius;
-      bindRadius(btnComp);
+      bindRadius(btnComp, defaultRadiusVar);
 
       if (variant.filled) {
         btnComp.fills = [{ type: "SOLID", color: brandColor }];
-        bindFill(btnComp, "brand/primary");
+        bindFill(btnComp, "brand/primary", colorVarMap);
       } else {
         btnComp.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
         btnComp.strokes = [{ type: "SOLID", color: brandColor }];
-        bindFill(btnComp, "white");
-        bindStroke(btnComp, "brand/primary");
+        bindFill(btnComp, "white", colorVarMap);
+        bindStroke(btnComp, "brand/primary", colorVarMap);
         btnComp.strokeWeight = 1.5;
-        bindBorderWidth(btnComp);
+        bindBorderWidth(btnComp, borderVarMap);
       }
 
-      var btnText = figma.createText();
+      const btnText = figma.createText();
       if (ts) {
         await btnText.setTextStyleIdAsync(ts.id);
       } else {
@@ -255,7 +200,7 @@ export async function generateComponentsPageComplex() {
       }
       btnText.characters = "Button";
       btnText.fills = [{ type: "SOLID", color: variant.filled ? { r: 1, g: 1, b: 1 } : brandColor }];
-      bindFill(btnText, variant.filled ? "white" : "brand/primary");
+      bindFill(btnText, variant.filled ? "white" : "brand/primary", colorVarMap);
 
       btnComp.layoutMode = "HORIZONTAL";
       btnComp.primaryAxisAlignItems = "CENTER";
@@ -265,13 +210,13 @@ export async function generateComponentsPageComplex() {
       btnComp.primaryAxisSizingMode = "AUTO";
       btnComp.counterAxisSizingMode = "AUTO";
       btnComp.appendChild(btnText);
-      bindCompSpacing(btnComp);
+      bindCompSpacing(btnComp, spacingVarMap);
 
       allBtnComps.push(btnComp);
     }
   }
 
-  var btnSet = figma.combineAsVariants(allBtnComps, frame);
+  const btnSet = figma.combineAsVariants(allBtnComps, frame);
   btnSet.name = "Button";
   btnSet.layoutMode = "HORIZONTAL";
   btnSet.layoutWrap = "WRAP";
@@ -282,61 +227,55 @@ export async function generateComponentsPageComplex() {
   btnSet.primaryAxisSizingMode = "AUTO";
   btnSet.counterAxisSizingMode = "AUTO";
   btnSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-  bindFill(btnSet, "white");
+  bindFill(btnSet, "white", colorVarMap);
   btnSet.cornerRadius = 12;
-  bindRadiusByValue(btnSet);
+  bindRadiusByValue(btnSet, radiusVarByValue);
   btnSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   btnSet.strokeWeight = 1;
-  bindBorderWidth(btnSet);
-  bindCompSpacing(btnSet);
+  bindBorderWidth(btnSet, borderVarMap);
+  bindCompSpacing(btnSet, spacingVarMap);
 
   // ══════════════════════════════════════════════════════════════════════════
   // INPUTS — 3 component sets (one per type), stacked vertically with titles
   // Types: Placeholder, Floating Label, Label + Placeholder
   // Each has State variants: Default, Focused, Error, Disabled
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Inputs");
-  var inputStyle = findStyle("input", "default");
-  var labelStyle = findStyle("label", "default");
-  var labelStyleFocused = findStyle("label", "focused");
-  var labelStyleError   = findStyle("label", "error");
-  function pickLabelStyle(state) {
-    if (state === "Focused" && labelStyleFocused) return labelStyleFocused;
-    if (state === "Error"   && labelStyleError)   return labelStyleError;
-    return labelStyle;
-  }
-
-  var inputTypes = [
+  sectionTitle(frame, "Inputs");
+  const inputStyle = findStyle("input", "default", localTextStyles);
+  const labelStyle = findStyle("label", "default", localTextStyles);
+  const labelStyleFocused = findStyle("label", "focused", localTextStyles);
+  const labelStyleError   = findStyle("label", "error", localTextStyles);
+  const inputTypes = [
     { type: "Placeholder",         hasLabel: false, hasPlaceholder: true,  floatingLabel: false },
     { type: "Floating Label",      hasLabel: true,  hasPlaceholder: false, floatingLabel: true  },
     { type: "Label + Placeholder", hasLabel: true,  hasPlaceholder: true,  floatingLabel: false },
   ];
-  var inputStates = [
+  const inputStates = [
     { label: "Default",  borderColor: { r: 0.8, g: 0.8, b: 0.8 }, strokeW: 1.5, borderVar: "border/default" },
     { label: "Focused",  borderColor: hexToFigma("#000000"), strokeW: 2, borderVar: "focus/border" },
     { label: "Error",    borderColor: hexToFigma("#E32E22"), strokeW: 1.5, borderVar: "error/border" },
     { label: "Disabled", borderColor: { r: 0.88, g: 0.88, b: 0.88 }, strokeW: 1, borderVar: "border/default" },
   ];
 
-  for (var iti = 0; iti < inputTypes.length; iti++) {
-    var itype = inputTypes[iti];
-    var typeComps = [];
+  for (let iti = 0; iti < inputTypes.length; iti++) {
+    const itype = inputTypes[iti];
+    const typeComps = [];
 
     // ── Type title ──
-    var typeTitle = figma.createText();
+    const typeTitle = figma.createText();
     typeTitle.fontName = { family: "Inter", style: "Semi Bold" };
     typeTitle.fontSize = 14;
     typeTitle.characters = itype.type;
     typeTitle.fills = [{ type: "SOLID", color: { r: 0.3, g: 0.3, b: 0.3 } }];
-    bindFill(typeTitle, "text/primary");
+    bindFill(typeTitle, "text/primary", colorVarMap);
     frame.appendChild(typeTitle);
 
-    for (var isi = 0; isi < inputStates.length; isi++) {
-      var ist = inputStates[isi];
-      var isError = ist.label === "Error";
-      var isDisabled = ist.label === "Disabled";
+    for (let isi = 0; isi < inputStates.length; isi++) {
+      const ist = inputStates[isi];
+      const isError = ist.label === "Error";
+      const isDisabled = ist.label === "Disabled";
 
-      var inputComp = figma.createComponent();
+      const inputComp = figma.createComponent();
       inputComp.name = "State=" + ist.label;
       inputComp.resize(260, 44);
       inputComp.layoutMode = "VERTICAL";
@@ -347,35 +286,35 @@ export async function generateComponentsPageComplex() {
 
       if (itype.floatingLabel) {
         // ── Floating Label type: form-field > field-wrapper > field + label ──
-        var isDefault = ist.label === "Default";
+        const isDefault = ist.label === "Default";
 
-        var formField = figma.createFrame();
+        const formField = figma.createFrame();
         formField.name = "form-field";
         formField.layoutMode = "VERTICAL";
         formField.primaryAxisSizingMode = "AUTO";
         formField.counterAxisSizingMode = "AUTO";
         formField.fills = [];
 
-        var fieldWrapper = figma.createFrame();
+        const fieldWrapper = figma.createFrame();
         fieldWrapper.name = "field-wrapper";
         fieldWrapper.layoutMode = "VERTICAL";
         fieldWrapper.primaryAxisSizingMode = "AUTO";
         fieldWrapper.counterAxisSizingMode = "AUTO";
         fieldWrapper.fills = [];
 
-        var field;
+        let field;
         if (isDefault) {
           field = figma.createRectangle();
           field.name = "field";
           field.resize(260, 44);
           field.cornerRadius = defaultRadius;
-          bindRadius(field);
+          bindRadius(field, defaultRadiusVar);
           field.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-          bindFill(field, "white");
+          bindFill(field, "white", colorVarMap);
           field.strokes = [{ type: "SOLID", color: ist.borderColor }];
-          bindStroke(field, ist.borderVar);
+          bindStroke(field, ist.borderVar, colorVarMap);
           field.strokeWeight = ist.strokeW;
-          bindBorderWidth(field);
+          bindBorderWidth(field, borderVarMap);
         } else {
           field = figma.createFrame();
           field.name = "field";
@@ -386,15 +325,15 @@ export async function generateComponentsPageComplex() {
           field.paddingLeft = 14; field.paddingRight = 14;
           field.paddingTop = 20; field.paddingBottom = 6;
           field.cornerRadius = defaultRadius;
-          bindRadius(field);
+          bindRadius(field, defaultRadiusVar);
           field.fills = [{ type: "SOLID", color: isDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-          if (!isDisabled) bindFill(field, "white");
+          if (!isDisabled) bindFill(field, "white", colorVarMap);
           field.strokes = [{ type: "SOLID", color: ist.borderColor }];
-          bindStroke(field, ist.borderVar);
+          bindStroke(field, ist.borderVar, colorVarMap);
           field.strokeWeight = ist.strokeW;
-          bindBorderWidth(field);
+          bindBorderWidth(field, borderVarMap);
 
-          var floatInput = figma.createText();
+          const floatInput = figma.createText();
           if (inputStyle) {
             await floatInput.setTextStyleIdAsync(inputStyle.id);
           } else {
@@ -403,16 +342,16 @@ export async function generateComponentsPageComplex() {
             floatInput.fills = [{ type: "SOLID", color: { r: 0.13, g: 0.13, b: 0.13 } }];
           }
           floatInput.characters = isDisabled ? "Disabled" : "Value";
-          if (isDisabled) { floatInput.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }]; floatInput.opacity = 0.5; bindOpacity(floatInput); }
-          else { bindFill(floatInput, "text/primary"); }
+          if (isDisabled) { floatInput.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }]; floatInput.opacity = 0.5; bindOpacity(floatInput, opacityVarMapComp); }
+          else { bindFill(floatInput, "text/primary", colorVarMap); }
           field.appendChild(floatInput);
-          bindCompSpacing(field);
+          bindCompSpacing(field, spacingVarMap);
         }
 
         fieldWrapper.appendChild(field);
         field.layoutSizingHorizontal = "FILL";
 
-        var floatLbl = figma.createText();
+        const floatLbl = figma.createText();
         if (isDefault) {
           if (inputStyle) {
             await floatLbl.setTextStyleIdAsync(inputStyle.id);
@@ -422,9 +361,9 @@ export async function generateComponentsPageComplex() {
             floatLbl.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
           }
           floatLbl.characters = "Label";
-          bindFill(floatLbl, "focus/color");
+          bindFill(floatLbl, "focus/color", colorVarMap);
         } else {
-          var flStyle = pickLabelStyle(ist.label);
+          const flStyle = pickLabelStyle(ist.label, labelStyle, labelStyleFocused, labelStyleError);
           if (flStyle) {
             await floatLbl.setTextStyleIdAsync(flStyle.id);
           } else {
@@ -433,9 +372,9 @@ export async function generateComponentsPageComplex() {
             floatLbl.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
           }
           floatLbl.characters = isError ? "Error Label" : "Label";
-          if (isError) { floatLbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(floatLbl, "error/color"); }
-          else { bindFill(floatLbl, "text/primary"); }
-          if (isDisabled) { floatLbl.opacity = 0.5; bindOpacity(floatLbl); }
+          if (isError) { floatLbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(floatLbl, "error/color", colorVarMap); }
+          else { bindFill(floatLbl, "text/primary", colorVarMap); }
+          if (isDisabled) { floatLbl.opacity = 0.5; bindOpacity(floatLbl, opacityVarMapComp); }
         }
         floatLbl.name = "label";
         fieldWrapper.appendChild(floatLbl);
@@ -452,8 +391,8 @@ export async function generateComponentsPageComplex() {
         // ── Label + Placeholder type: label above, then field with placeholder ──
         inputComp.itemSpacing = 6;
 
-        var lbl = figma.createText();
-        var lblSt = pickLabelStyle(ist.label);
+        const lbl = figma.createText();
+        const lblSt = pickLabelStyle(ist.label, labelStyle, labelStyleFocused, labelStyleError);
         if (lblSt) {
           await lbl.setTextStyleIdAsync(lblSt.id);
         } else {
@@ -462,22 +401,22 @@ export async function generateComponentsPageComplex() {
           lbl.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
         }
         lbl.characters = isError ? "Error Label" : "Label";
-        if (isError) { lbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(lbl, "error/color"); }
-        else { bindFill(lbl, "text/primary"); }
-        if (isDisabled) { lbl.opacity = 0.5; bindOpacity(lbl); }
+        if (isError) { lbl.fills = [{ type: "SOLID", color: hexToFigma("#E32E22") }]; bindFill(lbl, "error/color", colorVarMap); }
+        else { bindFill(lbl, "text/primary", colorVarMap); }
+        if (isDisabled) { lbl.opacity = 0.5; bindOpacity(lbl, opacityVarMapComp); }
         inputComp.appendChild(lbl);
 
-        var inputField = figma.createFrame();
+        const inputField = figma.createFrame();
         inputField.name = "field";
         inputField.resize(260, 44);
         inputField.cornerRadius = defaultRadius;
-        bindRadius(inputField);
+        bindRadius(inputField, defaultRadiusVar);
         inputField.fills = [{ type: "SOLID", color: isDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-        if (!isDisabled) bindFill(inputField, "white");
+        if (!isDisabled) bindFill(inputField, "white", colorVarMap);
         inputField.strokes = [{ type: "SOLID", color: ist.borderColor }];
-        bindStroke(inputField, ist.borderVar);
+        bindStroke(inputField, ist.borderVar, colorVarMap);
         inputField.strokeWeight = ist.strokeW;
-        bindBorderWidth(inputField);
+        bindBorderWidth(inputField, borderVarMap);
         inputField.layoutMode = "HORIZONTAL";
         inputField.counterAxisAlignItems = "CENTER";
         inputField.paddingLeft = 14; inputField.paddingRight = 14;
@@ -485,7 +424,7 @@ export async function generateComponentsPageComplex() {
         inputField.primaryAxisSizingMode = "FIXED";
         inputField.counterAxisSizingMode = "FIXED";
 
-        var inputText = figma.createText();
+        const inputText = figma.createText();
         if (inputStyle) {
           await inputText.setTextStyleIdAsync(inputStyle.id);
         } else {
@@ -494,27 +433,27 @@ export async function generateComponentsPageComplex() {
           inputText.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
         }
         inputText.characters = isDisabled ? "Disabled" : "Placeholder text";
-        bindFill(inputText, "focus/color");
-        if (isDisabled) { inputText.opacity = 0.5; bindOpacity(inputText); }
+        bindFill(inputText, "focus/color", colorVarMap);
+        if (isDisabled) { inputText.opacity = 0.5; bindOpacity(inputText, opacityVarMapComp); }
         inputField.appendChild(inputText);
-        bindCompSpacing(inputField);
-        bindCompSpacing(inputComp);
+        bindCompSpacing(inputField, spacingVarMap);
+        bindCompSpacing(inputComp, spacingVarMap);
         inputComp.appendChild(inputField);
         inputField.layoutSizingHorizontal = "FILL";
 
       } else {
         // ── Placeholder only type: just field with placeholder, no label ──
-        var inputField2 = figma.createFrame();
+        const inputField2 = figma.createFrame();
         inputField2.name = "field";
         inputField2.resize(260, 44);
         inputField2.cornerRadius = defaultRadius;
-        bindRadius(inputField2);
+        bindRadius(inputField2, defaultRadiusVar);
         inputField2.fills = [{ type: "SOLID", color: isDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-        if (!isDisabled) bindFill(inputField2, "white");
+        if (!isDisabled) bindFill(inputField2, "white", colorVarMap);
         inputField2.strokes = [{ type: "SOLID", color: ist.borderColor }];
-        bindStroke(inputField2, ist.borderVar);
+        bindStroke(inputField2, ist.borderVar, colorVarMap);
         inputField2.strokeWeight = ist.strokeW;
-        bindBorderWidth(inputField2);
+        bindBorderWidth(inputField2, borderVarMap);
         inputField2.layoutMode = "HORIZONTAL";
         inputField2.counterAxisAlignItems = "CENTER";
         inputField2.paddingLeft = 14; inputField2.paddingRight = 14;
@@ -522,7 +461,7 @@ export async function generateComponentsPageComplex() {
         inputField2.primaryAxisSizingMode = "FIXED";
         inputField2.counterAxisSizingMode = "FIXED";
 
-        var inputText2 = figma.createText();
+        const inputText2 = figma.createText();
         if (inputStyle) {
           await inputText2.setTextStyleIdAsync(inputStyle.id);
         } else {
@@ -531,10 +470,10 @@ export async function generateComponentsPageComplex() {
           inputText2.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
         }
         inputText2.characters = isDisabled ? "Disabled" : "Placeholder text";
-        bindFill(inputText2, "focus/color");
-        if (isDisabled) { inputText2.opacity = 0.5; bindOpacity(inputText2); }
+        bindFill(inputText2, "focus/color", colorVarMap);
+        if (isDisabled) { inputText2.opacity = 0.5; bindOpacity(inputText2, opacityVarMapComp); }
         inputField2.appendChild(inputText2);
-        bindCompSpacing(inputField2);
+        bindCompSpacing(inputField2, spacingVarMap);
         inputComp.appendChild(inputField2);
         inputField2.layoutSizingHorizontal = "FILL";
       }
@@ -542,7 +481,7 @@ export async function generateComponentsPageComplex() {
       typeComps.push(inputComp);
     }
 
-    var typeSet = figma.combineAsVariants(typeComps, frame);
+    const typeSet = figma.combineAsVariants(typeComps, frame);
     typeSet.name = "Input / " + itype.type;
     typeSet.layoutMode = "HORIZONTAL";
     typeSet.itemSpacing = 24;
@@ -551,14 +490,14 @@ export async function generateComponentsPageComplex() {
     typeSet.primaryAxisSizingMode = "AUTO";
     typeSet.counterAxisSizingMode = "AUTO";
     typeSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    bindFill(typeSet, "white");
+    bindFill(typeSet, "white", colorVarMap);
     typeSet.cornerRadius = 12;
-    bindRadiusByValue(typeSet);
+    bindRadiusByValue(typeSet, radiusVarByValue);
     typeSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     typeSet.strokeWeight = 1;
-    bindBorderWidth(typeSet);
-    bindCompSpacing(typeSet);
-    for (var vi = 0; vi < typeSet.children.length; vi++) {
+    bindBorderWidth(typeSet, borderVarMap);
+    bindCompSpacing(typeSet, spacingVarMap);
+    for (let vi = 0; vi < typeSet.children.length; vi++) {
       typeSet.children[vi].layoutSizingHorizontal = "FILL";
     }
     typeSet.layoutSizingHorizontal = "FILL";
@@ -567,27 +506,27 @@ export async function generateComponentsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   // LABELS (component set with State property)
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Labels");
-  var labelDefaultStyle = findStyle("label", "default");
-  var labelFocusedStyle = findStyle("label", "focused");
-  var labelErrorStyle   = findStyle("label", "error");
+  sectionTitle(frame, "Labels");
+  const labelDefaultStyle = findStyle("label", "default", localTextStyles);
+  const labelFocusedStyle = findStyle("label", "focused", localTextStyles);
+  const labelErrorStyle   = findStyle("label", "error", localTextStyles);
   if (labelDefaultStyle) {
-    var lblStates = [
+    const lblStates = [
       { label: "Default", text: "Label",       style: labelDefaultStyle },
       { label: "Focused", text: "Label",       style: labelFocusedStyle || labelDefaultStyle },
       { label: "Error",   text: "Error Label", style: labelErrorStyle   || labelDefaultStyle },
     ];
-    var allLblComps = [];
-    for (var li = 0; li < lblStates.length; li++) {
-      var ls = lblStates[li];
-      var lblComp = figma.createComponent();
+    const allLblComps = [];
+    for (let li = 0; li < lblStates.length; li++) {
+      const ls = lblStates[li];
+      const lblComp = figma.createComponent();
       lblComp.name = "State=" + ls.label;
       lblComp.layoutMode = "HORIZONTAL";
       lblComp.primaryAxisSizingMode = "AUTO";
       lblComp.counterAxisSizingMode = "AUTO";
       lblComp.fills = [];
 
-      var lblNode = figma.createText();
+      const lblNode = figma.createText();
       await lblNode.setTextStyleIdAsync(ls.style.id);
       lblNode.characters = ls.text;
       lblComp.appendChild(lblNode);
@@ -595,7 +534,7 @@ export async function generateComponentsPageComplex() {
       allLblComps.push(lblComp);
     }
 
-    var lblSet = figma.combineAsVariants(allLblComps, frame);
+    const lblSet = figma.combineAsVariants(allLblComps, frame);
     lblSet.name = "Label";
     lblSet.layoutMode = "HORIZONTAL";
     lblSet.itemSpacing = 24;
@@ -604,39 +543,39 @@ export async function generateComponentsPageComplex() {
     lblSet.primaryAxisSizingMode = "AUTO";
     lblSet.counterAxisSizingMode = "AUTO";
     lblSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    bindFill(lblSet, "white");
+    bindFill(lblSet, "white", colorVarMap);
     lblSet.cornerRadius = 12;
-    bindRadiusByValue(lblSet);
+    bindRadiusByValue(lblSet, radiusVarByValue);
     lblSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     lblSet.strokeWeight = 1;
-    bindBorderWidth(lblSet);
-    bindCompSpacing(lblSet);
+    bindBorderWidth(lblSet, borderVarMap);
+    bindCompSpacing(lblSet, spacingVarMap);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // DROPDOWN (component set with State property)
   // Same structure as Floating Label input but with a chevron arrow
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Dropdown");
-  var dropdownStates = [
+  sectionTitle(frame, "Dropdown");
+  const dropdownStates = [
     { label: "Default",  borderColor: { r: 0.8, g: 0.8, b: 0.8 }, strokeW: 1.5, borderVar: "border/default" },
     { label: "Focused",  borderColor: hexToFigma("#000000"), strokeW: 2, borderVar: "focus/border" },
     { label: "Error",    borderColor: hexToFigma("#E32E22"), strokeW: 1.5, borderVar: "error/border" },
     { label: "Disabled", borderColor: { r: 0.88, g: 0.88, b: 0.88 }, strokeW: 1, borderVar: "border/default" },
   ];
 
-  var chevronImageHash = figma.createImage(
+  const chevronImageHash = figma.createImage(
     figma.base64Decode("iVBORw0KGgoAAAANSUhEUgAAABEAAAAKCAMAAABlokWQAAAAUVBMVEUAAAAmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJibJjcPCAAAAGnRSTlMA12X77M24LBMG5INzXkgZ9M7FwKaZUU80D09PB/wAAABWSURBVAjXRchHDsAgAMTAJRBI79X/f2gUhMAna2TMrNJsjBx1k6FZcQpdobemC9Jj2dsIrWcJ/0wWH8ljJ8UuOCSdcCs1Qq8eRuUq2KAq8FOC0uCGdB+C4gRExbf0IwAAAABJRU5ErkJggg==")
   ).hash;
 
-  var allDropComps = [];
-  for (var dsi = 0; dsi < dropdownStates.length; dsi++) {
-    var dst = dropdownStates[dsi];
-    var dIsError = dst.label === "Error";
-    var dIsDisabled = dst.label === "Disabled";
+  const allDropComps = [];
+  for (let dsi = 0; dsi < dropdownStates.length; dsi++) {
+    const dst = dropdownStates[dsi];
+    const dIsError = dst.label === "Error";
+    const dIsDisabled = dst.label === "Disabled";
 
 
-    var dropComp = figma.createComponent();
+    const dropComp = figma.createComponent();
     dropComp.name = "State=" + dst.label;
     dropComp.resize(260, 44);
     dropComp.layoutMode = "VERTICAL";
@@ -645,21 +584,21 @@ export async function generateComponentsPageComplex() {
     dropComp.itemSpacing = 0;
     dropComp.fills = [];
 
-    var dFormField = figma.createFrame();
+    const dFormField = figma.createFrame();
     dFormField.name = "form-field";
     dFormField.layoutMode = "VERTICAL";
     dFormField.primaryAxisSizingMode = "AUTO";
     dFormField.counterAxisSizingMode = "AUTO";
     dFormField.fills = [];
 
-    var dFieldWrapper = figma.createFrame();
+    const dFieldWrapper = figma.createFrame();
     dFieldWrapper.name = "field-wrapper";
     dFieldWrapper.layoutMode = "VERTICAL";
     dFieldWrapper.primaryAxisSizingMode = "AUTO";
     dFieldWrapper.counterAxisSizingMode = "AUTO";
     dFieldWrapper.fills = [];
 
-    var dField = figma.createFrame();
+    const dField = figma.createFrame();
     dField.name = "field";
     dField.resize(260, 44);
     dField.layoutMode = "HORIZONTAL";
@@ -669,15 +608,15 @@ export async function generateComponentsPageComplex() {
     dField.paddingLeft = 14; dField.paddingRight = 14;
     dField.paddingTop = 10; dField.paddingBottom = 10;
     dField.cornerRadius = defaultRadius;
-    bindRadius(dField);
+    bindRadius(dField, defaultRadiusVar);
     dField.fills = [{ type: "SOLID", color: dIsDisabled ? { r: 0.96, g: 0.96, b: 0.96 } : { r: 1, g: 1, b: 1 } }];
-    if (!dIsDisabled) bindFill(dField, "white");
+    if (!dIsDisabled) bindFill(dField, "white", colorVarMap);
     dField.strokes = [{ type: "SOLID", color: dst.borderColor }];
-    bindStroke(dField, dst.borderVar);
+    bindStroke(dField, dst.borderVar, colorVarMap);
     dField.strokeWeight = dst.strokeW;
-    bindBorderWidth(dField);
+    bindBorderWidth(dField, borderVarMap);
 
-    var dText = figma.createText();
+    const dText = figma.createText();
     if (inputStyle) {
       await dText.setTextStyleIdAsync(inputStyle.id);
     } else {
@@ -686,20 +625,20 @@ export async function generateComponentsPageComplex() {
       dText.fills = [{ type: "SOLID", color: { r: 0.6, g: 0.6, b: 0.6 } }];
     }
     dText.characters = dIsDisabled ? "Disabled" : "Select option";
-    bindFill(dText, "focus/color");
-    if (dIsDisabled) { dText.opacity = 0.5; bindOpacity(dText); }
+    bindFill(dText, "focus/color", colorVarMap);
+    if (dIsDisabled) { dText.opacity = 0.5; bindOpacity(dText, opacityVarMapComp); }
     dField.appendChild(dText);
     dText.layoutSizingHorizontal = "FILL";
 
-    var chevron = figma.createRectangle();
+    const chevron = figma.createRectangle();
     chevron.name = "icon-chevron";
     chevron.resize(17, 10);
     chevron.fills = [{ type: "IMAGE", scaleMode: "FIT", imageHash: chevronImageHash }];
     chevron.exportSettings = STANDARD_EXPORT_SETTINGS;
-    if (dIsDisabled) { chevron.opacity = 0.5; bindOpacity(chevron); }
+    if (dIsDisabled) { chevron.opacity = 0.5; bindOpacity(chevron, opacityVarMapComp); }
     dField.appendChild(chevron);
 
-    bindCompSpacing(dField);
+    bindCompSpacing(dField, spacingVarMap);
     dFieldWrapper.appendChild(dField);
     dField.layoutSizingHorizontal = "FILL";
 
@@ -712,7 +651,7 @@ export async function generateComponentsPageComplex() {
     allDropComps.push(dropComp);
   }
 
-  var dropSet = figma.combineAsVariants(allDropComps, frame);
+  const dropSet = figma.combineAsVariants(allDropComps, frame);
   dropSet.name = "Dropdown";
   dropSet.layoutMode = "HORIZONTAL";
   dropSet.itemSpacing = 24;
@@ -721,14 +660,14 @@ export async function generateComponentsPageComplex() {
   dropSet.primaryAxisSizingMode = "AUTO";
   dropSet.counterAxisSizingMode = "AUTO";
   dropSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-  bindFill(dropSet, "white");
+  bindFill(dropSet, "white", colorVarMap);
   dropSet.cornerRadius = 12;
-  bindRadiusByValue(dropSet);
+  bindRadiusByValue(dropSet, radiusVarByValue);
   dropSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
   dropSet.strokeWeight = 1;
-  bindBorderWidth(dropSet);
-  bindCompSpacing(dropSet);
-  for (var dvi = 0; dvi < dropSet.children.length; dvi++) {
+  bindBorderWidth(dropSet, borderVarMap);
+  bindCompSpacing(dropSet, spacingVarMap);
+  for (let dvi = 0; dvi < dropSet.children.length; dvi++) {
     dropSet.children[dvi].layoutSizingHorizontal = "FILL";
   }
   dropSet.layoutSizingHorizontal = "FILL";
@@ -736,27 +675,27 @@ export async function generateComponentsPageComplex() {
   // ══════════════════════════════════════════════════════════════════════════
   // IMAGE WRAPPERS (component set with Radius property)
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Images");
+  sectionTitle(frame, "Images");
 
-  var radiusVarMap = {};
+  const radiusVarMap = {};
   if (radiusCol) {
-    var allRadiusVars = allVars.filter(function(v) {
+    const allRadiusVars = allVars.filter(function(v) {
       return v.variableCollectionId === radiusCol.id && v.resolvedType === "FLOAT";
     });
-    for (var rvi2 = 0; rvi2 < allRadiusVars.length; rvi2++) {
-      var rv = allRadiusVars[rvi2];
-      var rvName = rv.name.split("/").pop();
+    for (let rvi2 = 0; rvi2 < allRadiusVars.length; rvi2++) {
+      const rv = allRadiusVars[rvi2];
+      const rvName = rv.name.split("/").pop();
       radiusVarMap[rvName] = rv;
     }
   }
 
-  var imgRadii = [];
-  var usedRadiusNames = {};
-  for (var rvk in radiusVarMap) {
+  const imgRadii = [];
+  const usedRadiusNames = {};
+  for (const rvk in radiusVarMap) {
     if (radiusVarMap.hasOwnProperty(rvk)) {
-      var rvVal = 0;
+      let rvVal = 0;
       try {
-        var rModeId = radiusCol.modes[0].modeId;
+        const rModeId = radiusCol.modes[0].modeId;
         rvVal = parseFloat(radiusVarMap[rvk].valuesByMode[rModeId]) || 0;
       } catch(e) {}
       imgRadii.push({ label: rvk, value: rvVal, variable: radiusVarMap[rvk] });
@@ -766,24 +705,24 @@ export async function generateComponentsPageComplex() {
   // Always add a "full" (circle) variant
   imgRadii.push({ label: "full", value: 9999, variable: null });
 
-  var placeholderHash = createPlaceholderImageHash(0xE8, 0xEB, 0xED);
-  var IMG_W = 240, IMG_H = 160;
+  const placeholderHash = createPlaceholderImageHash(0xE8, 0xEB, 0xED);
+  const IMG_W = 240, IMG_H = 160;
 
-  var allImgComps = [];
-  for (var imri = 0; imri < imgRadii.length; imri++) {
-    var imgR = imgRadii[imri];
+  const allImgComps = [];
+  for (let imri = 0; imri < imgRadii.length; imri++) {
+    const imgR = imgRadii[imri];
 
-    var isFull = imgR.label === "full";
-    var compW2 = isFull ? IMG_H : IMG_W;
-    var compH = IMG_H;
+    const isFull = imgR.label === "full";
+    const compW2 = isFull ? IMG_H : IMG_W;
+    const compH = IMG_H;
 
-    var imgComp = figma.createComponent();
+    const imgComp = figma.createComponent();
     imgComp.name = "Radius=" + imgR.label;
     imgComp.resize(compW2, compH);
     imgComp.clipsContent = true;
     imgComp.fills = [];
 
-    var appliedR = isFull ? compH / 2 : imgR.value;
+    const appliedR = isFull ? compH / 2 : imgR.value;
     imgComp.cornerRadius = appliedR;
 
     if (imgR.variable) {
@@ -795,7 +734,7 @@ export async function generateComponentsPageComplex() {
       } catch(e) {}
     }
 
-    var imgRect = figma.createRectangle();
+    const imgRect = figma.createRectangle();
     imgRect.name = "image";
     imgRect.resize(compW2, compH);
     imgRect.x = 0; imgRect.y = 0;
@@ -808,7 +747,7 @@ export async function generateComponentsPageComplex() {
   }
 
   if (allImgComps.length > 0) {
-    var imgSet = figma.combineAsVariants(allImgComps, frame);
+    const imgSet = figma.combineAsVariants(allImgComps, frame);
     imgSet.name = "Image";
     imgSet.layoutMode = "HORIZONTAL";
     imgSet.itemSpacing = 24;
@@ -817,22 +756,22 @@ export async function generateComponentsPageComplex() {
     imgSet.primaryAxisSizingMode = "AUTO";
     imgSet.counterAxisSizingMode = "AUTO";
     imgSet.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-    bindFill(imgSet, "white");
+    bindFill(imgSet, "white", colorVarMap);
     imgSet.cornerRadius = 12;
-    bindRadiusByValue(imgSet);
+    bindRadiusByValue(imgSet, radiusVarByValue);
     imgSet.strokes = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.06 }];
     imgSet.strokeWeight = 1;
-    bindBorderWidth(imgSet);
-    bindCompSpacing(imgSet);
+    bindBorderWidth(imgSet, borderVarMap);
+    bindCompSpacing(imgSet, spacingVarMap);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // BACKGROUND IMAGE COMPONENT
   // ══════════════════════════════════════════════════════════════════════════
-  sectionTitle("Background Image");
+  sectionTitle(frame, "Background Image");
 
-  var bgImgPlaceholder2 = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
-  var bgImgComp = figma.createComponent();
+  const bgImgPlaceholder2 = createPlaceholderImageHash(0xCC, 0xCF, 0xD2);
+  const bgImgComp = figma.createComponent();
   bgImgComp.name = "Background Image";
   bgImgComp.setPluginData("role", "background-image");
   bgImgComp.resize(400, 300);

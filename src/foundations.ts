@@ -1,72 +1,70 @@
 // foundations.ts — Foundations page generator (simple / message-driven)
 import { findPageByHint, hexToFigma, createSpecText, loadFontWithFallback, parseCssShadow, setFontName } from './utils';
+import { bindFill as bindFillShared } from './component-helpers';
 
 export async function generateFoundationsPage(msg) {
-  var page = findPageByHint("foundations");
+  const page = findPageByHint("foundations");
   if (!page) return;
   await figma.setCurrentPageAsync(page);
 
   // Load all Inter + user font weights using fallback-aware loader
-  var stdWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
-  for (var iw = 0; iw < stdWeights.length; iw++) {
+  const stdWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+  for (let iw = 0; iw < stdWeights.length; iw++) {
     await loadFontWithFallback("Inter", stdWeights[iw]);
   }
 
-  var fontFamilies = msg.fontFamilies || {};
-  var userFonts = Object.keys(fontFamilies).map(function(k) { return fontFamilies[k]; }).filter(Boolean);
-  var loadedFamilies = {};
-  for (var fi = 0; fi < userFonts.length; fi++) {
-    var fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
+  const fontFamilies = msg.fontFamilies || {};
+  const userFonts = Object.keys(fontFamilies).map(function(k) { return fontFamilies[k]; }).filter(Boolean);
+  const loadedFamilies = {};
+  for (let fi = 0; fi < userFonts.length; fi++) {
+    const fam = userFonts[fi].split(",")[0].trim().replace(/['"]/g, "");
     if (loadedFamilies[fam] || fam === "Inter") continue;
     loadedFamilies[fam] = true;
-    for (var fw = 0; fw < stdWeights.length; fw++) {
+    for (let fw = 0; fw < stdWeights.length; fw++) {
       await loadFontWithFallback(fam, stdWeights[fw]);
     }
   }
 
   // Remove existing specimens
-  var existing = page.children.filter(function(n) { return n.name === "Foundations"; });
+  const existing = page.children.filter(function(n) { return n.name === "Foundations"; });
   existing.forEach(function(n) { try { n.remove(); } catch(e) {} });
 
-  var W = 1440, PAD = 80, SECTION_GAP = 60;
-  var frame = figma.createFrame();
+  const W = 1440, PAD = 80, SECTION_GAP = 60;
+  const frame = figma.createFrame();
   frame.name = "foundations";
   frame.clipsContent = false;
   frame.resize(W, 20000);
   frame.fills = [{ type: "SOLID", color: { r: 0.98, g: 0.98, b: 0.98 } }];
   page.appendChild(frame);
 
-  var y = PAD;
+  let y = PAD;
 
   // ── Look up color variables for binding ──
-  var fColorColsAll = await figma.variables.getLocalVariableCollectionsAsync();
-  var fColorCols = [];
-  for (var fcci = 0; fcci < fColorColsAll.length; fcci++) {
+  const fColorColsAll = await figma.variables.getLocalVariableCollectionsAsync();
+  const fColorCols = [];
+  for (let fcci = 0; fcci < fColorColsAll.length; fcci++) {
     if (fColorColsAll[fcci].name === "Colors") fColorCols.push(fColorColsAll[fcci]);
   }
-  var fColorVarMap = {};
+  const fColorVarMap = {};
   if (fColorCols.length > 0) {
-    var fColorVarsAll = await figma.variables.getLocalVariablesAsync();
-    var fColorVars = [];
-    for (var fcfi = 0; fcfi < fColorVarsAll.length; fcfi++) {
+    const fColorVarsAll = await figma.variables.getLocalVariablesAsync();
+    const fColorVars = [];
+    for (let fcfi = 0; fcfi < fColorVarsAll.length; fcfi++) {
       if (fColorVarsAll[fcfi].variableCollectionId === fColorCols[0].id && fColorVarsAll[fcfi].resolvedType === "COLOR") {
         fColorVars.push(fColorVarsAll[fcfi]);
       }
     }
-    for (var fcvi = 0; fcvi < fColorVars.length; fcvi++) {
+    for (let fcvi = 0; fcvi < fColorVars.length; fcvi++) {
       fColorVarMap[fColorVars[fcvi].name] = fColorVars[fcvi];
     }
   }
-  function bindFill(node, varName) {
-    var v = fColorVarMap[varName]; if (!v) return;
-    try { node.fills = [figma.variables.setBoundVariableForPaint(node.fills[0], "color", v)]; } catch(e) {}
-  }
+  function bindFill(node, varName) { bindFillShared(node, varName, fColorVarMap); }
 
   // ── Section title helper ──
   function sectionTitle(title) {
-    var t = createSpecText(frame, title, PAD, y, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
+    const t = createSpecText(frame, title, PAD, y, 28, "Bold", { r: 0.1, g: 0.1, b: 0.1 });
     y += t.height + 8;
-    var div = figma.createRectangle();
+    const div = figma.createRectangle();
     div.resize(W - PAD * 2, 1);
     div.x = PAD; div.y = y;
     div.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.08 }];
@@ -77,37 +75,37 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // COLORS
   // ══════════════════════════════════════════════════════════════════════════
-  var colorOpts = msg.colorOpts || {};
-  var allColors = [];
+  const colorOpts = msg.colorOpts || {};
+  const allColors = [];
   if (colorOpts.primary) allColors.push({ name: "primary", hex: colorOpts.primary });
   if (colorOpts.secondary) allColors.push({ name: "secondary", hex: colorOpts.secondary });
   if (colorOpts.tertiary) allColors.push({ name: "tertiary", hex: colorOpts.tertiary });
   if (colorOpts.textColor) allColors.push({ name: "text", hex: colorOpts.textColor });
-  var customs = colorOpts.custom || [];
-  for (var ci = 0; ci < customs.length; ci++) {
+  const customs = colorOpts.custom || [];
+  for (let ci = 0; ci < customs.length; ci++) {
     if (customs[ci].name && customs[ci].hex) allColors.push(customs[ci]);
   }
   // Auto colors
-  var autoColors = [
+  const autoColors = [
     { name: "black", hex: "#000000" }, { name: "white", hex: "#FFFFFF" }, { name: "gray", hex: "#E3E3E3" },
     { name: "focus-border", hex: "#000000" }, { name: "focus-color", hex: "#79797B" },
     { name: "error-border", hex: "#E32E22" }, { name: "error-color", hex: "#E32E22" }
   ];
-  for (var ai = 0; ai < autoColors.length; ai++) {
-    var hasIt = allColors.some(function(c) { return c.name === autoColors[ai].name; });
+  for (let ai = 0; ai < autoColors.length; ai++) {
+    const hasIt = allColors.some(function(c) { return c.name === autoColors[ai].name; });
     if (!hasIt) allColors.push(autoColors[ai]);
   }
 
   if (allColors.length > 0) {
     sectionTitle("Colors");
-    var SWATCH_W = 120, SWATCH_H = 80, SWATCH_GAP = 16, COLS = Math.min(8, Math.floor((W - PAD * 2 + SWATCH_GAP) / (SWATCH_W + SWATCH_GAP)));
-    for (var si = 0; si < allColors.length; si++) {
-      var col = si % COLS;
-      var row = Math.floor(si / COLS);
-      var sx = PAD + col * (SWATCH_W + SWATCH_GAP);
-      var sy = y + row * (SWATCH_H + 36);
+    const SWATCH_W = 120, SWATCH_H = 80, SWATCH_GAP = 16, COLS = Math.min(8, Math.floor((W - PAD * 2 + SWATCH_GAP) / (SWATCH_W + SWATCH_GAP)));
+    for (let si = 0; si < allColors.length; si++) {
+      const col = si % COLS;
+      const row = Math.floor(si / COLS);
+      const sx = PAD + col * (SWATCH_W + SWATCH_GAP);
+      const sy = y + row * (SWATCH_H + 36);
 
-      var rect = figma.createRectangle();
+      const rect = figma.createRectangle();
       rect.name = "color/" + allColors[si].name;
       rect.resize(SWATCH_W, SWATCH_H);
       rect.x = sx; rect.y = sy;
@@ -120,7 +118,7 @@ export async function generateFoundationsPage(msg) {
       createSpecText(frame, allColors[si].name, sx, sy + SWATCH_H + 4, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
       createSpecText(frame, allColors[si].hex.toUpperCase(), sx, sy + SWATCH_H + 18, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
     }
-    var colorRows = Math.ceil(allColors.length / COLS);
+    const colorRows = Math.ceil(allColors.length / COLS);
     y += colorRows * (SWATCH_H + 36) + SECTION_GAP;
   }
 
@@ -128,33 +126,33 @@ export async function generateFoundationsPage(msg) {
   // FONT FAMILIES
   // ══════════════════════════════════════════════════════════════════════════
   try {
-    var ff = msg.fontFamilies || {};
-    var ffEntries = [];
-    var ffKeys = Object.keys(ff);
-    var ffSeen = {};
-    for (var ffki = 0; ffki < ffKeys.length; ffki++) {
-      var ffVal = ff[ffKeys[ffki]];
+    const ff = msg.fontFamilies || {};
+    const ffEntries = [];
+    const ffKeys = Object.keys(ff);
+    const ffSeen = {};
+    for (let ffki = 0; ffki < ffKeys.length; ffki++) {
+      const ffVal = ff[ffKeys[ffki]];
       if (!ffVal || ffSeen[ffVal]) continue;
       ffSeen[ffVal] = true;
-      var ffRole = ffKeys[ffki].charAt(0).toUpperCase() + ffKeys[ffki].slice(1);
+      const ffRole = ffKeys[ffki].charAt(0).toUpperCase() + ffKeys[ffki].slice(1);
       ffEntries.push({ role: ffRole, family: ffVal });
     }
 
     if (ffEntries.length > 0) {
       sectionTitle("Font Families");
-      var FF_CARD_W = 380, FF_CARD_H = 160, FF_GAP = 24;
-      var ffCols = Math.min(ffEntries.length, Math.floor((W - PAD * 2 + FF_GAP) / (FF_CARD_W + FF_GAP)));
+      const FF_CARD_W = 380, FF_CARD_H = 160, FF_GAP = 24;
+      const ffCols = Math.min(ffEntries.length, Math.floor((W - PAD * 2 + FF_GAP) / (FF_CARD_W + FF_GAP)));
 
-      for (var ffi = 0; ffi < ffEntries.length; ffi++) {
-        var ffe = ffEntries[ffi];
-        var ffCol = ffi % ffCols;
-        var ffRow = Math.floor(ffi / ffCols);
-        var ffX = PAD + ffCol * (FF_CARD_W + FF_GAP);
-        var ffY = y + ffRow * (FF_CARD_H + FF_GAP);
-        var ffFam = ffe.family.split(",")[0].trim().replace(/['"]/g, "");
+      for (let ffi = 0; ffi < ffEntries.length; ffi++) {
+        const ffe = ffEntries[ffi];
+        const ffCol = ffi % ffCols;
+        const ffRow = Math.floor(ffi / ffCols);
+        const ffX = PAD + ffCol * (FF_CARD_W + FF_GAP);
+        const ffY = y + ffRow * (FF_CARD_H + FF_GAP);
+        const ffFam = ffe.family.split(",")[0].trim().replace(/['"]/g, "");
 
         // Card background
-        var ffCard = figma.createFrame();
+        const ffCard = figma.createFrame();
         ffCard.name = "font/" + ffe.role.toLowerCase();
         ffCard.resize(FF_CARD_W, FF_CARD_H);
         ffCard.x = ffX; ffCard.y = ffY;
@@ -166,7 +164,7 @@ export async function generateFoundationsPage(msg) {
         frame.appendChild(ffCard);
 
         // Role label
-        var ffRoleLabel = figma.createText();
+        const ffRoleLabel = figma.createText();
         ffRoleLabel.fontName = { family: "Inter", style: "Regular" };
         ffRoleLabel.fontSize = 10;
         ffRoleLabel.characters = ffe.role.toUpperCase();
@@ -176,12 +174,12 @@ export async function generateFoundationsPage(msg) {
         ffCard.appendChild(ffRoleLabel);
 
         // Detect if font is installed
-        var ffInstalled = true;
+        let ffInstalled = true;
         try { await figma.loadFontAsync({ family: ffFam, style: "Regular" }); } catch(e) { ffInstalled = false; }
 
         if (ffInstalled) {
-          var ffNameStyle = await loadFontWithFallback(ffFam, 700);
-          var ffNameNode = figma.createText();
+          const ffNameStyle = await loadFontWithFallback(ffFam, 700);
+          const ffNameNode = figma.createText();
           ffNameNode.fontName = { family: ffFam, style: ffNameStyle };
           ffNameNode.fontSize = 28;
           ffNameNode.characters = ffFam;
@@ -189,8 +187,8 @@ export async function generateFoundationsPage(msg) {
           ffNameNode.x = 24; ffNameNode.y = 42;
           ffCard.appendChild(ffNameNode);
 
-          var ffSampleStyle = await loadFontWithFallback(ffFam, 400);
-          var ffSampleNode = figma.createText();
+          const ffSampleStyle = await loadFontWithFallback(ffFam, 400);
+          const ffSampleNode = figma.createText();
           ffSampleNode.fontName = { family: ffFam, style: ffSampleStyle };
           ffSampleNode.fontSize = 14;
           ffSampleNode.characters = "AaBbCcDdEeFfGgHhIiJjKkLl";
@@ -198,7 +196,7 @@ export async function generateFoundationsPage(msg) {
           ffSampleNode.x = 24; ffSampleNode.y = 86;
           ffCard.appendChild(ffSampleNode);
 
-          var ffValueNode = figma.createText();
+          const ffValueNode = figma.createText();
           ffValueNode.fontName = { family: "Inter", style: "Regular" };
           ffValueNode.fontSize = 11;
           ffValueNode.characters = ffe.family;
@@ -206,17 +204,17 @@ export async function generateFoundationsPage(msg) {
           ffValueNode.x = 24; ffValueNode.y = 118;
           ffCard.appendChild(ffValueNode);
 
-          var ffWeightSamples = [
+          const ffWeightSamples = [
             { w: 300, label: "Light" },
             { w: 400, label: "Regular" },
             { w: 600, label: "SemiBold" },
             { w: 700, label: "Bold" }
           ];
-          var ffwX = 24;
-          for (var ffwi = 0; ffwi < ffWeightSamples.length; ffwi++) {
-            var ffw = ffWeightSamples[ffwi];
-            var ffwStyle = await loadFontWithFallback(ffFam, ffw.w);
-            var ffwNode = figma.createText();
+          let ffwX = 24;
+          for (let ffwi = 0; ffwi < ffWeightSamples.length; ffwi++) {
+            const ffw = ffWeightSamples[ffwi];
+            const ffwStyle = await loadFontWithFallback(ffFam, ffw.w);
+            const ffwNode = figma.createText();
             ffwNode.fontName = { family: ffFam, style: ffwStyle };
             ffwNode.fontSize = 11;
             ffwNode.characters = ffw.label;
@@ -231,7 +229,7 @@ export async function generateFoundationsPage(msg) {
         }
       }
 
-      var ffRows = Math.ceil(ffEntries.length / ffCols);
+      const ffRows = Math.ceil(ffEntries.length / ffCols);
       y += ffRows * (FF_CARD_H + FF_GAP) + SECTION_GAP;
     }
   } catch(ffErr) { /* font families section failed */ }
@@ -239,36 +237,36 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // TEXT STYLES
   // ══════════════════════════════════════════════════════════════════════════
-  var textStylesData = msg.textStylesData || [];
+  const textStylesData = msg.textStylesData || [];
   if (textStylesData.length > 0) {
     try {
     // Helper: find style by group + optional name
     function findTS(group, name) {
-      for (var i = 0; i < textStylesData.length; i++) {
+      for (let i = 0; i < textStylesData.length; i++) {
         if (textStylesData[i].group === group && (!name || textStylesData[i].name === name)) return textStylesData[i];
       }
       return null;
     }
     function filterTS(group) {
-      var r = [];
-      for (var i = 0; i < textStylesData.length; i++) {
+      const r = [];
+      for (let i = 0; i < textStylesData.length; i++) {
         if (textStylesData[i].group === group) r.push(textStylesData[i]);
       }
       return r;
     }
     // Helper: create a styled text node from a text style entry
-    var figmaTextStyles = await figma.getLocalTextStylesAsync();
-    var figmaTextStyleMap = {};
-    for (var fts = 0; fts < figmaTextStyles.length; fts++) {
+    const figmaTextStyles = await figma.getLocalTextStylesAsync();
+    const figmaTextStyleMap = {};
+    for (let fts = 0; fts < figmaTextStyles.length; fts++) {
       figmaTextStyleMap[figmaTextStyles[fts].name] = figmaTextStyles[fts];
     }
     async function makeStyledText(tsEntry, text, x, yPos) {
-      var styleName = tsEntry.group + "/" + tsEntry.name;
-      var figmaStyle = figmaTextStyleMap[styleName];
-      var fam = (tsEntry.fontFamily || "Inter").split(",")[0].trim().replace(/['"]/g, "");
-      var weight = tsEntry.fontWeight || 400;
+      const styleName = tsEntry.group + "/" + tsEntry.name;
+      const figmaStyle = figmaTextStyleMap[styleName];
+      const fam = (tsEntry.fontFamily || "Inter").split(",")[0].trim().replace(/['"]/g, "");
+      const weight = tsEntry.fontWeight || 400;
       await loadFontWithFallback(fam, weight);
-      var node = figma.createText();
+      const node = figma.createText();
       if (figmaStyle) {
         await node.setTextStyleIdAsync(figmaStyle.id);
       } else {
@@ -285,16 +283,16 @@ export async function generateFoundationsPage(msg) {
       return node;
     }
 
-    var brandHexSpec = msg.brandColor || "#3B82F6";
+    const brandHexSpec = msg.brandColor || "#3B82F6";
 
     // ── Headings ──
-    var headings = filterTS("heading");
+    const headings = filterTS("heading");
     if (headings.length > 0) {
       sectionTitle("Headings");
-      for (var hi = 0; hi < headings.length; hi++) {
-        var hd = headings[hi];
-        var hNode = await makeStyledText(hd, hd.name.toUpperCase() + " — The quick brown fox jumps over the lazy dog", PAD, y);
-        var hMeta = hd.name + " · " + hd.fontSize + "px / " + hd.fontWeight + " / " + hd.lineHeight;
+      for (let hi = 0; hi < headings.length; hi++) {
+        const hd = headings[hi];
+        const hNode = await makeStyledText(hd, hd.name.toUpperCase() + " — The quick brown fox jumps over the lazy dog", PAD, y);
+        const hMeta = hd.name + " · " + hd.fontSize + "px / " + hd.fontWeight + " / " + hd.lineHeight;
         createSpecText(frame, hMeta, PAD, y + Math.max(hNode.height, 20) + 2, 10, "Regular", { r: 0.5, g: 0.5, b: 0.5 });
         y += Math.max(hNode.height, 24) + 26;
       }
@@ -302,15 +300,15 @@ export async function generateFoundationsPage(msg) {
     }
 
     // ── Body / Paragraphs ──
-    var bodies = filterTS("body");
+    const bodies = filterTS("body");
     if (bodies.length > 0) {
       sectionTitle("Paragraphs");
-      var paraText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
-      for (var bdi = 0; bdi < bodies.length; bdi++) {
-        var bd = bodies[bdi];
+      const paraText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+      for (let bdi = 0; bdi < bodies.length; bdi++) {
+        const bd = bodies[bdi];
         createSpecText(frame, "body/" + bd.name + " · " + bd.fontSize + "px / " + bd.fontWeight + " / lh:" + bd.lineHeight, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
         y += 16;
-        var bNode = await makeStyledText(bd, paraText, PAD, y);
+        const bNode = await makeStyledText(bd, paraText, PAD, y);
         bNode.resize(W - PAD * 2, bNode.height);
         bNode.textAutoResize = "HEIGHT";
         y += bNode.height + 24;
@@ -319,28 +317,28 @@ export async function generateFoundationsPage(msg) {
     }
 
     // ── Lists ──
-    var bodyDefault = findTS("body", "default") || findTS("body", "lg") || (bodies && bodies[0] ? bodies[0] : null);
+    const bodyDefault = findTS("body", "default") || findTS("body", "lg") || (bodies && bodies[0] ? bodies[0] : null);
     if (bodyDefault) {
       sectionTitle("Lists");
-      var COL_W = Math.floor((W - PAD * 2 - 40) / 2);
+      const COL_W = Math.floor((W - PAD * 2 - 40) / 2);
 
       createSpecText(frame, "Unordered List", PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
       createSpecText(frame, "Ordered List", PAD + COL_W + 40, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
       y += 18;
 
-      var ulItems = ["First item in the list", "Second item with more text", "Third item to show rhythm", "Fourth and final item"];
-      var olItems = ["Prepare the design tokens", "Configure typography settings", "Review color palette choices", "Export and hand off to dev"];
+      const ulItems = ["First item in the list", "Second item with more text", "Third item to show rhythm", "Fourth and final item"];
+      const olItems = ["Prepare the design tokens", "Configure typography settings", "Review color palette choices", "Export and hand off to dev"];
 
-      var ulStartY = y;
-      for (var uli = 0; uli < ulItems.length; uli++) {
-        var bullet = await makeStyledText(bodyDefault, "\u2022   " + ulItems[uli], PAD, y);
+      const ulStartY = y;
+      for (let uli = 0; uli < ulItems.length; uli++) {
+        const bullet = await makeStyledText(bodyDefault, "\u2022   " + ulItems[uli], PAD, y);
         y += Math.max(bullet.height, 20) + 6;
       }
-      var ulEndY = y;
+      const ulEndY = y;
 
-      var olY = ulStartY;
-      for (var oli = 0; oli < olItems.length; oli++) {
-        var olNode = await makeStyledText(bodyDefault, (oli + 1) + ".  " + olItems[oli], PAD + COL_W + 40, olY);
+      let olY = ulStartY;
+      for (let oli = 0; oli < olItems.length; oli++) {
+        const olNode = await makeStyledText(bodyDefault, (oli + 1) + ".  " + olItems[oli], PAD + COL_W + 40, olY);
         olY += Math.max(olNode.height, 20) + 6;
       }
       y = Math.max(ulEndY, olY);
@@ -348,20 +346,20 @@ export async function generateFoundationsPage(msg) {
     }
 
     // ── Links ──
-    var links = filterTS("links");
+    const links = filterTS("links");
     if (links.length > 0) {
       sectionTitle("Links");
-      var linkColor = hexToFigma(brandHexSpec);
-      for (var lki = 0; lki < links.length; lki++) {
-        var lk = links[lki];
-        var lkFam = (lk.fontFamily || "Inter").split(",")[0].trim().replace(/['"]/g, "");
-        var lkWt = lk.fontWeight || 500;
+      const linkColor = hexToFigma(brandHexSpec);
+      for (let lki = 0; lki < links.length; lki++) {
+        const lk = links[lki];
+        const lkFam = (lk.fontFamily || "Inter").split(",")[0].trim().replace(/['"]/g, "");
+        const lkWt = lk.fontWeight || 500;
         await loadFontWithFallback(lkFam, lkWt);
 
         createSpecText(frame, "links/" + lk.name + " · " + lk.fontSize + "px / " + lk.fontWeight, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
         y += 16;
 
-        var lkNode = figma.createText();
+        const lkNode = figma.createText();
         setFontName(lkNode, lkFam, lkWt);
         lkNode.fontSize = parseFloat(lk.fontSize) || 16;
         if (lk.lineHeight) lkNode.lineHeight = { value: parseFloat(lk.lineHeight) * 100, unit: "PERCENT" };
@@ -376,20 +374,20 @@ export async function generateFoundationsPage(msg) {
     }
 
     // ── Buttons / Input / Label text styles (compact reference) ──
-    var otherGroups = ["buttons", "input", "label"];
-    var otherStyles = [];
-    for (var ogi = 0; ogi < otherGroups.length; ogi++) {
-      var gs = filterTS(otherGroups[ogi]);
-      for (var gsi = 0; gsi < gs.length; gsi++) otherStyles.push(gs[gsi]);
+    const otherGroups = ["buttons", "input", "label"];
+    const otherStyles = [];
+    for (let ogi = 0; ogi < otherGroups.length; ogi++) {
+      const gs = filterTS(otherGroups[ogi]);
+      for (let gsi = 0; gsi < gs.length; gsi++) otherStyles.push(gs[gsi]);
     }
     if (otherStyles.length > 0) {
       sectionTitle("UI Text Styles");
-      for (var usi = 0; usi < otherStyles.length; usi++) {
-        var us = otherStyles[usi];
-        var usLabel = us.group + "/" + us.name;
+      for (let usi = 0; usi < otherStyles.length; usi++) {
+        const us = otherStyles[usi];
+        const usLabel = us.group + "/" + us.name;
         createSpecText(frame, usLabel + " · " + us.fontSize + "px / " + us.fontWeight, PAD, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
         y += 16;
-        var usNode = await makeStyledText(us, usLabel + " — Sample text preview", PAD, y);
+        const usNode = await makeStyledText(us, usLabel + " — Sample text preview", PAD, y);
         y += Math.max(usNode.height, 20) + 16;
       }
       y += SECTION_GAP;
@@ -400,19 +398,19 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // TYPOGRAPHY VARIABLES (sizes, weights, line-heights)
   // ══════════════════════════════════════════════════════════════════════════
-  var typo = msg.typography || { sizes: [], weights: [], lineHeights: [] };
-  var hasSizes = typo.sizes && typo.sizes.length > 0;
-  var hasWeights = typo.weights && typo.weights.length > 0;
-  var hasLH = typo.lineHeights && typo.lineHeights.length > 0;
+  const typo = msg.typography || { sizes: [], weights: [], lineHeights: [] };
+  const hasSizes = typo.sizes?.length > 0;
+  const hasWeights = typo.weights?.length > 0;
+  const hasLH = typo.lineHeights?.length > 0;
 
   if (hasSizes || hasWeights || hasLH) {
     sectionTitle("Typography Scale");
-    var scaleFam = userFonts.length > 0 ? userFonts[0].split(",")[0].trim().replace(/['"]/g, "") : "";
-    var scaleInstalled = false;
+    const scaleFam = userFonts.length > 0 ? userFonts[0].split(",")[0].trim().replace(/['"]/g, "") : "";
+    let scaleInstalled = false;
     if (scaleFam) { try { await figma.loadFontAsync({ family: scaleFam, style: "Regular" }); scaleInstalled = true; } catch(e) {} }
 
     if (!scaleInstalled) {
-      var scaleMsg = scaleFam ? (scaleFam + " is not installed — install font to preview typography scale") : "No primary font found";
+      const scaleMsg = scaleFam ? (scaleFam + " is not installed — install font to preview typography scale") : "No primary font found";
       createSpecText(frame, scaleMsg, PAD, y, 12, "Regular", { r: 0.6, g: 0.3, b: 0.3 });
       y += 32 + SECTION_GAP;
     } else {
@@ -421,11 +419,11 @@ export async function generateFoundationsPage(msg) {
       try {
         createSpecText(frame, "Font Sizes", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 });
         y += 24;
-        for (var fsi = 0; fsi < typo.sizes.length; fsi++) {
-          var sz = typo.sizes[fsi];
-          var pxVal = parseFloat(sz.value) || 16;
-          var sizeText = figma.createText();
-          var scSz = await loadFontWithFallback(scaleFam, 400);
+        for (let fsi = 0; fsi < typo.sizes.length; fsi++) {
+          const sz = typo.sizes[fsi];
+          const pxVal = parseFloat(sz.value) || 16;
+          const sizeText = figma.createText();
+          const scSz = await loadFontWithFallback(scaleFam, 400);
           sizeText.fontName = { family: scaleFam, style: scSz };
           sizeText.fontSize = Math.min(pxVal, 60);
           sizeText.characters = sz.name + " — " + sz.value + "px";
@@ -443,11 +441,11 @@ export async function generateFoundationsPage(msg) {
       try {
         createSpecText(frame, "Font Weights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 });
         y += 24;
-        var wx = PAD;
-        for (var fwi = 0; fwi < typo.weights.length; fwi++) {
-          var wt = typo.weights[fwi];
+        let wx = PAD;
+        for (let fwi = 0; fwi < typo.weights.length; fwi++) {
+          const wt = typo.weights[fwi];
           await loadFontWithFallback(scaleFam, wt.value);
-          var wtText = figma.createText();
+          const wtText = figma.createText();
           setFontName(wtText, scaleFam, wt.value);
           wtText.fontSize = 16;
           wtText.characters = wt.name + " (" + wt.value + ")";
@@ -466,16 +464,16 @@ export async function generateFoundationsPage(msg) {
       try {
         createSpecText(frame, "Line Heights", PAD, y, 14, "SemiBold", { r: 0.2, g: 0.2, b: 0.2 });
         y += 24;
-        var lhSampleText = "The quick brown fox jumps\nover the lazy dog. Pack my\nbox with five dozen\nliquor jugs.";
-        var lhColW = Math.floor((W - PAD * 2 - (typo.lineHeights.length - 1) * 24) / typo.lineHeights.length);
-        var lhX = PAD;
-        var lhMaxH = 0;
-        for (var lhi = 0; lhi < typo.lineHeights.length; lhi++) {
-          var lh = typo.lineHeights[lhi];
-          var lhVal = parseFloat(lh.value) || 1.5;
+        const lhSampleText = "The quick brown fox jumps\nover the lazy dog. Pack my\nbox with five dozen\nliquor jugs.";
+        const lhColW = Math.floor((W - PAD * 2 - (typo.lineHeights.length - 1) * 24) / typo.lineHeights.length);
+        let lhX = PAD;
+        let lhMaxH = 0;
+        for (let lhi = 0; lhi < typo.lineHeights.length; lhi++) {
+          const lh = typo.lineHeights[lhi];
+          const lhVal = parseFloat(lh.value) || 1.5;
           createSpecText(frame, lh.name + " (" + lh.value + ")", lhX, y, 10, "Medium", { r: 0.5, g: 0.5, b: 0.5 });
-          var lhNode = figma.createText();
-          var lhSt = await loadFontWithFallback(scaleFam, 400);
+          const lhNode = figma.createText();
+          const lhSt = await loadFontWithFallback(scaleFam, 400);
           lhNode.fontName = { family: scaleFam, style: lhSt };
           lhNode.fontSize = 16;
           lhNode.lineHeight = { value: lhVal * 100, unit: "PERCENT" };
@@ -498,14 +496,14 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // RADIUS
   // ══════════════════════════════════════════════════════════════════════════
-  var radiusData = msg.radius || [];
+  const radiusData = msg.radius || [];
   if (radiusData.length > 0) {
     sectionTitle("Radius");
-    var rx = PAD;
-    for (var ri = 0; ri < radiusData.length; ri++) {
-      var rad = radiusData[ri];
-      var rv = parseFloat(rad.value) || 0;
-      var rRect = figma.createRectangle();
+    let rx = PAD;
+    for (let ri = 0; ri < radiusData.length; ri++) {
+      const rad = radiusData[ri];
+      const rv = parseFloat(rad.value) || 0;
+      const rRect = figma.createRectangle();
       rRect.name = "radius/" + rad.name;
       rRect.resize(80, 80);
       rRect.x = rx; rRect.y = y;
@@ -526,24 +524,24 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // SHADOWS
   // ══════════════════════════════════════════════════════════════════════════
-  var shadowsData = msg.shadows || [];
+  const shadowsData = msg.shadows || [];
   if (shadowsData.length > 0) {
     sectionTitle("Shadows");
-    var shEffectStyles = await figma.getLocalEffectStylesAsync();
-    var shStyleMap = {};
-    for (var sem = 0; sem < shEffectStyles.length; sem++) { shStyleMap[shEffectStyles[sem].name] = shEffectStyles[sem]; }
-    var shx = PAD;
-    for (var shi = 0; shi < shadowsData.length; shi++) {
-      var sh = shadowsData[shi];
-      var shRect = figma.createRectangle();
+    const shEffectStyles = await figma.getLocalEffectStylesAsync();
+    const shStyleMap = {};
+    for (let sem = 0; sem < shEffectStyles.length; sem++) { shStyleMap[shEffectStyles[sem].name] = shEffectStyles[sem]; }
+    let shx = PAD;
+    for (let shi = 0; shi < shadowsData.length; shi++) {
+      const sh = shadowsData[shi];
+      const shRect = figma.createRectangle();
       shRect.name = "shadow/" + sh.name;
       shRect.resize(120, 80);
       shRect.x = shx; shRect.y = y;
       shRect.cornerRadius = 8;
       shRect.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
-      var shStyle = shStyleMap["shadow/" + sh.name];
+      const shStyle = shStyleMap["shadow/" + sh.name];
       if (shStyle) { try { await shRect.setEffectStyleIdAsync(shStyle.id); } catch(e) {} }
-      else { var effect = parseCssShadow(sh.value); if (effect) shRect.effects = [effect]; }
+      else { const effect = parseCssShadow(sh.value); if (effect) shRect.effects = [effect]; }
       frame.appendChild(shRect);
 
       createSpecText(frame, sh.name, shx, y + 86, 11, "Medium", { r: 0.2, g: 0.2, b: 0.2 });
@@ -557,14 +555,14 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // BORDERS
   // ══════════════════════════════════════════════════════════════════════════
-  var bordersData = msg.borders || [];
+  const bordersData = msg.borders || [];
   if (bordersData.length > 0) {
     sectionTitle("Borders");
-    var bx = PAD;
-    for (var bi = 0; bi < bordersData.length; bi++) {
-      var bd = bordersData[bi];
-      var bv = parseFloat(bd.value) || 1;
-      var bRect = figma.createRectangle();
+    let bx = PAD;
+    for (let bi = 0; bi < bordersData.length; bi++) {
+      const bd = bordersData[bi];
+      const bv = parseFloat(bd.value) || 1;
+      const bRect = figma.createRectangle();
       bRect.name = "border/" + bd.name;
       bRect.resize(100, 60);
       bRect.x = bx; bRect.y = y;
@@ -585,32 +583,32 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // Z-INDEX
   // ══════════════════════════════════════════════════════════════════════════
-  var zindexData = msg.zindex || [];
+  const zindexData = msg.zindex || [];
   if (zindexData.length > 0) {
     sectionTitle("Z-Index");
-    var zBrandColor = hexToFigma(msg.brandColor || "#3B82F6");
+    const zBrandColor = hexToFigma(msg.brandColor || "#3B82F6");
     // Sort by value ascending so lowest z-index is at the back
-    var zSorted = zindexData.slice().sort(function(a, b) {
+    const zSorted = zindexData.slice().sort(function(a, b) {
       return (parseFloat(a.value) || 0) - (parseFloat(b.value) || 0);
     });
-    var zCardW = 220;
-    var zCardH = 80;
-    var zOffsetX = 32; // horizontal shift per layer
-    var zOffsetY = -36; // vertical shift per layer (negative = upward)
-    var zCount = zSorted.length;
+    const zCardW = 220;
+    const zCardH = 80;
+    const zOffsetX = 32; // horizontal shift per layer
+    const zOffsetY = -36; // vertical shift per layer (negative = upward)
+    const zCount = zSorted.length;
     // Start from bottom-left so first (lowest) card is at bottom
-    var zBaseX = PAD;
-    var zBaseY = y + (zCount - 1) * Math.abs(zOffsetY);
+    const zBaseX = PAD;
+    const zBaseY = y + (zCount - 1) * Math.abs(zOffsetY);
 
-    for (var zi2 = 0; zi2 < zCount; zi2++) {
-      var zItem = zSorted[zi2];
-      var zv = parseFloat(zItem.value) || 0;
-      var zx = zBaseX + zi2 * zOffsetX;
-      var zy = zBaseY + zi2 * zOffsetY;
-      var zOpacity = 0.06 + 0.12 * (zi2 / Math.max(zCount - 1, 1));
+    for (let zi2 = 0; zi2 < zCount; zi2++) {
+      const zItem = zSorted[zi2];
+      const zv = parseFloat(zItem.value) || 0;
+      const zx = zBaseX + zi2 * zOffsetX;
+      const zy = zBaseY + zi2 * zOffsetY;
+      const zOpacity = 0.06 + 0.12 * (zi2 / Math.max(zCount - 1, 1));
 
       // Card
-      var zCard = figma.createFrame();
+      const zCard = figma.createFrame();
       zCard.name = "zindex/" + zItem.name;
       zCard.resize(zCardW, zCardH);
       zCard.x = zx; zCard.y = zy;
@@ -622,7 +620,7 @@ export async function generateFoundationsPage(msg) {
       frame.appendChild(zCard);
 
       // Name label inside card
-      var zNameTxt = figma.createText();
+      const zNameTxt = figma.createText();
       zNameTxt.name = "label";
       await figma.loadFontAsync({ family: "Inter", style: "Semi Bold" });
       zNameTxt.fontName = { family: "Inter", style: "Semi Bold" };
@@ -633,7 +631,7 @@ export async function generateFoundationsPage(msg) {
       zCard.appendChild(zNameTxt);
 
       // Value label inside card
-      var zValTxt = figma.createText();
+      const zValTxt = figma.createText();
       zValTxt.name = "value";
       await figma.loadFontAsync({ family: "Inter", style: "Regular" });
       zValTxt.fontName = { family: "Inter", style: "Regular" };
@@ -651,13 +649,13 @@ export async function generateFoundationsPage(msg) {
   // OPACITY
   // ══════════════════════════════════════════════════════════════════════════
   sectionTitle("Opacity");
-  var opCols = 10;
-  var opGap = 8;
-  var opSwatchW = Math.floor((W - PAD * 2 - (opCols - 1) * opGap) / opCols);
-  var opSwatchH = 40;
-  var opX = PAD;
-  for (var opi = 5; opi <= 95; opi += 5) {
-    var opRect = figma.createRectangle();
+  const opCols = 10;
+  const opGap = 8;
+  const opSwatchW = Math.floor((W - PAD * 2 - (opCols - 1) * opGap) / opCols);
+  const opSwatchH = 40;
+  let opX = PAD;
+  for (let opi = 5; opi <= 95; opi += 5) {
+    const opRect = figma.createRectangle();
     opRect.name = "opacity/" + opi;
     opRect.resize(opSwatchW, opSwatchH);
     opRect.x = opX; opRect.y = y;
@@ -673,23 +671,23 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // SPACING
   // ══════════════════════════════════════════════════════════════════════════
-  var spacingData = msg.spacing || [];
+  const spacingData = msg.spacing || [];
   if (spacingData.length > 0) {
     sectionTitle("Spacing");
-    var spBrandColor = hexToFigma(msg.brandColor || "#3B82F6");
-    var spCols = 3;
-    var spGutterX = 24;
-    var spInnerSize = 32; // fixed inner square size
-    var spRowGap = 16;
-    var spRowY = y;
-    var spRowMaxBottom = y;
+    const spBrandColor = hexToFigma(msg.brandColor || "#3B82F6");
+    const spCols = 3;
+    const spGutterX = 24;
+    const spInnerSize = 32; // fixed inner square size
+    const spRowGap = 16;
+    let spRowY = y;
+    let spRowMaxBottom = y;
 
-    for (var spi = 0; spi < spacingData.length; spi++) {
-      var sp = spacingData[spi];
-      var spVal = parseFloat(sp.value) || 0;
-      var spCol = spi % spCols;
-      var spPad = Math.max(spVal, 4); // minimum visible padding
-      var spOuterSize = spInnerSize + spPad * 2;
+    for (let spi = 0; spi < spacingData.length; spi++) {
+      const sp = spacingData[spi];
+      const spVal = parseFloat(sp.value) || 0;
+      const spCol = spi % spCols;
+      const spPad = Math.max(spVal, 4); // minimum visible padding
+      const spOuterSize = spInnerSize + spPad * 2;
 
       // Start a new row
       if (spCol === 0 && spi > 0) {
@@ -697,11 +695,11 @@ export async function generateFoundationsPage(msg) {
         spRowMaxBottom = spRowY;
       }
 
-      var spCellW = Math.floor((W - PAD * 2 - spGutterX) / spCols);
-      var spX = PAD + spCol * (spCellW + spGutterX);
+      const spCellW = Math.floor((W - PAD * 2 - spGutterX) / spCols);
+      const spX = PAD + spCol * (spCellW + spGutterX);
 
       // Outer square (brand-colored, represents the spacing)
-      var spOuter = figma.createRectangle();
+      const spOuter = figma.createRectangle();
       spOuter.name = "spacing/" + sp.name + "/outer";
       spOuter.resize(spOuterSize, spOuterSize);
       spOuter.x = spX; spOuter.y = spRowY;
@@ -712,7 +710,7 @@ export async function generateFoundationsPage(msg) {
       frame.appendChild(spOuter);
 
       // Inner square (gray, centered inside outer)
-      var spInner = figma.createRectangle();
+      const spInner = figma.createRectangle();
       spInner.name = "spacing/" + sp.name + "/inner";
       spInner.resize(spInnerSize, spInnerSize);
       spInner.x = spX + spPad; spInner.y = spRowY + spPad;
@@ -721,12 +719,12 @@ export async function generateFoundationsPage(msg) {
       frame.appendChild(spInner);
 
       // Label to the right of the squares
-      var spLabelX = spX + spOuterSize + 12;
-      var spLabelCenterY = spRowY + (spOuterSize / 2) - 7;
+      const spLabelX = spX + spOuterSize + 12;
+      const spLabelCenterY = spRowY + (spOuterSize / 2) - 7;
       createSpecText(frame, sp.name, spLabelX, spLabelCenterY - 1, 12, "Medium", { r: 0.15, g: 0.15, b: 0.15 });
       createSpecText(frame, spVal + "px", spLabelX, spLabelCenterY + 14, 11, "Regular", { r: 0.45, g: 0.45, b: 0.45 });
 
-      var spItemBottom = spRowY + spOuterSize;
+      const spItemBottom = spRowY + spOuterSize;
       if (spItemBottom > spRowMaxBottom) spRowMaxBottom = spItemBottom;
     }
     y = spRowMaxBottom + spRowGap;
@@ -736,44 +734,44 @@ export async function generateFoundationsPage(msg) {
   // ══════════════════════════════════════════════════════════════════════════
   // BREAKPOINTS
   // ══════════════════════════════════════════════════════════════════════════
-  var breakpoints = [
+  const breakpoints = [
     { name: "xs", value: 0 }, { name: "sm", value: 567 },
     { name: "md", value: 767 }, { name: "lg", value: 991 }
   ];
   sectionTitle("Breakpoints");
-  var bpBrandColor = hexToFigma(msg.brandColor || "#3B82F6");
+  const bpBrandColor = hexToFigma(msg.brandColor || "#3B82F6");
   // Sort ascending by value: xs(0), sm(567), md(767), lg(991)
-  var bpAsc = breakpoints.slice().sort(function(a, b) { return (parseFloat(a.value)||0) - (parseFloat(b.value)||0); });
-  var bpAvailW = W - PAD * 2;
+  const bpAsc = breakpoints.slice().sort(function(a, b) { return (parseFloat(a.value)||0) - (parseFloat(b.value)||0); });
+  const bpAvailW = W - PAD * 2;
   // lg is the outermost; scale so lg fills the available width
-  var bpOuterVal = (parseFloat(bpAsc[bpAsc.length - 1].value) || 991) * 1.15; // add 15% so lg rect isn't edge-to-edge
-  var bpScale = bpAvailW / bpOuterVal;
-  var bpH = 320; // same height for all
-  var bpCenterX = PAD + bpAvailW / 2;
-  var bpBaseY = y;
+  const bpOuterVal = (parseFloat(bpAsc[bpAsc.length - 1].value) || 991) * 1.15; // add 15% so lg rect isn't edge-to-edge
+  const bpScale = bpAvailW / bpOuterVal;
+  const bpH = 320; // same height for all
+  const bpCenterX = PAD + bpAvailW / 2;
+  const bpBaseY = y;
   // Opacity steps: outermost (lg) lightest, innermost (xs) darkest
-  var bpCount = bpAsc.length;
+  const bpCount = bpAsc.length;
   await figma.loadFontAsync({ family: "Inter", style: "Semi Bold" });
   await figma.loadFontAsync({ family: "Inter", style: "Regular" });
 
   // Draw from outermost (lg) to innermost (xs)
-  for (var bpi = bpCount - 1; bpi >= 0; bpi--) {
-    var bp = bpAsc[bpi];
-    var bpVal = parseFloat(bp.value) || 0;
+  for (let bpi = bpCount - 1; bpi >= 0; bpi--) {
+    const bp = bpAsc[bpi];
+    const bpVal = parseFloat(bp.value) || 0;
     // Width: use the breakpoint value, but for lg use the outer boundary, for xs use the next bp value
-    var bpRectW;
+    let bpRectW;
     if (bpi === bpCount - 1) {
       // lg — outermost, use full scaled width
       bpRectW = Math.round(bpOuterVal * bpScale);
     } else {
       // others — width = their breakpoint value
-      var bpPixelVal = Math.max(bpVal, 280); // minimum visual size for xs
+      const bpPixelVal = Math.max(bpVal, 280); // minimum visual size for xs
       bpRectW = Math.round(bpPixelVal * bpScale);
     }
-    var bpX = Math.round(bpCenterX - bpRectW / 2);
-    var bpOpacity = 0.06 + 0.06 * (bpCount - 1 - bpi); // outermost lightest, innermost darkest
+    const bpX = Math.round(bpCenterX - bpRectW / 2);
+    const bpOpacity = 0.06 + 0.06 * (bpCount - 1 - bpi); // outermost lightest, innermost darkest
 
-    var bpRect = figma.createRectangle();
+    const bpRect = figma.createRectangle();
     bpRect.name = "breakpoint/" + bp.name;
     bpRect.resize(bpRectW, bpH);
     bpRect.x = bpX; bpRect.y = bpBaseY;
@@ -785,7 +783,7 @@ export async function generateFoundationsPage(msg) {
 
     // Range label — placed in the highlighted band area
     // For lg: right edge area, for others: left edge area (just inside the stroke)
-    var bpRangeStr;
+    let bpRangeStr;
     if (bpi === bpCount - 1) {
       bpRangeStr = bp.name + " \u2265 " + bpVal + "px";
     } else if (bpi === 0) {
@@ -795,7 +793,7 @@ export async function generateFoundationsPage(msg) {
     }
 
     // Position label at the top of the band between this rect edge and the next inner rect edge
-    var bpNameTxt = figma.createText();
+    const bpNameTxt = figma.createText();
     bpNameTxt.name = "bp-label/" + bp.name;
     bpNameTxt.fontName = { family: "Inter", style: "Semi Bold" };
     bpNameTxt.fontSize = 11;
@@ -815,13 +813,13 @@ export async function generateFoundationsPage(msg) {
   y += PAD;
 
   // Resize frame to fit all content — measure actual children
-  var maxBottom = y;
-  for (var mi = 0; mi < frame.children.length; mi++) {
-    var child = frame.children[mi];
-    var childBottom = child.y + child.height;
+  let maxBottom = y;
+  for (let mi = 0; mi < frame.children.length; mi++) {
+    const child = frame.children[mi];
+    const childBottom = child.y + child.height;
     if (childBottom > maxBottom) maxBottom = childBottom;
   }
-  var finalH = maxBottom + PAD;
+  const finalH = maxBottom + PAD;
   frame.resize(W, Math.max(finalH, 400));
   frame.clipsContent = true;
 }

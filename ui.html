@@ -676,7 +676,7 @@ document.getElementById("settings-key-toggle").addEventListener("click", functio
 
 document.getElementById("settings-api-key").addEventListener("change", function() {
   var key = this.value.trim();
-  _bhApiKey = key;
+  AIClient.config.apiKey = key;
   var status = document.getElementById("settings-key-status");
   if (key && key.indexOf("sk-ant-") === 0) {
     status.textContent = "Key set.";
@@ -693,7 +693,7 @@ document.getElementById("settings-api-key").addEventListener("change", function(
 
 document.getElementById("settings-proxy-url").addEventListener("change", function() {
   var url = this.value.trim();
-  if (url) _bhProxyUrl = url;
+  if (url) AIClient.config.proxyUrl = url;
   bhSaveAiConfig();
 });
 
@@ -707,17 +707,17 @@ document.getElementById("settings-proxy-check").addEventListener("click", functi
   xhr.timeout = 5000;
   xhr.onload = function() {
     if (xhr.status === 200) {
-      _bhProxyUrl = url; _bhProxyHealthy = true; _bhProxyChecked = true;
+      AIClient.config.proxyUrl = url; AIClient.config.proxyHealthy = true; AIClient.config.proxyChecked = true;
       status.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Proxy healthy.";
       bhUpdateProxyUI(); bhUpdateAiModeUI();
     } else {
-      _bhProxyHealthy = false; _bhProxyChecked = true;
+      AIClient.config.proxyHealthy = false; AIClient.config.proxyChecked = true;
       status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Proxy returned " + xhr.status;
       bhUpdateProxyUI(); bhUpdateAiModeUI();
     }
   };
-  xhr.onerror = function() { _bhProxyHealthy = false; _bhProxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Could not reach proxy."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
-  xhr.ontimeout = function() { _bhProxyHealthy = false; _bhProxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Proxy timed out."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
+  xhr.onerror = function() { AIClient.config.proxyHealthy = false; AIClient.config.proxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Could not reach proxy."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
+  xhr.ontimeout = function() { AIClient.config.proxyHealthy = false; AIClient.config.proxyChecked = true; status.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Proxy timed out."; bhUpdateProxyUI(); bhUpdateAiModeUI(); };
   xhr.send();
 });
 
@@ -726,18 +726,18 @@ document.getElementById("settings-test-btn").addEventListener("click", function(
   var status = document.getElementById("settings-test-status");
   var proxyUrlVal = document.getElementById("settings-proxy-url").value.trim();
   var useProxy = proxyUrlVal && proxyUrlVal.indexOf("YOUR_SUBDOMAIN") === -1 && proxyUrlVal.length > 10;
-  if (!_bhApiKey && !useProxy) { status.innerHTML = "<span style='color:#fab387;'>Enter an API key or configure a proxy first.</span>"; return; }
+  if (!AIClient.config.apiKey && !useProxy) { status.innerHTML = "<span style='color:#fab387;'>Enter an API key or configure a proxy first.</span>"; return; }
   btn.disabled = true; btn.textContent = "Testing…";
   status.textContent = "";
 
   var url = useProxy ? proxyUrlVal + "/v1/messages" : "https://api.anthropic.com/v1/messages";
   var headers = { "Content-Type": "application/json" };
   if (useProxy) {
-    headers["X-Figma-User-Id"] = _figmaUserId;
-    headers["X-Figma-User-Name"] = _figmaUserName;
-    if (_bhApiKey) headers["x-api-key"] = _bhApiKey;
+    headers["X-Figma-User-Id"] = AIClient.config.figmaUserId;
+    headers["X-Figma-User-Name"] = AIClient.config.figmaUserName;
+    if (AIClient.config.apiKey) headers["x-api-key"] = AIClient.config.apiKey;
   } else {
-    headers["x-api-key"] = _bhApiKey;
+    headers["x-api-key"] = AIClient.config.apiKey;
     headers["anthropic-version"] = "2023-06-01";
     headers["anthropic-dangerous-direct-browser-access"] = "true";
   }
@@ -758,12 +758,12 @@ document.getElementById("settings-test-btn").addEventListener("click", function(
   };
   xhr.onerror = function() { btn.disabled = false; btn.textContent = "Test Connection"; status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Network error.</span>"; };
   xhr.ontimeout = function() { btn.disabled = false; btn.textContent = "Test Connection"; status.innerHTML = "<span style='color:#f38ba8;'>&#10007; Timed out.</span>"; };
-  xhr.send(JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] }));
+  xhr.send(JSON.stringify({ model: AIClient.config.models.fast, max_tokens: 10, messages: [{ role: "user", content: "Hi" }] }));
 });
 
 function bhSaveAiConfig() {
   var config = {};
-  if (_bhApiKey) config.apiKey = _bhApiKey;
+  if (AIClient.config.apiKey) config.apiKey = AIClient.config.apiKey;
   var proxyUrl = document.getElementById("settings-proxy-url").value.trim();
   if (proxyUrl) config.proxyUrl = proxyUrl;
   parent.postMessage({ pluginMessage: { type: "save-ai-config", config: config } }, "*");
@@ -773,13 +773,13 @@ function bhSaveAiConfig() {
 document.getElementById("welcome-start-btn").addEventListener("click", function() {
   var key = document.getElementById("welcome-api-key").value.trim();
   if (key) {
-    _bhApiKey = key;
+    AIClient.config.apiKey = key;
     var inp = document.getElementById("settings-api-key");
     if (inp) inp.value = key;
   }
   bhSaveAiConfig();
   // Mark welcome as done
-  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: { apiKey: _bhApiKey || "", welcomeDone: true } } }, "*");
+  parent.postMessage({ pluginMessage: { type: "save-ai-config", config: { apiKey: AIClient.config.apiKey || "", welcomeDone: true } } }, "*");
   document.getElementById("welcome-overlay").style.display = "none";
 });
 
@@ -792,7 +792,7 @@ document.getElementById("welcome-skip").addEventListener("click", function(e) {
 document.getElementById("settings-show-welcome").addEventListener("click", function(e) {
   e.preventDefault();
   document.getElementById("welcome-overlay").style.display = "";
-  if (bhHasBuiltinProxy && bhHasBuiltinProxy()) bhCheckProxyHealth();
+  if (AIClient.hasBuiltinProxy()) bhCheckProxyHealth();
 });
 
 document.getElementById("settings-reset-workflow").addEventListener("click", function() {
@@ -859,7 +859,7 @@ function makeIssueRow(key, issue, fixable) {
     btn.addEventListener("click", doRename);
     input.addEventListener("keydown", function(e){ if(e.key==="Enter") doRename(); });
     // AI suggest button (single node)
-    if (key === "naming" && (_bhApiKey || bhHasProxy())) {
+    if (key === "naming" && AIClient.isAvailable()) {
       var aiBtn = document.createElement("button");
       aiBtn.className = "action-btn ai-name-btn";
       aiBtn.textContent = "✨";
@@ -1072,14 +1072,14 @@ function renderAudit(data){
     var aiWrap = document.createElement("div"); aiWrap.className = "ai-review-wrap";
     var aiBtn = document.createElement("button"); aiBtn.className = "ai-review-btn";
     aiBtn.innerHTML = "✨ AI Review — Get a prioritized action plan";
-    var aiHasAccess = _bhApiKey || bhHasProxy();
+    var aiHasAccess = AIClient.config.apiKey || AIClient.hasProxy();
     if (!aiHasAccess) { aiBtn.disabled = true; aiBtn.title = "Set up AI access in Settings tab first"; aiBtn.innerHTML = "✨ AI Review — requires API key or proxy"; }
     var aiPanel = document.createElement("div"); aiPanel.className = "ai-review-panel"; aiPanel.style.display = "none";
     aiBtn.addEventListener("click", function(){
       aiBtn.disabled = true; aiBtn.innerHTML = "✨ Analyzing…";
       aiPanel.style.display = "block";
       aiPanel.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
-      bhCallWithRetry(function(retryCb) { bhCallAuditAI(data, retryCb); }, 2, function(err, text){
+      AIClient.callWithRetry(function(retryCb) { AIClient.reviewAudit(data, retryCb); }, 2, function(err, text){
         aiBtn.style.display = "none";
         if (err) {
           aiPanel.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
@@ -1131,7 +1131,7 @@ function renderAudit(data){
           header.appendChild(fixAllBtn);
         }
         // AI Name All button for naming checks
-        if (key === "naming" && (_bhApiKey || bhHasProxy())) {
+        if (key === "naming" && AIClient.isAvailable()) {
           var aiNameAllBtn = document.createElement("button");
           aiNameAllBtn.className = "action-btn ai-name-all-btn";
           aiNameAllBtn.textContent = "✨ AI Name All (" + count + ")";
@@ -3386,6 +3386,30 @@ function renderRouteBTokens(ctx, stepDef) {
               nameInput.style.cssText = "margin-top:4px;width:100%;padding:3px 6px;font-size:10px;background:#11111b;border:1px solid #313244;border-radius:4px;color:#cdd6f4;";
               nameInput.addEventListener("change", function() { det.name = nameInput.value; });
               info.appendChild(nameInput);
+              // For input-type components: show label vs placeholder choice
+              if (det.type === "input") {
+                det.inputTextRole = det.inputTextRole || "label";
+                var roleRow = document.createElement("div");
+                roleRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:5px;";
+                var roleLabel = document.createElement("span");
+                roleLabel.style.cssText = "font-size:10px;color:#a6adc8;";
+                roleLabel.textContent = "Field text use:";
+                var roleSelect = document.createElement("select");
+                roleSelect.style.cssText = "font-size:10px;background:#11111b;border:1px solid #313244;border-radius:4px;color:#cdd6f4;padding:2px 4px;";
+                var optLabel = document.createElement("option");
+                optLabel.value = "label";
+                optLabel.textContent = "As label (floating label style)";
+                var optPlaceholder = document.createElement("option");
+                optPlaceholder.value = "placeholder";
+                optPlaceholder.textContent = "As placeholder";
+                roleSelect.appendChild(optLabel);
+                roleSelect.appendChild(optPlaceholder);
+                roleSelect.value = det.inputTextRole;
+                roleSelect.addEventListener("change", function() { det.inputTextRole = roleSelect.value; });
+                roleRow.appendChild(roleLabel);
+                roleRow.appendChild(roleSelect);
+                info.appendChild(roleRow);
+              }
               row.appendChild(cb);
               row.appendChild(info);
               compSection.appendChild(row);
@@ -3402,7 +3426,7 @@ function renderRouteBTokens(ctx, stepDef) {
             var enabled = [];
             for (var ei = 0; ei < detections.length; ei++) {
               if (detections[ei]._enabled !== false) {
-                var clean = { name: detections[ei].name, type: detections[ei].type, description: detections[ei].description || "", variants: detections[ei].variants };
+                var clean = { name: detections[ei].name, type: detections[ei].type, description: detections[ei].description || "", variants: detections[ei].variants, inputTextRole: detections[ei].inputTextRole || null };
                 enabled.push(clean);
               }
             }
@@ -3734,7 +3758,7 @@ function renderRouteBTokenReview(body, analysis, wfContainer) {
   aiBtn.addEventListener("click", function() {
     aiBtn.disabled = true;
     aiBtn.textContent = "Refining…";
-    bhCallTokenNamingAI(analysis, function(err, result) {
+    AIClient.nameTokens(analysis, function(err, result) {
       if (err) {
         aiBtn.textContent = "✦ Failed — " + err;
         setTimeout(function() { aiBtn.textContent = "✦ Refine Names with AI"; }, 3000);
@@ -4703,7 +4727,7 @@ function renderStepAudit(ctx, stepDef) {
               chdr.appendChild(fixAllBtnWf);
             }
             // AI Name All button for naming checks (workflow tab)
-            if (key === "naming" && (_bhApiKey || bhHasProxy())) {
+            if (key === "naming" && AIClient.isAvailable()) {
               var aiNameAllBtnWf = document.createElement("button");
               aiNameAllBtnWf.className = "action-btn ai-name-all-btn";
               aiNameAllBtnWf.textContent = "✨ AI Name All (" + count + ")";
@@ -4753,14 +4777,14 @@ function renderStepAudit(ctx, stepDef) {
         var aiWrapWf = document.createElement("div"); aiWrapWf.className = "ai-review-wrap";
         var aiBtnWf = document.createElement("button"); aiBtnWf.className = "ai-review-btn";
         aiBtnWf.innerHTML = "✨ AI Review — Get a prioritized action plan";
-        var aiHasAccessWf = _bhApiKey || bhHasProxy();
+        var aiHasAccessWf = AIClient.config.apiKey || AIClient.hasProxy();
         if (!aiHasAccessWf) { aiBtnWf.disabled = true; aiBtnWf.title = "Set up AI access in Settings tab first"; aiBtnWf.innerHTML = "✨ AI Review — requires API key or proxy"; }
         var aiPanelWf = document.createElement("div"); aiPanelWf.className = "ai-review-panel"; aiPanelWf.style.display = "none";
         aiBtnWf.addEventListener("click", function(){
           aiBtnWf.disabled = true; aiBtnWf.innerHTML = "✨ Analyzing…";
           aiPanelWf.style.display = "block";
           aiPanelWf.innerHTML = "<div style='text-align:center;color:#6c7086;padding:12px;font-size:11px;'>Asking Claude for a prioritized action plan…</div>";
-          bhCallWithRetry(function(retryCb) { bhCallAuditAI(wfAuditData, retryCb); }, 2, function(err, text){
+          AIClient.callWithRetry(function(retryCb) { AIClient.reviewAudit(wfAuditData, retryCb); }, 2, function(err, text){
             aiBtnWf.style.display = "none";
             if (err) {
               aiPanelWf.innerHTML = "<div style='color:#f38ba8;padding:8px;font-size:11px;'>"+esc(err)+"</div>";
@@ -5156,7 +5180,7 @@ window.onmessage=function(event){
       _aiNamingPendingBatch = false;
       return;
     }
-    bhCallWithRetry(function(retryCb) { bhCallNamingAI(nodes, retryCb); }, 2, function(err, names) {
+    AIClient.callWithRetry(function(retryCb) { AIClient.nameLayers(nodes, retryCb); }, 2, function(err, names) {
       if (err) {
         // Reset UI state on error
         if (_aiNamingPendingSingle) {
@@ -5358,7 +5382,7 @@ window.onmessage=function(event){
     var barEl = document.getElementById("routeb-comp-bar");
     if (barEl) barEl.style.width = "30%";
     // Start 2-round AI detection
-    runComponentDetectionAI(msg.chunks, function(err, result) {
+    AIClient.detectComponents(msg.chunks, function(err, result) {
       if (err) {
         wfRouteBComponentError = err;
         wfRouteBComponentStep = 0;
@@ -5543,7 +5567,7 @@ window.onmessage=function(event){
       var bar = document.getElementById("bh-progress-bar");
       if (bar) bar.style.width = "90%";
       bhTermLog("Sending to Claude AI for enhancement…", "info");
-      bhEnhanceWithAI(msg.htmlFiles, msg.css, msg.screenshots || [], function(err, refined) {
+      AIClient.enhanceHtml(msg.htmlFiles, msg.css, msg.screenshots || [], function(err, refined) {
         var progR = document.getElementById("bh-progress");
         if (progR) progR.style.display = "none";
         if (err) {
@@ -5579,25 +5603,25 @@ window.onmessage=function(event){
     }
   }
   if(msg.type==="user-info"){
-    _figmaUserId = msg.userId || "";
-    _figmaUserName = msg.userName || "";
+    AIClient.config.figmaUserId = msg.userId || "";
+    AIClient.config.figmaUserName = msg.userName || "";
   }
   if(msg.type==="ai-config-loaded"){
     var cfg = msg.config || {};
     // Set built-in proxy URL from backend (injected at build time from proxy-config.json)
     if (cfg.builtinProxyUrl) {
-      _bhBuiltinProxyUrl = cfg.builtinProxyUrl;
-      if (!_bhProxyUrl) _bhProxyUrl = cfg.builtinProxyUrl;
+      AIClient.config.builtinProxyUrl = cfg.builtinProxyUrl;
+      if (!AIClient.config.proxyUrl) AIClient.config.proxyUrl = cfg.builtinProxyUrl;
     }
     if (cfg.apiKey) {
-      _bhApiKey = cfg.apiKey;
+      AIClient.config.apiKey = cfg.apiKey;
       var settingsInp = document.getElementById("settings-api-key");
       if (settingsInp) settingsInp.value = cfg.apiKey;
       var settingsStatus = document.getElementById("settings-key-status");
       if (settingsStatus) { settingsStatus.textContent = "Key loaded."; settingsStatus.style.color = "#a6e3a1"; }
     }
     if (cfg.proxyUrl) {
-      _bhProxyUrl = cfg.proxyUrl;
+      AIClient.config.proxyUrl = cfg.proxyUrl;
       var proxyInp = document.getElementById("settings-proxy-url");
       if (proxyInp) proxyInp.value = cfg.proxyUrl;
     }
@@ -5643,9 +5667,8 @@ function bhTermLog(text, type) {
 // ── AI Token Naming ─────────────────────────────────────────────────────────
 
 function bhCallTokenNamingAI(analysis, callback) {
-  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key configured.", null); return; }
+  if (!AIClient.isAvailable()) { callback("No API key configured.", null); return; }
 
-  // Build a compact summary for AI
   var colorSummary = analysis.colors.map(function(c) { return { hex: c.hex, uses: c.count, currentName: c.name }; });
   var typoSummary = analysis.typography.map(function(t) {
     return { family: t.fontFamily, size: t.fontSize, weight: t.fontWeight, uses: t.count, sample: t.sampleText, currentName: t.group + "/" + t.name };
@@ -5657,25 +5680,12 @@ function bhCallTokenNamingAI(analysis, callback) {
     lineHeights: sc.lineHeights.map(function(s) { return { value: s.value, currentName: s.name }; })
   };
 
-  var systemPrompt = "You are a design system token naming expert. Given extracted design tokens, suggest better semantic names.\n\n"
-    + "Rules:\n"
-    + "1. Color names: use semantic names like primary, secondary, tertiary, success, error, warning, info, surface, on-surface, muted. Keep black, white, gray as-is.\n"
-    + "2. Text style names: use group/name format like heading/h1, heading/h2, body/default, body/sm, label/default, caption/default, overline/default.\n"
-    + "3. Typography scale sizes: use t-shirt sizing or semantic names (xs/sm/md/lg/xl/2xl/3xl) or (caption/body/subheading/heading/display). Sort smallest to largest.\n"
-    + "4. Typography scale weights: use semantic names (thin/extralight/light/regular/medium/semibold/bold/extrabold/black).\n"
-    + "5. Typography scale line-heights: use density names (none/tight/snug/normal/relaxed/loose).\n"
-    + "6. Prefer short, developer-friendly names.\n"
-    + "7. Return ONLY valid JSON: {\"colors\": [{\"index\": 0, \"name\": \"primary\"}, ...], \"typography\": [{\"index\": 0, \"group\": \"heading\", \"name\": \"h1\"}, ...], \"typographyScale\": {\"sizes\": [{\"index\": 0, \"name\": \"xs\"}, ...], \"weights\": [{\"index\": 0, \"name\": \"regular\"}, ...], \"lineHeights\": [{\"index\": 0, \"name\": \"normal\"}, ...]}}\n"
-    + "No markdown, no explanation — just the JSON.";
-
-  var userContent = JSON.stringify({ colors: colorSummary, typography: typoSummary, typographyScale: scaleSummary });
-
   var body = JSON.stringify({
-    model: "claude-haiku-4-5-20251001",
+    model: AIClient.config.models.fast,
     max_tokens: 2048,
-    system: systemPrompt,
+    system: AIClient.prompts.tokenNaming,
     messages: [
-      { role: "user", content: userContent },
+      { role: "user", content: JSON.stringify({ colors: colorSummary, typography: typoSummary, typographyScale: scaleSummary }) },
       { role: "assistant", content: "{" }
     ]
   });
@@ -5684,11 +5694,7 @@ function bhCallTokenNamingAI(analysis, callback) {
     if (status === 200) {
       try {
         var resp = JSON.parse(text);
-        var t = "";
-        for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") t += resp.content[ti].text;
-        }
-        t = "{" + t.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        var t = "{" + AIClient.stripFences(AIClient.extractText(resp));
         callback(null, JSON.parse(t));
       } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
     } else if (status === -1) { callback("AI request timed out.", null);
@@ -5708,10 +5714,10 @@ function callComponentDetectionAI(systemPrompt, userContent, callbackOrMaxTokens
     maxTokens = callbackOrMaxTokens;
     callback = maxTokensOrCallback;
   }
-  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key or proxy configured. Set up AI in Settings tab.", null); return; }
+  if (!AIClient.isAvailable()) { callback("No API key or proxy configured. Set up AI in Settings tab.", null); return; }
 
   var body = JSON.stringify({
-    model: "claude-sonnet-4-6",
+    model: AIClient.config.models.standard,
     max_tokens: maxTokens || 4096,
     system: systemPrompt,
     messages: [
@@ -5723,11 +5729,7 @@ function callComponentDetectionAI(systemPrompt, userContent, callbackOrMaxTokens
     if (status === 200) {
       try {
         var resp = JSON.parse(text);
-        var t = "";
-        for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") t += resp.content[ti].text;
-        }
-        t = t.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+        var t = AIClient.stripFences(AIClient.extractText(resp));
         callback(null, JSON.parse(t));
       } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
     } else if (status === -1) { callback("AI request timed out (60s).", null);
@@ -5745,55 +5747,8 @@ function callComponentDetectionAI(systemPrompt, userContent, callbackOrMaxTokens
 }
 
 function runComponentDetectionAI(chunks, callback) {
-  var round1SystemPrompt =
-    "You are a Figma design system expert. Analyze this UI frame's node tree and identify all repeating UI component patterns.\n\n" +
-    "Node format: id (unique ID), t (type: F=Frame, T=Text, R=Rect, V=Vector, I=Instance, G=Group), n (name), " +
-    "x/y (position relative to parent), w/h (dimensions), " +
-    "f (fill color), s (stroke color), sw (stroke weight), r (corner radius), o (opacity), l (layout: H/V/W), p (padding [t,r,b,l]), " +
-    "g (gap), ax/cx (alignment), txt (text content), fs (font size), fw (font weight), ta (text align), ff (font family), " +
-    "img (has image), clip (clips content), abs (absolute positioned), exp (has export/icon), shadow (has shadow), c (children), cc (child count if truncated).\n\n" +
-    "Find nodes that share similar structure and could be component instances. Look for:\n" +
-    "- Buttons (small frames with centered text, fills, radius)\n" +
-    "- Inputs/fields (frames with strokes, text, consistent height)\n" +
-    "- Cards (larger frames with image + text children)\n" +
-    "- Navigation items, tags, badges, avatars, list items\n" +
-    "- ANY repeating pattern — even uncommon/custom ones\n\n" +
-    "Guidelines:\n" +
-    "- Report the outermost frame that represents the full component (e.g., the button frame, not the text inside it).\n" +
-    "- Don't report a component's inner children as a separate pattern (e.g., don't create \"Button Label\" separately from \"Button\").\n" +
-    "- Each nodeId should appear in only one pattern. A pattern needs at least 2 instances.\n" +
-    "- Skip section layout wrappers and one-off unique elements.\n" +
-    "- Designs are often messy/unorganized: a button or input frame may NOT have its text as a child node. " +
-    "The text could be anywhere in the tree — a sibling, a cousin, or in a completely different branch. " +
-    "Use x/y position and w/h dimensions to find text nodes that visually overlap or sit adjacent to a component frame. " +
-    "For example, a text node at x:100,y:200 with a frame at x:95,y:195 are likely the same component. " +
-    "Also look for naming patterns (\"Button Label\", \"CTA\", \"Input Label\", etc.). " +
-    "Report ONLY the FRAME nodeId as the instance \"nodeId\". " +
-    "If there are associated text/icon nodes that visually belong to this component but are NOT children of the frame, " +
-    "list their nodeIds in the \"associatedNodeIds\" array.\n\n" +
-    "For each pattern, list ALL matching nodeIds and note what differs between instances.\n" +
-    "IMPORTANT: The \"nodeId\" field must be a FRAME node only. Non-child text/vector/rect nodes go in \"associatedNodeIds\".\n\n" +
-    "Return ONLY valid JSON:\n" +
-    '{"patterns":[{"type":"button|input|dropdown|card|badge|nav-item|tag|list-item|custom","description":"Short description","instances":[{"nodeId":"1:234","associatedNodeIds":["1:235"],"notes":"blue fill, text Submit"}],"differentiators":["fill color","text content"]}]}';
-
-  var round2SystemPrompt =
-    "You are a Figma design system expert. You've analyzed individual sections of a design and found component patterns in each. Now unify these into a final component library.\n\n" +
-    "Tasks:\n" +
-    "1. Merge patterns that appear across multiple sections (e.g., 'Button' found in hero AND in form)\n" +
-    "2. Identify variants: what property differentiates instances (Variant for style, Size for dimensions, State for border/color changes)\n" +
-    "3. Name each component and its variants using design system conventions\n" +
-    "4. Match Desktop and Mobile versions of the same component when applicable\n" +
-    "5. Remove false positives (layout containers, unique one-off elements)\n\n" +
-    "Guidelines:\n" +
-    "- nodeIds arrays must contain ONLY frame nodeIds — never text, vector, or rect nodeIds.\n" +
-    "- Carry forward associatedNodeIds from Round 1: for each nodeId in a variant, include its associated nodes " +
-    "in an \"associatedNodeIds\" map so they can be grouped into the component during creation.\n" +
-    "- Each nodeId should appear in exactly one variant of one component. Only use frame nodeIds from Round 1 results.\n" +
-    "- Each component must have at least 2 total instances across all variants.\n" +
-    "- If Round 1 found separate label/text patterns (e.g., 'Button Label'), merge them into the parent component rather than keeping them separate.\n" +
-    "- Prefer fewer, well-defined components over many small fragments.\n\n" +
-    "Return ONLY valid JSON:\n" +
-    '{"components":[{"name":"Button","type":"button","description":"Primary action button","variants":[{"name":"Primary","properties":{"Variant":"Primary"},"nodeIds":["1:234","5:678"],"associatedNodeIds":{"1:234":["1:235"],"5:678":["5:679"]}}]}]}';
+  var round1SystemPrompt = AIClient.prompts.componentDetectionRound1;
+  var round2SystemPrompt = AIClient.prompts.componentDetectionRound2;
 
   var round1Results = [];
   var completed = 0;
@@ -5879,64 +5834,188 @@ var _bhLastResult = null;
 var _bhLastRawResult = null;
 var _bhLastEnhancedResult = null;
 var _bhViewingEnhanced = false;
-var _figmaUserId = "";
-var _figmaUserName = "";
-var _bhApiKey = "";
-
-// Proxy URL — set via backend message (from proxy-config.json), Settings tab, or clientStorage
-var _bhProxyUrl = "";
-var _bhBuiltinProxyUrl = ""; // Set when ai-config-loaded arrives with builtinProxyUrl
-
-var _bhProxyHealthy = false;
-var _bhProxyChecked = false;
-
-function bhHasProxy() {
-  return _bhProxyUrl && _bhProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhProxyUrl.length > 10;
-}
-
-function bhHasBuiltinProxy() {
-  return _bhBuiltinProxyUrl && _bhBuiltinProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && _bhBuiltinProxyUrl.length > 10;
-}
-
-// Low-level POST helper: prefers proxy when configured, falls back to API key on 429.
-// onDone(status, responseText, didFallback)
-function bhPost(bodyStr, timeoutMs, onDone) {
-  var tryProxy = bhHasProxy() && _bhProxyHealthy;
-  var hasKey = !!_bhApiKey;
-  function doRequest(useProxy, resultCb) {
-    var url = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", url, true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    if (useProxy) {
-      xhr.setRequestHeader("X-Figma-User-Id", _figmaUserId);
-      xhr.setRequestHeader("X-Figma-User-Name", _figmaUserName);
-    } else {
-      xhr.setRequestHeader("x-api-key", _bhApiKey);
-      xhr.setRequestHeader("anthropic-version", "2023-06-01");
-      xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
+// ══════════════════════════════════════════════════════════════════════════════
+// AIClient — Centralized AI abstraction
+// ══════════════════════════════════════════════════════════════════════════════
+// To switch to a custom AI processor, set AIClient.config.endpoint and
+// AIClient.config.useCustomProcessor = true. The custom processor handles
+// prompts server-side; the client just sends task + data.
+// ══════════════════════════════════════════════════════════════════════════════
+var AIClient = {
+  // ── Configuration ──
+  config: {
+    endpoint: "",           // Custom processor URL (empty = use Anthropic directly)
+    useCustomProcessor: false,
+    apiKey: "",
+    proxyUrl: "",
+    builtinProxyUrl: "",
+    proxyHealthy: false,
+    proxyChecked: false,
+    figmaUserId: "",
+    figmaUserName: "",
+    models: {
+      fast: "claude-haiku-4-5-20251001",
+      standard: "claude-sonnet-4-6",
     }
-    xhr.onload = function() { resultCb(xhr.status, xhr.responseText); };
-    xhr.onerror = function() { resultCb(0, ""); };
-    xhr.timeout = timeoutMs || 30000;
-    xhr.ontimeout = function() { resultCb(-1, ""); };
-    xhr.send(bodyStr);
-  }
-  if (tryProxy) {
-    doRequest(true, function(status, text) {
-      if (status === 429 && hasKey) {
-        doRequest(false, function(s2, t2) { onDone(s2, t2, true); });
+  },
+
+  // ── Transport ──
+  hasProxy: function() {
+    return this.config.proxyUrl && this.config.proxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && this.config.proxyUrl.length > 10;
+  },
+
+  hasBuiltinProxy: function() {
+    return this.config.builtinProxyUrl && this.config.builtinProxyUrl.indexOf("YOUR_SUBDOMAIN") === -1 && this.config.builtinProxyUrl.length > 10;
+  },
+
+  isAvailable: function() {
+    return !!this.config.apiKey || (this.hasProxy() && this.config.proxyHealthy);
+  },
+
+  // ── Prompts (centralized for future server-side migration) ──
+  prompts: {
+    tokenNaming: "You are a design system token naming expert. Given extracted design tokens, suggest better semantic names.\n\n"
+      + "Rules:\n"
+      + "1. Color names: use semantic names like primary, secondary, tertiary, success, error, warning, info, surface, on-surface, muted. Keep black, white, gray as-is.\n"
+      + "2. Text style names: use group/name format like heading/h1, heading/h2, body/default, body/sm, label/default, caption/default, overline/default.\n"
+      + "3. Typography scale sizes: use t-shirt sizing or semantic names (xs/sm/md/lg/xl/2xl/3xl) or (caption/body/subheading/heading/display). Sort smallest to largest.\n"
+      + "4. Typography scale weights: use semantic names (thin/extralight/light/regular/medium/semibold/bold/extrabold/black).\n"
+      + "5. Typography scale line-heights: use density names (none/tight/snug/normal/relaxed/loose).\n"
+      + "6. Prefer short, developer-friendly names.\n"
+      + '7. Return ONLY valid JSON: {"colors": [{"index": 0, "name": "primary"}, ...], "typography": [{"index": 0, "group": "heading", "name": "h1"}, ...], "typographyScale": {"sizes": [{"index": 0, "name": "xs"}, ...], "weights": [{"index": 0, "name": "regular"}, ...], "lineHeights": [{"index": 0, "name": "normal"}, ...]}}\n'
+      + "No markdown, no explanation — just the JSON.",
+
+    layerNaming: "You are a Figma layer naming expert. Given a JSON array of unnamed UI layers with their context (type, size, children, parent, siblings), suggest semantic kebab-case names.\n\n"
+      + "Rules:\n"
+      + "1. Names MUST be kebab-case (lowercase, hyphens only), 2-4 words max.\n"
+      + "2. Names should reflect the UI purpose: hero-cta-btn, pricing-card, testimonial-section, nav-link-list, search-input, footer-social-icons.\n"
+      + "3. Use text content inside the node as the primary signal for naming.\n"
+      + "4. Consider parent and sibling context to understand the node's role.\n"
+      + "5. If siblings have similar structure, use a consistent naming pattern (e.g. feature-card-1, feature-card-2 or just feature-card if they are instances).\n"
+      + "6. Avoid generic names like container, wrapper, group, frame unless the node is truly generic.\n"
+      + "7. Common patterns: *-section (page-level), *-card, *-btn, *-input, *-icon, *-list, *-item, *-heading, *-text, *-image, *-badge, *-nav, *-link, *-divider.\n\n"
+      + 'Return ONLY a valid JSON array: [{"id":"nodeId","name":"suggested-name"}, ...]\n'
+      + "No markdown, no explanation, no extra text — just the JSON array.",
+
+    auditReview: "You are a Figma design systems expert reviewing a plugin-generated audit of a designer's file. "
+      + "The audit checks layer naming, auto layout usage, variable bindings, text styles, and hygiene.\n\n"
+      + "Your task: analyze the audit results and give the designer a SHORT, prioritized action plan.\n\n"
+      + "Rules:\n"
+      + "1. Start with the highest-impact fixes — what will improve the score the most.\n"
+      + "2. Tell them WHICH 'Fix All' buttons to click first (the plugin has Fix All for: naming, colors, spacing, radius, opacity, border, hidden, empty).\n"
+      + "3. For issues that can't be auto-fixed (auto layout, fixed sizing, text styles, deep nesting), give specific advice on what to change.\n"
+      + "4. Group related issues when possible (e.g. 'these 12 colors are all variants of your brand blue').\n"
+      + "5. If the score is above 80, congratulate briefly and focus on remaining polish items.\n"
+      + "6. Keep the total response under 250 words. Use short bullet points, not paragraphs.\n"
+      + "7. Use plain language a designer (not developer) would understand.\n"
+      + "8. Format with markdown: use **bold** for emphasis, bullet lists with - dashes.",
+
+    componentDetectionRound1: "You are a Figma design system expert. Analyze this UI frame's node tree and identify all repeating UI component patterns.\n\n"
+      + "Node format: id (unique ID), t (type: F=Frame, T=Text, R=Rect, V=Vector, I=Instance, G=Group), n (name), "
+      + "x/y (position relative to parent), w/h (dimensions), "
+      + "f (fill color), s (stroke color), sw (stroke weight), r (corner radius), o (opacity), l (layout: H/V/W), p (padding [t,r,b,l]), "
+      + "g (gap), ax/cx (alignment), txt (text content), fs (font size), fw (font weight), ta (text align), ff (font family), "
+      + "img (has image), clip (clips content), abs (absolute positioned), exp (has export/icon), shadow (has shadow), c (children), cc (child count if truncated).\n\n"
+      + "Find nodes that share similar structure and could be component instances. Look for:\n"
+      + "- Buttons (small frames with centered text, fills, radius)\n"
+      + "- Inputs/fields (frames with strokes, text, consistent height)\n"
+      + "- Cards (larger frames with image + text children)\n"
+      + "- Navigation items, tags, badges, avatars, list items\n"
+      + "- ANY repeating pattern — even uncommon/custom ones\n\n"
+      + "Guidelines:\n"
+      + "- Report the outermost frame that represents the full component (e.g., the button frame, not the text inside it).\n"
+      + "- Don't report a component's inner children as a separate pattern (e.g., don't create \"Button Label\" separately from \"Button\").\n"
+      + "- Each nodeId should appear in only one pattern. A pattern needs at least 2 instances.\n"
+      + "- Skip section layout wrappers and one-off unique elements.\n"
+      + "- Designs are often messy/unorganized: a button or input frame may NOT have its text as a child node. "
+      + "The text could be anywhere in the tree — a sibling, a cousin, or in a completely different branch. "
+      + "Use x/y position and w/h dimensions to find text nodes that visually overlap or sit adjacent to a component frame. "
+      + "For example, a text node at x:100,y:200 with a frame at x:95,y:195 are likely the same component. "
+      + "Also look for naming patterns (\"Button Label\", \"CTA\", \"Input Label\", etc.). "
+      + "Report ONLY the FRAME nodeId as the instance \"nodeId\". "
+      + "If there are associated text/icon nodes that visually belong to this component but are NOT children of the frame, "
+      + "list their nodeIds in the \"associatedNodeIds\" array.\n\n"
+      + "For each pattern, list ALL matching nodeIds and note what differs between instances.\n"
+      + "IMPORTANT: The \"nodeId\" field must be a FRAME node only. Non-child text/vector/rect nodes go in \"associatedNodeIds\".\n\n"
+      + "Return ONLY valid JSON:\n"
+      + '{"patterns":[{"type":"button|input|dropdown|card|badge|nav-item|tag|list-item|custom","description":"Short description","instances":[{"nodeId":"1:234","associatedNodeIds":["1:235"],"notes":"blue fill, text Submit"}],"differentiators":["fill color","text content"]}]}',
+
+    componentDetectionRound2: "You are a Figma design system expert. You've analyzed individual sections of a design and found component patterns in each. Now unify these into a final component library.\n\n"
+      + "Tasks:\n"
+      + "1. Merge patterns that appear across multiple sections (e.g., 'Button' found in hero AND in form)\n"
+      + "2. Identify variants: what property differentiates instances (Variant for style, Size for dimensions, State for border/color changes)\n"
+      + "3. Name each component and its variants using design system conventions\n"
+      + "4. Match Desktop and Mobile versions of the same component when applicable\n"
+      + "5. Remove false positives (layout containers, unique one-off elements)\n\n"
+      + "Guidelines:\n"
+      + "- nodeIds arrays must contain ONLY frame nodeIds — never text, vector, or rect nodeIds.\n"
+      + "- Carry forward associatedNodeIds from Round 1: for each nodeId in a variant, include its associated nodes "
+      + "in an \"associatedNodeIds\" map so they can be grouped into the component during creation.\n"
+      + "- Each nodeId should appear in exactly one variant of one component. Only use frame nodeIds from Round 1 results.\n"
+      + "- Each component must have at least 2 total instances across all variants.\n"
+      + "- If Round 1 found separate label/text patterns (e.g., 'Button Label'), merge them into the parent component rather than keeping them separate.\n"
+      + "- Prefer fewer, well-defined components over many small fragments.\n\n"
+      + "Return ONLY valid JSON:\n"
+      + '{"components":[{"name":"Button","type":"button","description":"Primary action button","variants":[{"name":"Primary","properties":{"Variant":"Primary"},"nodeIds":["1:234","5:678"],"associatedNodeIds":{"1:234":["1:235"],"5:678":["5:679"]}}]}]}'
+  },
+
+  // ── Response helpers ──
+  extractText: function(resp) {
+    var t = "";
+    for (var i = 0; i < resp.content.length; i++) {
+      if (resp.content[i].type === "text") t += resp.content[i].text;
+    }
+    return t;
+  },
+  stripFences: function(text) {
+    return text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  },
+
+  // ── Low-level POST: prefers proxy, falls back to direct API on 429 ──
+  post: function(bodyStr, timeoutMs, onDone) {
+    var cfg = this.config;
+    var tryProxy = this.hasProxy() && cfg.proxyHealthy;
+    var hasKey = !!cfg.apiKey;
+    function doRequest(useProxy, resultCb) {
+      var url = useProxy ? cfg.proxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", url, true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      if (useProxy) {
+        xhr.setRequestHeader("X-Figma-User-Id", cfg.figmaUserId);
+        xhr.setRequestHeader("X-Figma-User-Name", cfg.figmaUserName);
       } else {
-        onDone(status, text, false);
+        xhr.setRequestHeader("x-api-key", cfg.apiKey);
+        xhr.setRequestHeader("anthropic-version", "2023-06-01");
+        xhr.setRequestHeader("anthropic-dangerous-direct-browser-access", "true");
       }
-    });
-  } else {
-    doRequest(false, function(status, text) { onDone(status, text, false); });
+      xhr.onload = function() { resultCb(xhr.status, xhr.responseText); };
+      xhr.onerror = function() { resultCb(0, ""); };
+      xhr.timeout = timeoutMs || 30000;
+      xhr.ontimeout = function() { resultCb(-1, ""); };
+      xhr.send(bodyStr);
+    }
+    if (tryProxy) {
+      doRequest(true, function(status, text) {
+        if (status === 429 && hasKey) {
+          doRequest(false, function(s2, t2) { onDone(s2, t2, true); });
+        } else {
+          onDone(status, text, false);
+        }
+      });
+    } else {
+      doRequest(false, function(status, text) { onDone(status, text, false); });
+    }
   }
-}
+};
+
+// ── Backward-compatible shims (bridge old call sites → AIClient) ──
+function bhHasProxy() { return AIClient.hasProxy(); }
+function bhHasBuiltinProxy() { return AIClient.hasBuiltinProxy(); }
+function bhPost(bodyStr, timeoutMs, onDone) { AIClient.post(bodyStr, timeoutMs, onDone); }
 
 function bhUpdateProxyUI() {
-  var proxyHealthy = bhHasProxy() && _bhProxyHealthy;
+  var proxyHealthy = AIClient.hasProxy() && AIClient.config.proxyHealthy;
 
   // Settings tab: update API key label/description based on proxy status
   var keyLabel = document.getElementById("settings-key-label");
@@ -5957,10 +6036,10 @@ function bhUpdateProxyUI() {
     if (proxyDetails) proxyDetails.open = true;
     if (notice) {
       notice.style.display = "";
-      if (_bhProxyHealthy) {
+      if (AIClient.config.proxyHealthy) {
         notice.innerHTML = "<span style='color:#a6e3a1;'>&#10003;</span> Pre-configured proxy is healthy. You can override it below.";
         notice.style.color = "#a6e3a1";
-      } else if (_bhProxyChecked) {
+      } else if (AIClient.config.proxyChecked) {
         notice.innerHTML = "<span style='color:#f38ba8;'>&#10007;</span> Pre-configured proxy is unreachable. Your API key will be used directly.";
         notice.style.color = "#f38ba8";
       } else {
@@ -5969,7 +6048,7 @@ function bhUpdateProxyUI() {
       }
     }
     // Pre-fill the input if user hasn't overridden it
-    if (proxyInp && !proxyInp.value) proxyInp.value = _bhProxyUrl;
+    if (proxyInp && !proxyInp.value) proxyInp.value = AIClient.config.proxyUrl;
   } else if (bhHasProxy() && proxyInp) {
     // User-entered proxy (from clientStorage) — also update notice area
     if (proxyDetails) proxyDetails.open = true;
@@ -5981,11 +6060,11 @@ function bhUpdateProxyUI() {
   var welcomeText = document.getElementById("welcome-proxy-text");
   if (bhHasProxy() && welcomeNotice) {
     welcomeNotice.style.display = "";
-    if (_bhProxyHealthy) {
+    if (AIClient.config.proxyHealthy) {
       welcomeIcon.innerHTML = "&#10003;"; welcomeIcon.style.color = "#a6e3a1";
       welcomeText.innerHTML = "Team proxy connected. API key is optional — enter one to use your own credits, or skip to use the shared proxy.";
       welcomeText.style.color = "#a6e3a1";
-    } else if (_bhProxyChecked) {
+    } else if (AIClient.config.proxyChecked) {
       welcomeIcon.innerHTML = "&#10007;"; welcomeIcon.style.color = "#f38ba8";
       welcomeText.innerHTML = "Team proxy is unreachable. Enter your own API key below.";
       welcomeText.style.color = "#f38ba8";
@@ -5998,26 +6077,26 @@ function bhUpdateProxyUI() {
 }
 
 function bhCheckProxyHealth() {
-  if (!bhHasProxy()) { _bhProxyChecked = true; _bhProxyHealthy = false; bhUpdateProxyUI(); bhUpdateAiModeUI(); return; }
+  if (!bhHasProxy()) { AIClient.config.proxyChecked = true; AIClient.config.proxyHealthy = false; bhUpdateProxyUI(); bhUpdateAiModeUI(); return; }
   bhUpdateProxyUI(); // Show "checking..." state
   var xhr = new XMLHttpRequest();
-  xhr.open("GET", _bhProxyUrl + "/health", true);
+  xhr.open("GET", AIClient.config.proxyUrl + "/health", true);
   xhr.timeout = 5000;
   xhr.onload = function() {
-    _bhProxyChecked = true;
-    _bhProxyHealthy = (xhr.status === 200);
+    AIClient.config.proxyChecked = true;
+    AIClient.config.proxyHealthy = (xhr.status === 200);
     bhUpdateProxyUI();
     bhUpdateAiModeUI();
   };
   xhr.onerror = function() {
-    _bhProxyChecked = true;
-    _bhProxyHealthy = false;
+    AIClient.config.proxyChecked = true;
+    AIClient.config.proxyHealthy = false;
     bhUpdateProxyUI();
     bhUpdateAiModeUI();
   };
   xhr.ontimeout = function() {
-    _bhProxyChecked = true;
-    _bhProxyHealthy = false;
+    AIClient.config.proxyChecked = true;
+    AIClient.config.proxyHealthy = false;
     bhUpdateProxyUI();
     bhUpdateAiModeUI();
   };
@@ -6035,8 +6114,8 @@ function bhUpdateAiModeUI() {
   // Hide the old inline key section — config is now in Settings tab
   if (keySection) keySection.style.display = "none";
 
-  var hasKey = !!_bhApiKey;
-  var hasProxy = bhHasProxy() && _bhProxyHealthy;
+  var hasKey = !!AIClient.config.apiKey;
+  var hasProxy = bhHasProxy() && AIClient.config.proxyHealthy;
   var statusHtml = "";
   if (hasKey && hasProxy) {
     statusHtml = "<span style='color:#a6e3a1;'>&#10003;</span> AI ready via proxy. <a href='#' id='bh-goto-settings' style='color:#89b4fa;text-decoration:underline;'>Settings</a>";
@@ -6074,7 +6153,7 @@ window.addEventListener("message", function(ev) {
   if (msg && msg.type === "ai-config-loaded") _aiConfigReceived = true;
 });
 setTimeout(function() {
-  if (!_aiConfigReceived && !_bhApiKey) {
+  if (!_aiConfigReceived && !AIClient.config.apiKey) {
     document.getElementById("welcome-overlay").style.display = "";
   }
 }, 500);
@@ -6267,8 +6346,8 @@ function bhEnhanceWithAI(htmlFiles, css, screenshots, callback, pageType) {
 
 function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
   pageType = pageType || "promo";
-  var useProxy = bhHasProxy() && _bhProxyHealthy;
-  if (!_bhApiKey && !useProxy) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+  var useProxy = AIClient.hasProxy() && AIClient.config.proxyHealthy;
+  if (!AIClient.isAvailable()) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var htmlSummary = "";
   for (var i = 0; i < htmlFiles.length; i++) {
@@ -6325,19 +6404,19 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
     userContent = userTextContent;
   }
 
-  var apiUrl = useProxy ? _bhProxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
+  var apiUrl = useProxy ? AIClient.config.proxyUrl + "/v1/messages" : "https://api.anthropic.com/v1/messages";
   var reqHeaders = { "Content-Type": "application/json" };
-  if (_bhApiKey) reqHeaders["x-api-key"] = _bhApiKey;
+  if (AIClient.config.apiKey) reqHeaders["x-api-key"] = AIClient.config.apiKey;
   if (useProxy) {
-    reqHeaders["X-Figma-User-Id"] = _figmaUserId;
-    reqHeaders["X-Figma-User-Name"] = _figmaUserName;
+    reqHeaders["X-Figma-User-Id"] = AIClient.config.figmaUserId;
+    reqHeaders["X-Figma-User-Name"] = AIClient.config.figmaUserName;
   } else {
     reqHeaders["anthropic-version"] = "2023-06-01";
     reqHeaders["anthropic-dangerous-direct-browser-access"] = "true";
   }
 
   var msgPayload = {
-    model: "claude-sonnet-4-6",
+    model: AIClient.config.models.standard,
     max_tokens: 16384,
     thinking: { type: "enabled", budget_tokens: 10000 },
     system: systemPrompt,
@@ -6346,8 +6425,7 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
 
   // Helper to strip markdown fences and parse JSON
   function parseResponseText(text) {
-    text = text.replace(/^```json\s*/i, "").replace(/\s*```\s*$/, "").trim();
-    return JSON.parse(text);
+    return JSON.parse(AIClient.stripFences(text));
   }
 
   // Helper to build error message from HTTP status
@@ -6462,7 +6540,7 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
     var url = isFallback ? "https://api.anthropic.com/v1/messages" : apiUrl;
     var headers = isFallback ? {
       "Content-Type": "application/json",
-      "x-api-key": _bhApiKey,
+      "x-api-key": AIClient.config.apiKey,
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true"
     } : reqHeaders;
@@ -6509,7 +6587,7 @@ function bhCallClaudeAPI(htmlFiles, css, screenshots, callback, pageType) {
       if (xhr.status === 200) {
         var parsed = parseSSEResponse(xhr.responseText);
         finishStream(parsed.text, parsed.thinking, null);
-      } else if (xhr.status === 429 && !isFallback && _bhApiKey) {
+      } else if (xhr.status === 429 && !isFallback && AIClient.config.apiKey) {
         bhTermLog("Proxy rate-limited (429), falling back to direct API key…", "info");
         sendWithXHR(true);
       } else {
@@ -6570,24 +6648,12 @@ var _aiNamingPendingSingle = null; // { nodeId, input, btn }
 var _aiNamingPendingBatch = false;
 
 function bhCallNamingAI(serializedNodes, callback) {
-  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
-
-  var systemPrompt = "You are a Figma layer naming expert. Given a JSON array of unnamed UI layers with their context (type, size, children, parent, siblings), suggest semantic kebab-case names.\n\n"
-    + "Rules:\n"
-    + "1. Names MUST be kebab-case (lowercase, hyphens only), 2-4 words max.\n"
-    + "2. Names should reflect the UI purpose: hero-cta-btn, pricing-card, testimonial-section, nav-link-list, search-input, footer-social-icons.\n"
-    + "3. Use text content inside the node as the primary signal for naming.\n"
-    + "4. Consider parent and sibling context to understand the node's role.\n"
-    + "5. If siblings have similar structure, use a consistent naming pattern (e.g. feature-card-1, feature-card-2 or just feature-card if they are instances).\n"
-    + "6. Avoid generic names like container, wrapper, group, frame unless the node is truly generic.\n"
-    + "7. Common patterns: *-section (page-level), *-card, *-btn, *-input, *-icon, *-list, *-item, *-heading, *-text, *-image, *-badge, *-nav, *-link, *-divider.\n\n"
-    + "Return ONLY a valid JSON array: [{\"id\":\"nodeId\",\"name\":\"suggested-name\"}, ...]\n"
-    + "No markdown, no explanation, no extra text — just the JSON array.";
+  if (!AIClient.isAvailable()) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var body = JSON.stringify({
-    model: "claude-haiku-4-5-20251001",
+    model: AIClient.config.models.fast,
     max_tokens: 2048,
-    system: systemPrompt,
+    system: AIClient.prompts.layerNaming,
     messages: [
       { role: "user", content: JSON.stringify(serializedNodes) },
       { role: "assistant", content: "[" }
@@ -6597,12 +6663,7 @@ function bhCallNamingAI(serializedNodes, callback) {
   bhPost(body, 30000, function(status, text) {
     if (status === 200) {
       try {
-        var resp = JSON.parse(text);
-        var t = "";
-        for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") t += resp.content[ti].text;
-        }
-        t = "[" + t.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/,"").trim();
+        var t = "[" + AIClient.stripFences(AIClient.extractText(JSON.parse(text)));
         var names = JSON.parse(t);
         if (!Array.isArray(names)) throw new Error("Expected JSON array");
         callback(null, names);
@@ -6618,39 +6679,21 @@ function bhCallNamingAI(serializedNodes, callback) {
 }
 
 function bhCallAuditAI(data, callback) {
-  if (!_bhApiKey && !(bhHasProxy() && _bhProxyHealthy)) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+  if (!AIClient.isAvailable()) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
 
   var auditText = bhSerializeAuditForAI(data);
 
-  var systemPrompt = "You are a Figma design systems expert reviewing a plugin-generated audit of a designer's file. "
-    + "The audit checks layer naming, auto layout usage, variable bindings, text styles, and hygiene.\n\n"
-    + "Your task: analyze the audit results and give the designer a SHORT, prioritized action plan.\n\n"
-    + "Rules:\n"
-    + "1. Start with the highest-impact fixes — what will improve the score the most.\n"
-    + "2. Tell them WHICH 'Fix All' buttons to click first (the plugin has Fix All for: naming, colors, spacing, radius, opacity, border, hidden, empty).\n"
-    + "3. For issues that can't be auto-fixed (auto layout, fixed sizing, text styles, deep nesting), give specific advice on what to change.\n"
-    + "4. Group related issues when possible (e.g. 'these 12 colors are all variants of your brand blue').\n"
-    + "5. If the score is above 80, congratulate briefly and focus on remaining polish items.\n"
-    + "6. Keep the total response under 250 words. Use short bullet points, not paragraphs.\n"
-    + "7. Use plain language a designer (not developer) would understand.\n"
-    + "8. Format with markdown: use **bold** for emphasis, bullet lists with - dashes.";
-
   var body = JSON.stringify({
-    model: "claude-sonnet-4-6",
+    model: AIClient.config.models.standard,
     max_tokens: 1024,
-    system: systemPrompt,
+    system: AIClient.prompts.auditReview,
     messages: [{ role: "user", content: "Here are the audit results for my Figma file:\n\n" + auditText + "\n\nGive me a prioritized action plan to improve my score." }]
   });
 
   bhPost(body, 30000, function(status, text) {
     if (status === 200) {
       try {
-        var resp = JSON.parse(text);
-        var t = "";
-        for (var ti = 0; ti < resp.content.length; ti++) {
-          if (resp.content[ti].type === "text") t += resp.content[ti].text;
-        }
-        callback(null, t);
+        callback(null, AIClient.extractText(JSON.parse(text)));
       } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
     } else if (status === 429) { callback("Rate limit exceeded. Please wait and try again.", null);
     } else if (status === -1)  { callback("AI review request timed out.", null);

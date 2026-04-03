@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "node build.js",
-    "watch": "esbuild src/main.ts --bundle --outfile=code.js --format=iife --target=es2020 --watch"
+    "watch": "esbuild src/main.ts --bundle --outfile=code.js --format=iife --target=es2017 --watch"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.100.0",

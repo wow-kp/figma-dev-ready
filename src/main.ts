@@ -622,11 +622,16 @@ figma.ui.onmessage = async function(msg) {
       });
 
       // Generate Foundations page from the newly created variables
-      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Generating Foundations page…", percent: 80 });
-      ensureEssentialColors();
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Setting up essential colors…", percent: 75 });
+      await ensureEssentialColors();
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Setting up text styles…", percent: 80 });
       await ensureComponentTextStyles();
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Generating Foundations page…", percent: 85 });
       await generateFoundationsPageComplex();
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Generating Components page…", percent: 92 });
+      await generateComponentsPageComplex();
 
+      figma.ui.postMessage({ type: "routeb-tokens-progress", phase: "Done!", percent: 100 });
       figma.ui.postMessage({
         type: "routeb-tokens-applied",
         tokenResults: tokenResults,

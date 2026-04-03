@@ -3853,6 +3853,11 @@ function renderRouteBTokenReview(body, analysis, wfContainer) {
   applyBtn.addEventListener("click", function() {
     applyBtn.disabled = true;
     applyBtn.textContent = "Applying…";
+    var progressArea = document.createElement("div");
+    progressArea.id = "routeb-tokens-progress";
+    progressArea.style.cssText = "padding:8px 12px;font-size:10px;color:#a6adc8;margin-top:8px;";
+    progressArea.innerHTML = "<div style='margin-bottom:4px;'>Starting…</div><div style='height:4px;background:#313244;border-radius:2px;overflow:hidden;'><div id='routeb-tokens-bar' style='height:100%;width:0%;background:#89b4fa;transition:width .3s;'></div></div>";
+    btnWrap.parentNode.appendChild(progressArea);
     parent.postMessage({ pluginMessage: { type: "routeb-apply-tokens", analysis: JSON.parse(JSON.stringify(analysis)) } }, "*");
   });
   btnWrap.appendChild(applyBtn);
@@ -5376,6 +5381,13 @@ window.onmessage=function(event){
     errDivExt.textContent = "Error: " + (msg.error || "Unknown error");
     var progAreaExt = document.getElementById("routeb-extract-progress");
     if (progAreaExt) progAreaExt.parentNode.appendChild(errDivExt);
+  }
+  if(msg.type==="routeb-tokens-progress"){
+    // Show progress during token application
+    var tokProgEl = document.getElementById("routeb-tokens-progress");
+    if (tokProgEl) tokProgEl.querySelector("div").textContent = msg.phase;
+    var tokBarEl = document.getElementById("routeb-tokens-bar");
+    if (tokBarEl) tokBarEl.style.width = msg.percent + "%";
   }
   if(msg.type==="routeb-tokens-error"){
     // Show error and re-enable the apply button

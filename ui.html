@@ -1203,7 +1203,7 @@ var wfFoundationsHaveContent = false; // true if Foundations page has children
 var wfComponentsHaveContent = false; // true if Components page has children
 
 // ── Route B specific state ──
-var wfRouteBStep = 0; // 0=not started, 1=step1 done, 2=tokens applied
+var wfRouteBStep = 0; // 0=not started, 1=pages created, 2=extraction done, 3=tokens applied
 var wfRouteBAnalysis = null; // AnalysisResult from backend (with matched names)
 var wfRouteBExistingVars = null; // scanned existing variables
 var wfRouteBBindStats = null; // token binding stats
@@ -1449,6 +1449,7 @@ function renderStepStructure(ctx, stepDef) {
       archNote.innerHTML = "📥 <b>Imported via design import.</b> Original content is safely archived in the 🗄️ Archive page.";
       body.appendChild(archNote);
     } else {
+      // Not started — show Set Up button
       var footer = document.createElement("div");
       footer.className = "wf-footer";
       var setupBtn = document.createElement("button");
@@ -3241,7 +3242,7 @@ function renderRouteBTokens(ctx, stepDef) {
   var stepIdx = ctx.steps.indexOf(stepDef);
   var prevStepId = stepIdx > 0 ? ctx.steps[stepIdx - 1].id : null;
   var locked = prevStepId ? (ctx.stepStatus[prevStepId] === "red") : false;
-  var tokensApplied = wfRouteBStep >= 2;
+  var tokensApplied = wfRouteBStep >= 3;
   var hasAnalysis = !!wfRouteBAnalysis;
   var indicatorColor = locked ? "red" : (tokensApplied ? "green" : (hasAnalysis ? "yellow" : "red"));
   var stepOpen = locked ? false : wfFormState.step2Open;
@@ -3258,7 +3259,7 @@ function renderRouteBTokens(ctx, stepDef) {
       "<div class='wf-step-num'>Step " + stepDef.num + "</div>" +
       "<div class='wf-step-title'>Design Tokens" + (locked ? "" : (tokensApplied ? " — Applied" : "")) + "</div>" +
       (locked ? "<div class='wf-step-lock-msg'>Set up file structure first</div>" :
-       "<div class='wf-step-desc'>Review extracted design tokens, refine names, and apply variables to your design.</div>") +
+       "<div class='wf-step-desc'>Extract, review, and apply design tokens as variables to your design.</div>") +
     "</div>" +
     (locked ? "" : "<span class='wf-step-chevron'>▼</span>");
 
@@ -3548,11 +3549,36 @@ function renderRouteBTokens(ctx, stepDef) {
     } else if (hasAnalysis) {
       // ── Active state: token review UI ──
       renderRouteBTokenReview(body, wfRouteBAnalysis, container);
+    } else if (wfRouteBStep >= 1) {
+      // ── Pages created but extraction not done — show Extract CTA ──
+      var extractWrap = document.createElement("div");
+      extractWrap.style.cssText = "padding:16px;text-align:center;";
+      var extractDesc = document.createElement("div");
+      extractDesc.style.cssText = "font-size:11px;color:#a6adc8;margin-bottom:12px;line-height:1.5;";
+      extractDesc.textContent = "Scan your design to extract colors, typography, spacing, shadows, and other tokens.";
+      extractWrap.appendChild(extractDesc);
+      var extractBtn = document.createElement("button");
+      extractBtn.className = "wf-gen-btn";
+      extractBtn.id = "routeb-extract-btn";
+      extractBtn.style.cssText = "width:100%;padding:10px;font-size:12px;font-weight:700;";
+      extractBtn.textContent = "✦ Extract Design Tokens";
+      extractBtn.addEventListener("click", function() {
+        extractBtn.disabled = true;
+        extractBtn.textContent = "Extracting…";
+        var progressArea = document.createElement("div");
+        progressArea.id = "routeb-extract-progress";
+        progressArea.style.cssText = "padding:8px 12px;font-size:10px;color:#a6adc8;margin-top:8px;";
+        progressArea.innerHTML = "<div style='margin-bottom:4px;'>Starting extraction…</div><div style='height:4px;background:#313244;border-radius:2px;overflow:hidden;'><div id='routeb-extract-bar' style='height:100%;width:0%;background:#89b4fa;transition:width .3s;'></div></div>";
+        extractWrap.appendChild(progressArea);
+        parent.postMessage({ pluginMessage: { type: "routeb-extract" } }, "*");
+      });
+      extractWrap.appendChild(extractBtn);
+      body.appendChild(extractWrap);
     } else {
       // ── Waiting state: Step 1 not completed yet ──
       var waitMsg = document.createElement("div");
       waitMsg.style.cssText = "padding:16px;text-align:center;font-size:11px;color:#6c7086;";
-      waitMsg.textContent = "Complete Step 1 to extract design tokens.";
+      waitMsg.textContent = "Set up file structure first.";
       body.appendChild(waitMsg);
     }
   }
@@ -5324,11 +5350,32 @@ window.onmessage=function(event){
   }
   if(msg.type==="routeb-step1-done"){
     wfRouteBStep = 1;
+    saveSettings();
+    // Trigger page re-check which will re-render workflow with Step 1 green + show Extract button
+    parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+  }
+  if(msg.type==="routeb-extract-progress"){
+    var rbExtText = document.getElementById("routeb-extract-progress");
+    if (rbExtText) rbExtText.querySelector("div").textContent = msg.phase;
+    var rbExtBar = document.getElementById("routeb-extract-bar");
+    if (rbExtBar) rbExtBar.style.width = msg.percent + "%";
+  }
+  if(msg.type==="routeb-extract-done"){
+    wfRouteBStep = 2;
     wfRouteBAnalysis = msg.analysis || null;
     wfRouteBExistingVars = msg.existingVars || null;
     saveSettings();
-    // Trigger page re-check which will re-render workflow with Step 1 green
+    // Trigger page re-check which will re-render workflow with extraction done
     parent.postMessage({ pluginMessage: { type: "check-pages" } }, "*");
+  }
+  if(msg.type==="routeb-extract-error"){
+    var extractBtn2 = document.querySelector("#routeb-extract-btn");
+    if (extractBtn2) { extractBtn2.disabled = false; extractBtn2.textContent = "✦ Extract Design Tokens"; }
+    var errDivExt = document.createElement("div");
+    errDivExt.style.cssText = "padding:8px 12px;font-size:11px;color:#f38ba8;";
+    errDivExt.textContent = "Error: " + (msg.error || "Unknown error");
+    var progAreaExt = document.getElementById("routeb-extract-progress");
+    if (progAreaExt) progAreaExt.parentNode.appendChild(errDivExt);
   }
   if(msg.type==="routeb-tokens-error"){
     // Show error and re-enable the apply button
@@ -5350,7 +5397,7 @@ window.onmessage=function(event){
     if (progArea) progArea.parentNode.appendChild(errDiv2);
   }
   if(msg.type==="routeb-tokens-applied"){
-    wfRouteBStep = 2;
+    wfRouteBStep = 3;
     wfRouteBBindStats = msg.bindStats || {};
     saveSettings();
     reRenderFromStep("tokens");
@@ -5666,43 +5713,6 @@ function bhTermLog(text, type) {
 
 // ── AI Token Naming ─────────────────────────────────────────────────────────
 
-function bhCallTokenNamingAI(analysis, callback) {
-  if (!AIClient.isAvailable()) { callback("No API key configured.", null); return; }
-
-  var colorSummary = analysis.colors.map(function(c) { return { hex: c.hex, uses: c.count, currentName: c.name }; });
-  var typoSummary = analysis.typography.map(function(t) {
-    return { family: t.fontFamily, size: t.fontSize, weight: t.fontWeight, uses: t.count, sample: t.sampleText, currentName: t.group + "/" + t.name };
-  });
-  var sc = analysis.typographyScale || { sizes: [], weights: [], lineHeights: [] };
-  var scaleSummary = {
-    sizes: sc.sizes.map(function(s) { return { value: s.value, currentName: s.name }; }),
-    weights: sc.weights.map(function(s) { return { value: s.value, currentName: s.name }; }),
-    lineHeights: sc.lineHeights.map(function(s) { return { value: s.value, currentName: s.name }; })
-  };
-
-  var body = JSON.stringify({
-    model: AIClient.config.models.fast,
-    max_tokens: 2048,
-    system: AIClient.prompts.tokenNaming,
-    messages: [
-      { role: "user", content: JSON.stringify({ colors: colorSummary, typography: typoSummary, typographyScale: scaleSummary }) },
-      { role: "assistant", content: "{" }
-    ]
-  });
-
-  bhPost(body, 30000, function(status, text) {
-    if (status === 200) {
-      try {
-        var resp = JSON.parse(text);
-        var t = "{" + AIClient.stripFences(AIClient.extractText(resp));
-        callback(null, JSON.parse(t));
-      } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
-    } else if (status === -1) { callback("AI request timed out.", null);
-    } else if (status === 0)  { callback("Network error.", null);
-    } else { callback("API error (" + status + ")", null); }
-  });
-}
-
 // ── AI Component Detection (Route B) ──
 function callComponentDetectionAI(systemPrompt, userContent, callbackOrMaxTokens, maxTokensOrCallback) {
   // Support both (prompt, content, callback) and (prompt, content, maxTokens, callback)
@@ -6006,13 +6016,153 @@ var AIClient = {
     } else {
       doRequest(false, function(status, text) { onDone(status, text, false); });
     }
+  },
+
+  // ── Retry helper ──
+  isRetryableError: function(errMsg) {
+    if (!errMsg) return false;
+    return errMsg.indexOf("429") !== -1 || errMsg.indexOf("529") !== -1
+      || errMsg.indexOf("Network error") !== -1 || errMsg.indexOf("overloaded") !== -1;
+  },
+
+  callWithRetry: function(callFn, maxRetries, callback) {
+    var self = this;
+    var attempt = 0;
+    function tryCall() {
+      try {
+        callFn(function(err, result) {
+          if (err && attempt < maxRetries && self.isRetryableError(err)) {
+            attempt++;
+            var delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+            bhTermLog("[retry] Attempt " + (attempt + 1) + " after " + delay + "ms — " + err, "warn");
+            setTimeout(tryCall, delay);
+          } else {
+            callback(err, result);
+          }
+        });
+      } catch(e) {
+        bhTermLog("AI call crashed: " + (e.message || e), "error");
+        callback("Internal error: " + (e.message || e), null);
+      }
+    }
+    tryCall();
+  },
+
+  // ── AI Task Methods ──
+
+  nameTokens: function(analysis, callback) {
+    if (!this.isAvailable()) { callback("No API key configured.", null); return; }
+    var self = this;
+
+    var colorSummary = analysis.colors.map(function(c) { return { hex: c.hex, uses: c.count, currentName: c.name }; });
+    var typoSummary = analysis.typography.map(function(t) {
+      return { family: t.fontFamily, size: t.fontSize, weight: t.fontWeight, uses: t.count, sample: t.sampleText, currentName: t.group + "/" + t.name };
+    });
+    var sc = analysis.typographyScale || { sizes: [], weights: [], lineHeights: [] };
+    var scaleSummary = {
+      sizes: sc.sizes.map(function(s) { return { value: s.value, currentName: s.name }; }),
+      weights: sc.weights.map(function(s) { return { value: s.value, currentName: s.name }; }),
+      lineHeights: sc.lineHeights.map(function(s) { return { value: s.value, currentName: s.name }; })
+    };
+
+    var body = JSON.stringify({
+      model: this.config.models.fast,
+      max_tokens: 2048,
+      system: this.prompts.tokenNaming,
+      messages: [
+        { role: "user", content: JSON.stringify({ colors: colorSummary, typography: typoSummary, typographyScale: scaleSummary }) },
+        { role: "assistant", content: "{" }
+      ]
+    });
+
+    this.post(body, 30000, function(status, text) {
+      if (status === 200) {
+        try {
+          var resp = JSON.parse(text);
+          var t = "{" + self.stripFences(self.extractText(resp));
+          callback(null, JSON.parse(t));
+        } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
+      } else if (status === -1) { callback("AI request timed out.", null);
+      } else if (status === 0)  { callback("Network error.", null);
+      } else { callback("API error (" + status + ")", null); }
+    });
+  },
+
+  nameLayers: function(serializedNodes, callback) {
+    if (!this.isAvailable()) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+    var self = this;
+
+    var body = JSON.stringify({
+      model: this.config.models.fast,
+      max_tokens: 2048,
+      system: this.prompts.layerNaming,
+      messages: [
+        { role: "user", content: JSON.stringify(serializedNodes) },
+        { role: "assistant", content: "[" }
+      ]
+    });
+
+    this.post(body, 30000, function(status, text) {
+      if (status === 200) {
+        try {
+          var t = "[" + self.stripFences(self.extractText(JSON.parse(text)));
+          var names = JSON.parse(t);
+          if (!Array.isArray(names)) throw new Error("Expected JSON array");
+          callback(null, names);
+        } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
+      } else if (status === 429) { callback("Rate limit exceeded. Please wait and try again.", null);
+      } else if (status === -1)  { callback("AI naming request timed out.", null);
+      } else if (status === 0)   { callback("Network error.", null);
+      } else {
+        try { var eb = JSON.parse(text); callback("API error (" + status + "): " + ((eb.error && eb.error.message) || ""), null); }
+        catch(e2) { callback("API error (" + status + ")", null); }
+      }
+    });
+  },
+
+  reviewAudit: function(data, callback) {
+    if (!this.isAvailable()) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
+    var self = this;
+
+    var auditText = bhSerializeAuditForAI(data);
+
+    var body = JSON.stringify({
+      model: this.config.models.standard,
+      max_tokens: 1024,
+      system: this.prompts.auditReview,
+      messages: [{ role: "user", content: "Here are the audit results for my Figma file:\n\n" + auditText + "\n\nGive me a prioritized action plan to improve my score." }]
+    });
+
+    this.post(body, 30000, function(status, text) {
+      if (status === 200) {
+        try {
+          callback(null, self.extractText(JSON.parse(text)));
+        } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
+      } else if (status === 429) { callback("Rate limit exceeded. Please wait and try again.", null);
+      } else if (status === -1)  { callback("AI review request timed out.", null);
+      } else if (status === 0)   { callback("Network error. Check your connection.", null);
+      } else {
+        try { var eb = JSON.parse(text); callback("API error (" + status + "): " + ((eb.error && eb.error.message) || ""), null); }
+        catch(e2) { callback("API error (" + status + ")", null); }
+      }
+    });
+  },
+
+  detectComponents: function(chunks, callback) {
+    runComponentDetectionAI(chunks, callback);
+  },
+
+  enhanceHtml: function(htmlFiles, css, screenshots, callback, pageType) {
+    bhEnhanceWithAI(htmlFiles, css, screenshots, callback, pageType);
   }
 };
 
-// ── Backward-compatible shims (bridge old call sites → AIClient) ──
+// ── Backward-compatible shims (bridge old function names → AIClient) ──
 function bhHasProxy() { return AIClient.hasProxy(); }
 function bhHasBuiltinProxy() { return AIClient.hasBuiltinProxy(); }
 function bhPost(bodyStr, timeoutMs, onDone) { AIClient.post(bodyStr, timeoutMs, onDone); }
+function bhIsRetryableError(errMsg) { return AIClient.isRetryableError(errMsg); }
+function bhCallWithRetry(callFn, maxRetries, callback) { AIClient.callWithRetry(callFn, maxRetries, callback); }
 
 function bhUpdateProxyUI() {
   var proxyHealthy = AIClient.hasProxy() && AIClient.config.proxyHealthy;
@@ -6253,35 +6403,6 @@ function bhBuildDesignContext() {
   if (cssVars.length) ctx += "- CSS custom properties: " + cssVars.join(", ") + "\n";
   ctx += "- Component classes hold only unique properties not covered by utilities. If a component CSS property duplicates a utility, remove it from component CSS and ensure the utility class is on the element.\n";
   return ctx;
-}
-
-// ── Retry helper for transient API errors ────────────────────────────────────
-function bhIsRetryableError(errMsg) {
-  if (!errMsg) return false;
-  return errMsg.indexOf("429") !== -1 || errMsg.indexOf("529") !== -1
-    || errMsg.indexOf("Network error") !== -1 || errMsg.indexOf("overloaded") !== -1;
-}
-
-function bhCallWithRetry(callFn, maxRetries, callback) {
-  var attempt = 0;
-  function tryCall() {
-    try {
-      callFn(function(err, result) {
-        if (err && attempt < maxRetries && bhIsRetryableError(err)) {
-          attempt++;
-          var delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-          bhTermLog("[retry] Attempt " + (attempt + 1) + " after " + delay + "ms — " + err, "warn");
-          setTimeout(tryCall, delay);
-        } else {
-          callback(err, result);
-        }
-      });
-    } catch(e) {
-      bhTermLog("AI call crashed: " + (e.message || e), "error");
-      callback("Internal error: " + (e.message || e), null);
-    }
-  }
-  tryCall();
 }
 
 // Per-frame processing: splits large designs into individual AI requests
@@ -6647,63 +6768,6 @@ function bhSerializeAuditForAI(data) {
 var _aiNamingPendingSingle = null; // { nodeId, input, btn }
 var _aiNamingPendingBatch = false;
 
-function bhCallNamingAI(serializedNodes, callback) {
-  if (!AIClient.isAvailable()) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
-
-  var body = JSON.stringify({
-    model: AIClient.config.models.fast,
-    max_tokens: 2048,
-    system: AIClient.prompts.layerNaming,
-    messages: [
-      { role: "user", content: JSON.stringify(serializedNodes) },
-      { role: "assistant", content: "[" }
-    ]
-  });
-
-  bhPost(body, 30000, function(status, text) {
-    if (status === 200) {
-      try {
-        var t = "[" + AIClient.stripFences(AIClient.extractText(JSON.parse(text)));
-        var names = JSON.parse(t);
-        if (!Array.isArray(names)) throw new Error("Expected JSON array");
-        callback(null, names);
-      } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
-    } else if (status === 429) { callback("Rate limit exceeded. Please wait and try again.", null);
-    } else if (status === -1)  { callback("AI naming request timed out.", null);
-    } else if (status === 0)   { callback("Network error.", null);
-    } else {
-      try { var eb = JSON.parse(text); callback("API error (" + status + "): " + ((eb.error && eb.error.message) || ""), null); }
-      catch(e2) { callback("API error (" + status + ")", null); }
-    }
-  });
-}
-
-function bhCallAuditAI(data, callback) {
-  if (!AIClient.isAvailable()) { callback("No API key configured. Set your Anthropic API key in the Settings tab.", null); return; }
-
-  var auditText = bhSerializeAuditForAI(data);
-
-  var body = JSON.stringify({
-    model: AIClient.config.models.standard,
-    max_tokens: 1024,
-    system: AIClient.prompts.auditReview,
-    messages: [{ role: "user", content: "Here are the audit results for my Figma file:\n\n" + auditText + "\n\nGive me a prioritized action plan to improve my score." }]
-  });
-
-  bhPost(body, 30000, function(status, text) {
-    if (status === 200) {
-      try {
-        callback(null, AIClient.extractText(JSON.parse(text)));
-      } catch(e) { callback("Failed to parse AI response: " + e.message, null); }
-    } else if (status === 429) { callback("Rate limit exceeded. Please wait and try again.", null);
-    } else if (status === -1)  { callback("AI review request timed out.", null);
-    } else if (status === 0)   { callback("Network error. Check your connection.", null);
-    } else {
-      try { var eb = JSON.parse(text); callback("API error (" + status + "): " + ((eb.error && eb.error.message) || ""), null); }
-      catch(e2) { callback("API error (" + status + ")", null); }
-    }
-  });
-}
 
 // Simple markdown to HTML: **bold**, - bullets, newlines
 function markdownToHtml(md) {

@@ -521,11 +521,12 @@ figma.ui.onmessage = async function(msg) {
   if (msg.type === "request-debug") { pushDebugData(); }
   // ── Design Import (Route B) ────────────────────────────────────────────
   // ── Route B Step 1: Full pipeline ─────────────────────────────────────────
+  // ── Route B Step 1a: Set Up File Structure (fast — pages, archive, reorganize) ──
   if (msg.type === "routeb-step1") {
     await figma.loadAllPagesAsync();
     try {
       // 1. Create standard pages
-      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Creating standard pages…", percent: 5 });
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Creating standard pages…", percent: 10 });
       const PAGE_DEFS: Record<string, string> = {
         cover: "_Cover", foundations: "🎨 Foundations", components: "🧩 Components",
         mobile: "📱 Mobile", desktop: "🖥️ Desktop", archive: "🗄️ Archive"
@@ -544,30 +545,15 @@ figma.ui.onmessage = async function(msg) {
       });
 
       // 2. Archive existing content
-      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Archiving existing content…", percent: 15 });
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Archiving existing content…", percent: 30 });
       const archiveResult = await archiveExistingContent();
 
-      // 3. Analyze design
-      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Analyzing design…", percent: 35 });
-      const analysis = await analyzeDesign();
-
-      // 4. Reorganize frames
-      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Organizing frames…", percent: 55 });
-      const reorgResult = await reorganizeFrames(analysis.frames);
-
-      // 5. Cleanup original pages
-      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Cleaning up empty pages…", percent: 70 });
+      // 3. Cleanup original pages
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Cleaning up empty pages…", percent: 60 });
       const cleanupResult = await cleanupOriginalPages();
 
-      // 6. Scan existing variables
-      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Scanning existing variables…", percent: 80 });
-      const existingVars = await scanExistingVariables();
-
-      // 7. Match tokens with existing
-      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Matching tokens…", percent: 90 });
-      const matchedAnalysis = matchTokensWithExisting(analysis, existingVars);
-
-      // 8. Sort pages
+      // 4. Sort pages
+      figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Sorting pages…", percent: 80 });
       const allPages = figma.root.children.slice();
       const sorted: PageNode[] = [];
       ORDER.forEach(function(key) {
@@ -584,14 +570,42 @@ figma.ui.onmessage = async function(msg) {
       figma.ui.postMessage({ type: "routeb-step1-progress", phase: "Done!", percent: 100 });
       figma.ui.postMessage({
         type: "routeb-step1-done",
-        analysis: matchedAnalysis,
-        existingVars: existingVars,
-        reorgResult: reorgResult,
         archiveResult: archiveResult,
         cleanupResult: cleanupResult
       });
     } catch (e) {
       figma.ui.postMessage({ type: "routeb-step1-error", error: String(e) });
+    }
+  }
+  // ── Route B Step 1b: Extract & Analyze (slow — analyze design, scan vars, match tokens) ──
+  if (msg.type === "routeb-extract") {
+    await figma.loadAllPagesAsync();
+    try {
+      // 1. Analyze design
+      figma.ui.postMessage({ type: "routeb-extract-progress", phase: "Analyzing design…", percent: 15 });
+      const analysis = await analyzeDesign();
+
+      // 2. Reorganize frames
+      figma.ui.postMessage({ type: "routeb-extract-progress", phase: "Organizing frames…", percent: 40 });
+      const reorgResult = await reorganizeFrames(analysis.frames);
+
+      // 3. Scan existing variables
+      figma.ui.postMessage({ type: "routeb-extract-progress", phase: "Scanning existing variables…", percent: 65 });
+      const existingVars = await scanExistingVariables();
+
+      // 4. Match tokens with existing
+      figma.ui.postMessage({ type: "routeb-extract-progress", phase: "Matching tokens…", percent: 85 });
+      const matchedAnalysis = matchTokensWithExisting(analysis, existingVars);
+
+      figma.ui.postMessage({ type: "routeb-extract-progress", phase: "Done!", percent: 100 });
+      figma.ui.postMessage({
+        type: "routeb-extract-done",
+        analysis: matchedAnalysis,
+        existingVars: existingVars,
+        reorgResult: reorgResult
+      });
+    } catch (e) {
+      figma.ui.postMessage({ type: "routeb-extract-error", error: String(e) });
     }
   }
   // ── Route B Apply Tokens ────────────────────────────────────────────────
